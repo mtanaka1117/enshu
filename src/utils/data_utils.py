@@ -1,4 +1,5 @@
 import numpy as np
+import math
 
 
 def to_fixed_point(x: float, precision: int, width: int) -> int:
@@ -28,3 +29,11 @@ def array_to_fp(arr: np.ndarray, precision: int, width: int) -> np.ndarray:
 def array_to_float(fp_arr: np.ndarray, precision: int) -> np.ndarray:
     assert len(fp_arr.shape) == 1, 'Can only map 1d arrays to floating point representation'
     return np.array([to_float(fp, precision=precision) for fp in fp_arr])
+
+
+def round_to_block(x: float, block_size: int) -> int:
+    return int(math.ceil(x / block_size)) * block_size
+
+
+def truncate_to_block(x: float, block_size: int) -> int:
+    return int(math.floor(x / block_size)) * block_size
