@@ -1,14 +1,17 @@
 import numpy as np
 import sklearn.metrics as metrics
 from argparse import ArgumentParser
-from collections import defaultdict
+from collections import defaultdict, namedtuple
 from sklearn.preprocessing import StandardScaler
 from sklearn.neural_network import MLPClassifier
 from sklearn.linear_model import LogisticRegression
 from sklearn.cluster import KMeans
 from typing import Any, Dict, Tuple
 
-from utils.file_utils import read_pickle_gz
+from utils.file_utils import read_pickle_gz, save_pickle_gz
+
+
+AttackResult = namedtuple('AttackResult', ['train_accuracy', 'num_train', 'test_accuracy', 'num_test', 'most_freq_accuracy'])
 
 
 def create_dataset(policy_result: Dict[str, Any], window_size: int, stride: int) -> Tuple[np.ndarray, np.ndarray]:
@@ -34,36 +37,6 @@ def create_dataset(policy_result: Dict[str, Any], window_size: int, stride: int)
 
 def fit_attack_model(inputs: np.ndarray, output: np.ndarray, train_frac: float):
 
-    # Fit the clustering model
-    #num_labels = np.amax(output) + 1
-    #kmeans = KMeans(n_clusters=num_labels, random_state=4936)
-
-    #cluster_idx = kmeans.fit_predict(inputs)
-
-    ## Create predictions using the Ground-Truth as a 
-    ## best-case scenario
-    #label_dist: Dict[int, List[int]] = defaultdict(list)
-
-    #for cluster_id, label in zip(cluster_idx, output):
-    #    label_dist[cluster_id].append(label)
-
-    #pred_map: Dict[int, int] = dict()
-    #for cluster_id, labels in label_dist.items():
-    #    label_counts = np.bincount(labels, minlength=num_labels)
-
-    #    print(label_counts)
-    #    print(cluster_id)
-
-    #    pred_map[cluster_id] = np.argmax(label_counts)
-
-    #preds: List[int] = []
-    #for sample_id in range(inputs.shape[0]):
-    #    cluster_id = cluster_idx[sample_id]
-    #    preds.append(pred_map[cluster_id])
-    #
-
-    #print(metrics.accuracy_score(y_true=output, y_pred=preds))
-    
     rand = np.random.RandomState(582)
 
     # Scale the inputs
@@ -81,7 +54,6 @@ def fit_attack_model(inputs: np.ndarray, output: np.ndarray, train_frac: float):
     train_output, test_output = output[train_idx], output[test_idx]
 
     clf = MLPClassifier(hidden_layer_sizes=[64], alpha=0.1, max_iter=10000, random_state=rand)
-    # clf = LogisticRegression(max_iter=5000, random_state=rand)
     clf.fit(train_inputs, train_output)
 
     train_accuracy = clf.score(train_inputs, train_output)
@@ -95,6 +67,12 @@ def fit_attack_model(inputs: np.ndarray, output: np.ndarray, train_frac: float):
     print('Attack Accuracy: {0:.5f} ({1})'.format(test_accuracy, len(test_inputs)))
     print('Most Freq Accuracy: {0:.5f}'.format(most_freq_acc))
 
+    return AttackResult(train_accuracy=train_accuracy,
+                        num_train=len(train_inputs),
+                        test_accuracy=test_accuracy,
+                        num_test=len(test_inputs),
+                        most_freq_accuracy=most_freq_acc)
+
 
 if __name__ == '__main__':
     parser = ArgumentParser()
@@ -107,5 +85,8 @@ if __name__ == '__main__':
 
     inputs, output = create_dataset(policy_result, window_size=args.window_size, stride=args.stride)
 
-    fit_attack_model(inputs=inputs, output=output, train_frac=0.7)
+    attack_result = fit_attack_model(inputs=inputs, output=output, train_frac=0.7)
 
+    # Save the attack result
+    policy_result['attack'] = attack_result._asdict()
+    save_pickle_gz(policy_result, args.policy_file)

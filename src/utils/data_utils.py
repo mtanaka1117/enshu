@@ -1,5 +1,8 @@
 import numpy as np
 import math
+from functools import partial
+
+from utils.constants import AES_BLOCK_SIZE
 
 
 def to_fixed_point(x: float, precision: int, width: int) -> int:
@@ -22,13 +25,16 @@ def to_float(fp: int, precision: int) -> float:
 
 
 def array_to_fp(arr: np.ndarray, precision: int, width: int) -> np.ndarray:
-    assert len(arr.shape) == 1, 'Can only map 1d arrays to fixed-point representation'
-    return np.array([to_fixed_point(x, precision=precision, width=width) for x in arr])
+    convert_fn = partial(to_fixed_point, precision=precision, width=width)
+    map_fn = np.vectorize(convert_fn)
+    return map_fn(arr)
 
 
 def array_to_float(fp_arr: np.ndarray, precision: int) -> np.ndarray:
-    assert len(fp_arr.shape) == 1, 'Can only map 1d arrays to floating point representation'
-    return np.array([to_float(fp, precision=precision) for fp in fp_arr])
+    convert_fn = partial(to_float, precision=precision)
+    map_fn = np.vectorize(convert_fn)
+
+    return map_fn(fp_arr)
 
 
 def round_to_block(x: float, block_size: int) -> int:
@@ -37,3 +43,10 @@ def round_to_block(x: float, block_size: int) -> int:
 
 def truncate_to_block(x: float, block_size: int) -> int:
     return int(math.floor(x / block_size)) * block_size
+
+
+def calculate_bytes(width: int, num_transmitted: int, num_features: int) -> int:
+    data_bits = width * num_transmitted * num_features
+    data_bytes = int(math.ceil(data_bits / 8)) + 1  # Account for the need to send along the width
+    total_bytes = round_to_block(data_bytes, AES_BLOCK_SIZE)
+    return total_bytes

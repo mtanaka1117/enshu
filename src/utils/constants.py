@@ -1,0 +1,3 @@
+SMALL_NUMBER = 1e-7
+BIG_NUMBER = 1e7
+AES_BLOCK_SIZE = 16  # In Bytes
