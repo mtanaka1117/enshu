@@ -1,12 +1,11 @@
 import numpy as np
 import sklearn.metrics as metrics
+import os
 from argparse import ArgumentParser
 from collections import defaultdict, namedtuple
 from sklearn.preprocessing import StandardScaler
 from sklearn.neural_network import MLPClassifier
-from sklearn.linear_model import LogisticRegression
-from sklearn.cluster import KMeans
-from typing import Any, Dict, Tuple
+from typing import Any, Dict, Tuple, List
 
 from utils.file_utils import read_pickle_gz, save_pickle_gz
 
@@ -53,7 +52,7 @@ def fit_attack_model(inputs: np.ndarray, output: np.ndarray, train_frac: float):
     train_inputs, test_inputs = model_inputs[train_idx], model_inputs[test_idx]
     train_output, test_output = output[train_idx], output[test_idx]
 
-    clf = MLPClassifier(hidden_layer_sizes=[64], alpha=0.1, max_iter=10000, random_state=rand)
+    clf = MLPClassifier(hidden_layer_sizes=[32, 32], alpha=0.1, max_iter=10000, random_state=rand)
     clf.fit(train_inputs, train_output)
 
     train_accuracy = clf.score(train_inputs, train_output)
@@ -76,17 +75,31 @@ def fit_attack_model(inputs: np.ndarray, output: np.ndarray, train_frac: float):
 
 if __name__ == '__main__':
     parser = ArgumentParser()
-    parser.add_argument('--policy-file', type=str, required=True)
+    parser.add_argument('--policy-files', type=str, required=True, nargs='+')
     parser.add_argument('--window-size', type=int, required=True)
     parser.add_argument('--stride', type=int, required=True)
     args = parser.parse_args()
 
-    policy_result = read_pickle_gz(args.policy_file)
+    policy_files: List[str] = []
+    for policy_file in args.policy_files:
 
-    inputs, output = create_dataset(policy_result, window_size=args.window_size, stride=args.stride)
+        if os.path.isdir(policy_file):
+            file_names = [name for name in os.listdir(policy_file) if name.endswith('.pkl.gz')]
+            policy_files.extend((os.path.join(policy_file, name) for name in file_names))
+        else:
+            policy_files.append(policy_file)
 
-    attack_result = fit_attack_model(inputs=inputs, output=output, train_frac=0.7)
+    for policy_file in policy_files:
+        print('==========')
+        print('Starting {0}'.format(policy_file))
+        print('==========')
+        
+        policy_result = read_pickle_gz(policy_file)
 
-    # Save the attack result
-    policy_result['attack'] = attack_result._asdict()
-    save_pickle_gz(policy_result, args.policy_file)
+        inputs, output = create_dataset(policy_result, window_size=args.window_size, stride=args.stride)
+
+        attack_result = fit_attack_model(inputs=inputs, output=output, train_frac=0.7)
+
+        # Save the attack result
+        policy_result['attack'] = attack_result._asdict()
+        save_pickle_gz(policy_result, policy_file)

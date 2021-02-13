@@ -1,6 +1,6 @@
 import numpy as np
 import h5py
-import os.path
+import os
 from argparse import ArgumentParser
 from collections import defaultdict
 from sklearn.metrics import accuracy_score
@@ -23,7 +23,7 @@ def run(inputs: np.ndarray,
         server: Server,
         policy_params: Dict[str, Any],
         max_num_samples: Optional[int],
-        output_file: str):
+        output_folder: str):
     rand = np.random.RandomState(seed=9389)
 
     # Shuffle the data (in a consistent manner)
@@ -116,8 +116,11 @@ def run(inputs: np.ndarray,
         'policy': policy_params
     }
 
-    save_pickle_gz(result, output_file)
+    policy_name = '-'.join(t.lower().strip().replace(',', '') for t in str(policy).split())
+    policy_file = '{0}_{1}.pkl.gz'.format(policy_name, int(policy.target * 100))
+    output_file = os.path.join(output_folder, policy_file)
 
+    save_pickle_gz(result, output_file)
 
 #    # Print out aggregate values in a table format
 #    print('Label & Mean (Std) & Count \\\\')
@@ -190,11 +193,20 @@ if __name__ == '__main__':
     parser = ArgumentParser()
     parser.add_argument('--model-folder', type=str, required=True)
     parser.add_argument('--data-folder', type=str, required=True)
-    parser.add_argument('--policy-params', type=str, required=True)
-    parser.add_argument('--output-file', type=str, required=True)
+    parser.add_argument('--policy-params', type=str, required=True, nargs='+')
+    parser.add_argument('--output-folder', type=str, required=True)
     parser.add_argument('--max-num-samples', type=int)
     parser.add_argument('--should-quantize', action='store_true')
     args = parser.parse_args()
+
+    # Unpack the parameter files by detecting directories
+    param_files: List[str] = []
+    for param_file in args.policy_params:
+        if os.path.isdir(param_file):
+            file_names = [name for name in os.listdir(param_file) if name.endswith('.json')]
+            param_files.extend(os.path.join(param_file, name) for name in file_names)
+        else:
+            param_files.append(param_file)
 
     transition_path = os.path.join(args.model_folder, 'transition_model.pkl.gz')
     model_path = os.path.join(args.model_folder, 'model.pkl.gz')
@@ -208,25 +220,31 @@ if __name__ == '__main__':
     seq_length = inputs.shape[1]
     num_features = inputs.shape[2]
 
-    # Make the policy
-    policy_params = read_json(args.policy_params)
-    policy = make_policy(transition_path=transition_path,
-                         seq_length=seq_length,
-                         num_features=num_features,
-                         **policy_params)
+    for params_path in sorted(param_files):
 
-    # Create the server
-    server = Server(transition_path=transition_path,
-                    inference_path=model_path,
-                    seq_length=50)
+        print('==========')
+        print('Starting {0}'.format(params_path))
+        print('==========')
 
-    # Execute the simulation
-    run(inputs=inputs,
-        output=output,
-        policy=policy,
-        server=server,
-        policy_params=policy_params,
-        max_num_samples=args.max_num_samples,
-        output_file=args.output_file)
+        # Create the server
+        server = Server(transition_path=transition_path,
+                        inference_path=model_path,
+                        seq_length=seq_length)
+
+        # Make the policy
+        policy_params = read_json(params_path)
+        policy = make_policy(transition_path=transition_path,
+                             seq_length=seq_length,
+                             num_features=num_features,
+                             **policy_params)
+
+        # Execute the simulation
+        run(inputs=inputs,
+            output=output,
+            policy=policy,
+            server=server,
+            policy_params=policy_params,
+            max_num_samples=args.max_num_samples,
+            output_folder=args.output_folder)
 
     # plot_confusion_matrix(pvalue_mat, should_save=False)
