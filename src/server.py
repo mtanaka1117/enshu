@@ -97,9 +97,9 @@ class Server:
         """
         # Unpack the shape
         num_samples, seq_length, num_features = inputs.shape
-        
+ 
         # Scale the inputs
-        scaled = self.scale(inputs.reshape(-1, num_features))  # [N * T, D]
-        model_inputs = scaled.reshape(num_samples, -1)  # [N, T * D]
+        # scaled = self.scale(inputs.reshape(-1, num_features))  # [N * T, D]
+        model_inputs = inputs.reshape(num_samples, -1)  # [N, T * D]
     
         return self._clf.predict(model_inputs)  # [N]

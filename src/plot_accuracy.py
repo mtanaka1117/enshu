@@ -2,7 +2,7 @@ import matplotlib.pyplot as plt
 import os
 from argparse import ArgumentParser
 from collections import namedtuple
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 from utils.file_utils import read_pickle_gz
 
@@ -21,7 +21,7 @@ def to_label(label: str) -> str:
     return ' '.join(t.capitalize() for t in label.split())
 
 
-def plot(sim_results: List[SimResult]):
+def plot(sim_results: List[SimResult], output_file: Optional[str]):
 
     with plt.style.context('seaborn-ticks'):
         fig, (ax1, ax2) = plt.subplots(nrows=1, ncols=2, figsize=(10, 6))
@@ -42,8 +42,11 @@ def plot(sim_results: List[SimResult]):
         ax1.legend()
         ax2.legend()
 
-        plt.show()
-
+        if output_file is None:
+            plt.show()
+        else:
+            plt.savefig(output_file, bbox_inches='tight')
+        
 
 def extract_results(folder: str) -> SimResult:
 
@@ -81,8 +84,9 @@ def extract_results(folder: str) -> SimResult:
 if __name__ == '__main__':
     parser = ArgumentParser()
     parser.add_argument('--policy-folders', type=str, nargs='+', required=True)
+    parser.add_argument('--output-file', type=str)
     args = parser.parse_args()
 
     sim_results = list(map(extract_results, args.policy_folders))
-    plot(sim_results)
+    plot(sim_results, output_file=args.output_file)
 

@@ -72,7 +72,7 @@ class Policy:
     def __str__(self) -> str:
         return 'Policy'
 
-    def transmit(self, measurement: np.ndarray) -> int:
+    def transmit(self, measurement: np.ndarray, seq_idx: int) -> int:
         raise NotImplementedError()
 
 
@@ -113,7 +113,7 @@ class AdaptivePolicy(Policy):
         #                                  ki=(1.0 / 128.0),
         #                                  kd=(1.0 / 128.0))
 
-    def transmit(self, measurement: np.ndarray) -> int:
+    def transmit(self, measurement: np.ndarray, seq_idx: int) -> int:
         diff = np.linalg.norm(self._estimate - measurement, ord=2)
 
         if diff > self._threshold:
@@ -131,8 +131,8 @@ class AdaptivePolicy(Policy):
         seq_length = len(measurements)
         num_features = len(measurements[0])
 
-        adaptive_width = self._width_policy.get_width(num_transmitted=num_transmitted)
-        adaptive_precision = adaptive_width - non_fractional
+        adaptive_width = max(self._width_policy.get_width(num_transmitted=num_transmitted), non_fractional + 1)
+        adaptive_precision = min(adaptive_width - non_fractional, 12)
 
         quantized = array_to_fp(measurements,
                                 width=adaptive_width,
@@ -152,10 +152,10 @@ class AdaptivePolicy(Policy):
 
 class RandomPolicy(Policy):
 
-    def transmit(self, measurement: np.ndarray) -> int:
+    def transmit(self, measurement: np.ndarray, seq_idx: int) -> int:
         r = self._rand.uniform()
 
-        if r < self._target:
+        if r < self._target or seq_idx == 0:
             self._estimate = measurement
             return 1
 
@@ -187,36 +187,9 @@ class AllPolicy(Policy):
                                               target_frac=target,
                                               width=width)
 
-    def transmit(self, measurement: np.ndarray) -> int:
+    def transmit(self, measurement: np.ndarray, seq_idx: int) -> int:
         self._estimate = measurement
         return 1
-
-#    def quantize_seq(self, measurements: np.ndarray, num_transmitted: int) -> Tuple[np.ndarray, int]:
-#        result: List[np.ndaray] = []
-#
-#        # Find the number of non-fractional bits. This part
-#        # stays constant
-#        non_fractional = self._width - self._precision
-#
-#        # Calculate the adaptive fixed-point parameters
-#        seq_length, num_features = measurements.shape
-#
-#        target_bits = 8 * self._target  # Target number of bits per sequences (known by design)
-#
-#        adaptive_width = int(round(target_bits))
-#        adaptive_precision = int(adaptive_width - non_fractional)
-#
-#        quantized = array_to_fp(arr=measurements,
-#                                precision=adaptive_precision,
-#                                width=adaptive_width)
-#
-#        result = array_to_float(quantized, precision=adaptive_precision)
-#
-#        total_bytes = calculate_bytes(width=adaptive_width,
-#                                      num_features=num_features,
-#                                      num_transmitted=num_transmitted)
-#
-#        return result, total_bytes
 
     def __str__(self) -> str:
         return 'All'

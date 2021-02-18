@@ -38,12 +38,23 @@ def run(inputs: np.ndarray,
     inputs = inputs[:num_samples]  # [N, T, D]
     output = output[:num_samples]  # [N]
 
+    # Unpack the shape
+    seq_length, num_features = inputs.shape[1], inputs.shape[2]
+
+    # Normalize all of the data first
+    scaled = server.scale(inputs.reshape(-1, num_features))
+    inputs = scaled.reshape(-1, seq_length, num_features)
+    output = output.reshape(-1)
+
     # Count the number of transmitted values per class
     transmit_dist: DefaultDict[int, List[int]] = defaultdict(list)
     size_dist: DefaultDict[int, List[int]] = defaultdict(list)
 
     # Store the measurements captured by the server
     server_recieved: List[int] = []
+
+    # Count the fraction of transmitted measurements
+    total_transmitted = 0
 
     for sample_idx in range(num_samples):
         seq_features = inputs[sample_idx]  # [T, D]
@@ -62,7 +73,7 @@ def run(inputs: np.ndarray,
             # Determine whether to transmit the measurement
             measurement = np.expand_dims(input_features, axis=-1)  # [D, 1]
 
-            did_send = policy.transmit(measurement=measurement)
+            did_send = policy.transmit(measurement=measurement, seq_idx=seq_idx)
             num_transmitted += did_send
 
             estimate = policy.get_estimate().reshape(1, -1)  # [1, D]
@@ -73,11 +84,19 @@ def run(inputs: np.ndarray,
             # Save the estimates for later analysis
             seq_list.append(estimate)
 
+        # Always send at least one measurement
+        if num_transmitted == 0:
+            seq_list.append(seq_features[0].reshape(1, -1))
+            sent_idx.append(0)
+            num_transmitted += 1
+
         seq_measurements = np.vstack(seq_list)  # [T, D]
 
         # Translate measurements to fixed-point representation (and back)
         transmitted_seq, total_bytes = policy.quantize_seq(seq_measurements,
                                                            num_transmitted=num_transmitted)
+
+        # print('Num Transmitted: {0}, Total Bytes: {1}'.format(num_transmitted, total_bytes))
 
         # Simulate sending the (un-scaled) measurements to the server
         sent_measurements = [np.expand_dims(transmitted_seq[i], axis=0) for i in sent_idx]
@@ -90,14 +109,17 @@ def run(inputs: np.ndarray,
         label = output[sample_idx]
         transmit_dist[label].append(num_transmitted)
         size_dist[label].append(total_bytes)
+        total_transmitted += num_transmitted
 
         if (sample_idx + 1) % PRINT_FREQ == 0:
             print('Completed {0} sequences.'.format(sample_idx + 1), end='\r')
 
     print()
 
+    recieved = np.vstack(server_recieved)
+
     # Evaluate the inference model
-    predictions = server.predict(inputs=np.vstack(server_recieved))
+    predictions = server.predict(inputs=recieved)
     test_accuracy = accuracy_score(y_true=output, y_pred=predictions)
     print('Evaluation Accuracy: {0:.5f}'.format(test_accuracy))
 
@@ -105,12 +127,16 @@ def run(inputs: np.ndarray,
     total_bytes = sum(sum(byte_list) for byte_list in size_dist.values())
     avg_bytes = total_bytes / num_samples
 
-    print('Average Bytes Per Sequence: {0:.4f}'.format(avg_bytes))
+    print('Avg Bytes Per Sequence: {0:.4f}'.format(avg_bytes))
+
+    avg_transmitted = total_transmitted / num_samples
+    print('Avg Messages per Sequence: {0:.4f}/{1} ({2:.4f})'.format(avg_transmitted, seq_length, avg_transmitted / seq_length))
 
     # Save the result
     result = {
         'accuracy': test_accuracy,
         'avg_bytes': avg_bytes,
+        'avg_transmitted': avg_transmitted,
         'byte_dist': size_dist,
         'transmission_dist': transmit_dist,
         'policy': policy_params
@@ -196,7 +222,6 @@ if __name__ == '__main__':
     parser.add_argument('--policy-params', type=str, required=True, nargs='+')
     parser.add_argument('--output-folder', type=str, required=True)
     parser.add_argument('--max-num-samples', type=int)
-    parser.add_argument('--should-quantize', action='store_true')
     args = parser.parse_args()
 
     # Unpack the parameter files by detecting directories

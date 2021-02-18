@@ -89,7 +89,7 @@ if __name__ == '__main__':
         else:
             policy_files.append(policy_file)
 
-    for policy_file in policy_files:
+    for policy_file in sorted(policy_files):
         print('==========')
         print('Starting {0}'.format(policy_file))
         print('==========')

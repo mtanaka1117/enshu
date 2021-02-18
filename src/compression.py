@@ -133,6 +133,7 @@ class PIDWidth(AdaptiveWidth):
         control_signal = prop_term + integral_term + derivative_term
 
         self._offset = int(self._offset - control_signal)
+        self._offset = max(min(self._offset, 4), -4)
 
         return base_width + self._offset
 
