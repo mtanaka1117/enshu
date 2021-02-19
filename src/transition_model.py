@@ -42,7 +42,7 @@ def train(data_file: str, scaler: StandardScaler, output_file: str):
     outputs = np.vstack(output_list)  # [M, D]
 
     # Fit the linear model
-    data_mat = np.matmul(inputs.T, inputs)
+    data_mat = np.matmul(inputs.T, inputs) + 0.01 * np.eye(inputs.shape[1])
     sol_mat = np.matmul(inputs.T, outputs)
 
     weights = np.linalg.solve(data_mat, sol_mat)
