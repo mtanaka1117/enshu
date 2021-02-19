@@ -102,25 +102,40 @@ class AdaptivePolicy(Policy):
                                               width=width,
                                               target_frac=target,
                                               **compression_params)
-        
-        #self._width_policy = StochasticBlockWidth(target_frac=target,
-        #                                          num_features=num_features,
-        #                                          seq_length=seq_length)
-        #self._width_policy = PIDWidth(target_frac=target,
-        #                                  num_features=num_features,
-        #                                  seq_length=seq_length,
-        #                                  kp=(1.0 / 32.0),
-        #                                  ki=(1.0 / 128.0),
-        #                                  kd=(1.0 / 128.0))
+
+        self._max_skip = int(1.0 / target) + 1
+        self._current_skip = 0
+        self._sample_skip = 0
 
     def transmit(self, measurement: np.ndarray, seq_idx: int) -> int:
+        if self._sample_skip > 0:
+            self._sample_skip -= 1
+            return 0
+
         diff = np.linalg.norm(self._estimate - measurement, ord=2)
+        self._estimate = measurement
 
         if diff > self._threshold:
-            self._estimate = measurement
-            return 1
+            self._current_skip = 0
+        else:
+            self._current_skip = min(self._current_skip + 1, self._max_skip)
 
-        return 0
+        self._sample_skip = self._current_skip
+
+        return 1
+
+        #diff = np.linalg.norm(self._estimate - measurement, ord=2)
+
+        #if diff > self._threshold:
+        #    self._estimate = measurement
+        #    return 1
+
+        #return 0
+
+    def reset(self):
+        super().reset()
+        self._current_skip = 0
+        self._sample_skip = 0
 
     def quantize_seq(self, measurements: np.ndarray, num_transmitted: int) -> Tuple[np.ndarray, int]:
         # Find the number of non-fractional bits. This part
