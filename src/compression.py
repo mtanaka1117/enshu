@@ -1,10 +1,12 @@
 import numpy as np
+import math
 from collections import deque
 from scipy import integrate
 from typing import Any, Dict
 
 from utils.data_utils import round_to_block, truncate_to_block, calculate_bytes
-from utils.constants import AES_BLOCK_SIZE
+from utils.data_utils import calculate_grouped_bytes, get_num_groups
+from utils.constants import AES_BLOCK_SIZE, BIG_NUMBER
 
 
 class AdaptiveWidth:
@@ -28,16 +30,20 @@ class AdaptiveWidth:
     def target_bits(self) -> float:
         return 8 * self.target_bytes
 
+    @property
+    def group_size(self) -> int:
+        return self._seq_length
+
     def __str__(self) -> str:
         return 'Adaptive Width'
 
-    def get_width(self, num_transmitted: int) -> int:
+    def get_width(self, num_transmitted: int, should_pad: bool) -> int:
         raise NotImplementedError()
 
 
 class FixedWidth(AdaptiveWidth):
 
-    def get_width(self, num_transmitted: int) -> int:
+    def get_width(self, num_transmitted: int, should_pad: bool) -> int:
         return self._width
 
     def __str__(self) -> str:
@@ -46,9 +52,13 @@ class FixedWidth(AdaptiveWidth):
 
 class StableWidth(AdaptiveWidth):
 
-    def get_width(self, num_transmitted: int) -> int:
+    def get_width(self, num_transmitted: int, should_pad: bool) -> int:
         width = 8 * self._target_frac
-        return int(round(width))
+        total_bytes = calculate_bytes(width=self._width,
+                                      num_transmitted=num_transmitted,
+                                      num_features=self._num_features,
+                                      should_pad=should_pad)
+        return int(round(width)), total_bytes
 
     def __str__(self) -> str:
         return 'Stable'
@@ -56,7 +66,7 @@ class StableWidth(AdaptiveWidth):
 
 class StochasticBlockWidth(AdaptiveWidth):
 
-    def get_width(self, num_transmitted: int) -> int:
+    def get_width(self, num_transmitted: int, should_pad: bool) -> int:
         upper_bytes = round_to_block(self.target_bytes, AES_BLOCK_SIZE)
         lower_bytes = truncate_to_block(self.target_bytes, AES_BLOCK_SIZE)
 
@@ -84,7 +94,71 @@ class StochasticBlockWidth(AdaptiveWidth):
         return adaptive_width
 
     def __str__(self) -> str:
-        return 'Stochastic Block Width'
+        return 'Stochastic Block'
+
+
+class BlockWidth(AdaptiveWidth):
+
+    @property
+    def group_size(self) -> int:
+        return int(math.floor((8 * AES_BLOCK_SIZE) / self._num_features))
+
+    def __str__(self) -> str:
+        return 'Block'
+
+    def get_width(self, num_transmitted: int, should_pad: bool) -> int:
+        
+        # The total number of bits if we were to send everything (at cost)
+        proj_transmitted = int(round(self._target_frac * self._seq_length))
+        stable_bytes = calculate_bytes(width=self._width,
+                                       num_transmitted=proj_transmitted,
+                                       num_features=self._num_features,
+                                       should_pad=should_pad)
+
+        # Pick the largest width to fit in the block
+        num_groups = get_num_groups(num_transmitted=num_transmitted,
+                                    group_size=self.group_size)
+
+        start_width = int((self.target_bits / (self._num_features * num_transmitted)))
+
+        widths: List[int] = [start_width for _ in range(num_groups)]
+
+        data_bytes = calculate_grouped_bytes(widths=widths,
+                                             num_transmitted=num_transmitted,
+                                             num_features=self._num_features,
+                                             group_size=self.group_size,
+                                             should_pad=should_pad)
+
+        group_idx = 0
+
+        best_widths = [start_width for _ in range(num_groups)]
+        best_error = BIG_NUMBER
+
+        i = 0
+        while (i < 25) and (data_bytes != stable_bytes):
+            if (data_bytes <= stable_bytes):
+                widths[group_idx] += 1
+            else:
+                widths[group_idx] -= 1
+
+            data_bytes = calculate_grouped_bytes(widths=widths,
+                                                 num_transmitted=num_transmitted,
+                                                 num_features=self._num_features,
+                                                 group_size=self.group_size,
+                                                 should_pad=should_pad)
+            i += 1
+            group_idx += 1
+            group_idx = group_idx % len(widths)
+
+            error = abs(data_bytes - stable_bytes)
+            if error < best_error:
+                best_widths = [w for w in widths]
+                best_error = error
+
+        # Should never hit this
+        # assert data_bytes == stable_bytes, 'Transmitted: {0}, Widths: {1}, Data Bytes: {2}, Max Bytes: {3}'.format(num_transmitted, widths, data_bytes, max_bytes)
+
+        return best_widths
 
 
 class PIDWidth(AdaptiveWidth):
@@ -108,13 +182,14 @@ class PIDWidth(AdaptiveWidth):
         self._errors: deque = deque()
         self._offset = 0
 
-    def get_width(self, num_transmitted: int) -> int:
+    def get_width(self, num_transmitted: int, should_pad: bool) -> int:
        
         base_width = int(round(self.target_bits / (self._num_features * num_transmitted)))
 
         pred_bytes = calculate_bytes(width=base_width + self._offset,
                                      num_features=self._num_features,
-                                     num_transmitted=num_transmitted)
+                                     num_transmitted=num_transmitted,
+                                     should_pad=should_pad)
 
         # Positive if too high, Negative if too low
         error = pred_bytes - self.target_bytes
@@ -164,6 +239,11 @@ def make_compression(name: str,
                                     seq_length=seq_length,
                                     target_frac=target_frac,
                                     width=width)
+    elif name == 'block':
+        return BlockWidth(num_features=num_features,
+                          seq_length=seq_length,
+                          target_frac=target_frac,
+                          width=width)
     elif name == 'pid':
         return PIDWidth(num_features=num_features,
                         seq_length=seq_length,

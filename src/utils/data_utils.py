@@ -1,6 +1,7 @@
 import numpy as np
 import math
 from functools import partial
+from typing import List
 
 from utils.constants import AES_BLOCK_SIZE
 
@@ -45,8 +46,35 @@ def truncate_to_block(x: float, block_size: int) -> int:
     return int(math.floor(x / block_size)) * block_size
 
 
-def calculate_bytes(width: int, num_transmitted: int, num_features: int) -> int:
+def calculate_bytes(width: int, num_transmitted: int, num_features: int, should_pad: bool) -> int:
     data_bits = width * num_transmitted * num_features
     data_bytes = int(math.ceil(data_bits / 8)) + 1  # Account for the need to send along the width
-    total_bytes = round_to_block(data_bytes, AES_BLOCK_SIZE)
+
+    if should_pad:
+        return round_to_block(data_bytes, AES_BLOCK_SIZE)
+
+    return data_bytes
+
+
+def get_num_groups(num_transmitted: int, group_size: int) -> int:
+    return int(math.ceil(num_transmitted / group_size))
+
+
+def calculate_grouped_bytes(widths: List[int], num_transmitted: int, num_features: int, group_size: int, should_pad: bool) -> int:
+    # Validate arguments
+    num_groups = get_num_groups(num_transmitted=num_transmitted, group_size=group_size)
+    assert len(widths) == num_groups, 'Must provide {0} widths. Got: {1}'.format(num_groups, len(widths))
+
+    total_bytes = 0
+    so_far = 0
+
+    for idx, width in enumerate(widths):
+        group_elements = min(group_size, num_transmitted - so_far)
+
+        total_bytes += calculate_bytes(width=width,
+                                       num_transmitted=group_elements,
+                                       num_features=num_features,
+                                       should_pad=should_pad)
+        so_far += group_elements
+
     return total_bytes

@@ -23,7 +23,7 @@ def create_dataset(policy_result: Dict[str, Any], window_size: int, stride: int)
     for label in bytes_dist.keys():
         num_bytes = bytes_dist[label]
 
-        print('Label: {0}, Num Bytes: {1}'.format(label, np.average(num_bytes)))
+        print('Label: {0}, Num Bytes: {1} (Std: {2}, Count: {3})'.format(label, np.average(num_bytes), np.std(num_bytes), len(num_bytes)))
 
         for idx in range(0, len(num_bytes) - window_size - stride, stride):
             data_window = num_bytes[idx:idx + window_size]
@@ -52,7 +52,7 @@ def fit_attack_model(inputs: np.ndarray, output: np.ndarray, train_frac: float):
     train_inputs, test_inputs = model_inputs[train_idx], model_inputs[test_idx]
     train_output, test_output = output[train_idx], output[test_idx]
 
-    clf = MLPClassifier(hidden_layer_sizes=[64], alpha=0.1, max_iter=10000, random_state=rand)
+    clf = MLPClassifier(hidden_layer_sizes=[64], alpha=0.01, max_iter=10000, random_state=rand)
     clf.fit(train_inputs, train_output)
 
     train_accuracy = clf.score(train_inputs, train_output)

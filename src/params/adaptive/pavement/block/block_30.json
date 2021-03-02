@@ -1,9 +1,9 @@
 {
     "name": "adaptive",
-    "target": 0.7,
-    "threshold": 0.15,
+    "target": 0.3,
+    "threshold": 5.5,
     "precision": 6,
     "width": 8,
-    "compression_name": "fixed",
+    "compression_name": "block",
     "compression_params": { }
 }

@@ -6,6 +6,7 @@ from compression import AdaptiveWidth, make_compression
 from utils.file_utils import read_pickle_gz
 from utils.data_utils import array_to_fp, array_to_float, round_to_block, truncate_to_block, calculate_bytes
 from utils.constants import AES_BLOCK_SIZE
+from transition_model import TransitionModel
 
 
 class Policy:
@@ -17,9 +18,8 @@ class Policy:
                  width: int,
                  num_features: int,
                  seq_length: int):
-        self._transition_mat = read_pickle_gz(transition_path)  # [D, D]
-        self._state_size = self._transition_mat.shape[0]
-        self._estimate = np.zeros((self._state_size, 1))  # [D, 1]
+        self._transition_model = TransitionModel.restore(transition_path)  # [D, D]
+        self._estimate = np.zeros((num_features, 1))  # [D, 1]
         self._precision = precision
         self._width = width
         self._num_features = num_features
@@ -41,19 +41,21 @@ class Policy:
     def target(self) -> float:
         return self._target
 
+    @property
+    def width_policy(self) -> AdaptiveWidth:
+        return self._width_policy
+
     def reset(self):
-        self._estimate = np.zeros((self._state_size, 1))  # [D, 1]
+        self._estimate = np.zeros((self._num_features, 1))  # [D, 1]
 
     def transition(self):
-        self._estimate = np.matmul(self._transition_mat, self._estimate)
+        self._estimate = self._transition_model.predict(self._estimate)
 
     def get_estimate(self) -> np.ndarray:
         return self._estimate
 
-    def quantize_seq(self, measurements: np.ndarray, num_transmitted: int) -> Tuple[np.ndarray, int]:
-
+    def quantize_seq(self, measurements: np.ndarray, num_transmitted: int, width: int, should_pad: bool) -> Tuple[np.ndarray, int]:
         non_fractional = self._width - self._precision
-        width = self._width_policy.get_width(num_transmitted=num_transmitted)
         precision = width - non_fractional
 
         quantized = array_to_fp(arr=measurements,
@@ -65,7 +67,8 @@ class Policy:
 
         total_bytes = calculate_bytes(width=width,
                                       num_transmitted=num_transmitted,
-                                      num_features=len(measurements[0]))
+                                      num_features=len(measurements[0]),
+                                      should_pad=should_pad)
 
         return result, total_bytes
 
@@ -137,7 +140,7 @@ class AdaptivePolicy(Policy):
         self._current_skip = 0
         self._sample_skip = 0
 
-    def quantize_seq(self, measurements: np.ndarray, num_transmitted: int) -> Tuple[np.ndarray, int]:
+    def quantize_seq(self, measurements: np.ndarray, num_transmitted: int, width: int, should_pad: bool) -> Tuple[np.ndarray, int]:
         # Find the number of non-fractional bits. This part
         # stays constant
         non_fractional = self._width - self._precision
@@ -146,8 +149,9 @@ class AdaptivePolicy(Policy):
         seq_length = len(measurements)
         num_features = len(measurements[0])
 
-        adaptive_width = max(self._width_policy.get_width(num_transmitted=num_transmitted), non_fractional + 1)
-        adaptive_precision = min(adaptive_width - non_fractional, 12)
+        #adaptive_width = max(self._width_policy.get_width(num_transmitted=num_transmitted), non_fractional + 1)
+        adaptive_width = max(width, non_fractional + 1)
+        adaptive_precision = min(adaptive_width - non_fractional, 20)
 
         quantized = array_to_fp(measurements,
                                 width=adaptive_width,
@@ -157,7 +161,8 @@ class AdaptivePolicy(Policy):
 
         total_bytes = calculate_bytes(width=adaptive_width,
                                       num_features=self._num_features,
-                                      num_transmitted=num_transmitted)
+                                      num_transmitted=num_transmitted,
+                                      should_pad=should_pad)
 
         return result, total_bytes
 

@@ -58,61 +58,76 @@ def optimize(inputs: np.ndarray, outputs: np.ndarray, percentile: float, batch_s
     preds = np.matmul(inputs, weights)
     loss = np.average(np.sum(quantile_loss(preds, outputs, percentile), axis=-1))
 
-    print('Final Loss: {0}'.format(loss))
-
     return weights
 
 
-def train(data_file: str, scaler: StandardScaler, output_file: str):
-    # Load the input data
-    with h5py.File(data_file, 'r') as fin:
-        dataset = fin['inputs'][:]  # [N, T, D]
+class TransitionModel:
 
-    # Unpack the shape
-    num_samples = dataset.shape[0]  # N
-    seq_length = dataset.shape[1]  # T
-    num_features = dataset.shape[2]  # D
+    def predict(self, x: np.ndarray) -> np.ndarray:
 
-    # Scale the data
-    scaled_data = scaler.transform(dataset.reshape(num_samples * seq_length, num_features))
-    dataset = scaled_data.reshape(num_samples, seq_length, num_features)
+        if x.shape[0] == self._median.shape[0]:
+            pred = np.matmul(x.reshape(1, -1), self._median).reshape(-1, 1)
+            return pred
 
-    # Align samples for next-frame prediction
-    input_list: List[np.ndarray] = []
-    output_list: List[np.ndarray] = []
+        return np.matmul(x, self._median)
 
-    for sample_idx in range(num_samples):
-        seq_features = dataset[sample_idx]
+    def confidence(self, x: np.ndarray) -> float:
+        if x.shape[0] == self._lower.shape[0]:
+            lower = np.matmul(x.reshape(1, -1), self._lower)
+            upper = np.matmul(x.reshape(1, -1), self._upper)
+        else:
+            lower = np.matmul(x, self._lower)
+            upper = np.matmul(x, self._upper) 
 
-        for seq_idx in range(seq_length - 1):
-            input_list.append(seq_features[seq_idx].reshape(1, -1))
-            output_list.append(np.expand_dims(seq_features[seq_idx + 1], axis=0))
+        return np.sum(np.abs(upper - lower))
 
-    # Stack data into arrays
-    inputs = np.vstack(input_list)  # [M, D]
-    outputs = np.vstack(output_list)  # [M, D]
+    def train(self, data_file: str, scaler: StandardScaler, output_file: str):
+        # Load the input data
+        with h5py.File(data_file, 'r') as fin:
+            dataset = fin['inputs'][:]  # [N, T, D]
 
-    first = optimize(inputs=inputs, outputs=outputs, batch_size=64, max_iters=200, percentile=0.1)
-    median = optimize(inputs=inputs, outputs=outputs, batch_size=64, max_iters=200, percentile=0.5)
-    third = optimize(inputs=inputs, outputs=outputs, batch_size=64, max_iters=200, percentile=0.9)
+        # Unpack the shape
+        num_samples = dataset.shape[0]  # N
+        seq_length = dataset.shape[1]  # T
+        num_features = dataset.shape[2]  # D
 
-    first_preds = np.matmul(inputs, first)
-    third_preds = np.matmul(inputs, third)
+        # Scale the data
+        scaled_data = scaler.transform(dataset.reshape(num_samples * seq_length, num_features))
+        dataset = scaled_data.reshape(num_samples, seq_length, num_features)
 
-    print(np.linalg.norm(third_preds[0:25] - first_preds[0:25], ord=2, axis=-1))
+        # Align samples for next-frame prediction
+        input_list: List[np.ndarray] = []
+        output_list: List[np.ndarray] = []
 
-    preds = np.matmul(inputs, median)
-    error = mean_squared_error(y_true=outputs, y_pred=preds)
-    print('MSE: {0:.5f}'.format(error))
-    print(median)
+        for sample_idx in range(num_samples):
+            seq_features = dataset[sample_idx]
 
-    sq_errors = np.linalg.norm(preds[0:25] - outputs[0:25], ord=2, axis=-1)
-    print(sq_errors)
+            for seq_idx in range(seq_length - 1):
+                input_list.append(seq_features[seq_idx].reshape(1, -1))
+                output_list.append(np.expand_dims(seq_features[seq_idx + 1], axis=0))
 
+        # Stack data into arrays
+        inputs = np.vstack(input_list)  # [M, D]
+        outputs = np.vstack(output_list)  # [M, D]
 
-    # Fit the linear model
-#    data_mat = np.matmul(inputs.T, inputs) + 0.01 * np.eye(inputs.shape[1])
-#    sol_mat = np.matmul(inputs.T, outputs)
+        self._lower = optimize(inputs=inputs, outputs=outputs, batch_size=64, max_iters=200, percentile=0.1)
+        self._median = optimize(inputs=inputs, outputs=outputs, batch_size=64, max_iters=200, percentile=0.5)
+        self._upper = optimize(inputs=inputs, outputs=outputs, batch_size=64, max_iters=200, percentile=0.9)
+
+        preds = self.predict(inputs)
+        error = mean_squared_error(y_true=outputs, y_pred=preds)
+        print('MSE: {0:.5f}'.format(error))
+
+        models = {
+            'lower': self._lower,
+            'median': self._median,
+            'upper': self._upper
+        }
+
+        save_pickle_gz(models, output_file)
+
+    #    data_mat = np.matmul(inputs.T, inputs) + 0.01 * np.eye(inputs.shape[1])
+    #    sol_mat = np.matmul(inputs.T, outputs)
 #
 #    weights = np.linalg.solve(data_mat, sol_mat)
 #
@@ -123,7 +138,17 @@ def train(data_file: str, scaler: StandardScaler, output_file: str):
 #    print('MSE: {0:.5f}'.format(error))
 #    print(weights)
 #
-#    save_pickle_gz(weights, output_file)
+
+    @classmethod
+    def restore(cls, path: str):
+        serialized = read_pickle_gz(path)
+        model = TransitionModel()
+
+        model._lower = serialized['lower']
+        model._median = serialized['median']
+        model._upper = serialized['upper']
+
+        return model
 
 
 if __name__ == '__main__':
@@ -138,6 +163,8 @@ if __name__ == '__main__':
     inference_model = read_pickle_gz(args.inference_model)
     scaler = inference_model['scaler']
 
-    train(data_file=data_file,
-          scaler=scaler,
-          output_file=args.output_file)
+    transition_model = TransitionModel()
+
+    transition_model.train(data_file=data_file,
+                           scaler=scaler,
+                           output_file=args.output_file)

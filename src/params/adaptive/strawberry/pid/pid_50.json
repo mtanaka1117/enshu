@@ -1,7 +1,7 @@
 {
     "name": "adaptive",
-    "target": 0.4,
-    "threshold": 0.3,
+    "target": 0.5,
+    "threshold": 0.08,
     "precision": 6,
     "width": 8,
     "compression_name": "pid",

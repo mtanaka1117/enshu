@@ -1,0 +1,9 @@
+{
+    "name": "adaptive",
+    "target": 0.8,
+    "threshold": 0.08,
+    "precision": 6,
+    "width": 8,
+    "compression_name": "fixed",
+    "compression_params": { }
+}

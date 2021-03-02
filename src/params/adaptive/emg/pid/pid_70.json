@@ -1,0 +1,13 @@
+{
+    "name": "adaptive",
+    "target": 0.7,
+    "threshold": 1.65,
+    "precision": 6,
+    "width": 8,
+    "compression_name": "pid",
+    "compression_params": {
+        "kp": 0.03125,
+        "ki": 0.0078125,
+        "kd": 0.0078125
+    }
+}

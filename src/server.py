@@ -4,6 +4,7 @@ from sklearn.neural_network import MLPClassifier
 from typing import Any, Dict, List
 
 from utils.file_utils import read_pickle_gz
+from transition_model import TransitionModel
 
 
 class Server:
@@ -13,7 +14,7 @@ class Server:
     """
 
     def __init__(self, transition_path: str, inference_path: str, seq_length: int):
-        self._transition_mat: np.ndarray = read_pickle_gz(transition_path)
+        self._transition_model = TransitionModel.restore(transition_path)
         self._seq_length = seq_length  # T
         
         inference_model = read_pickle_gz(inference_path)
@@ -73,7 +74,8 @@ class Server:
             else:
                 # The server must infer the value using
                 # the transition matrix
-                m = np.matmul(self._transition_mat, m)
+                # m = np.matmul(self._transition_mat, m)
+                m = self._transition_model.predict(m)
 
             recovered_list.append(m.reshape(1, -1))
 
