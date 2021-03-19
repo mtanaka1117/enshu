@@ -13,8 +13,8 @@ class Server:
     and performs inference
     """
 
-    def __init__(self, transition_path: str, inference_path: str, seq_length: int):
-        self._transition_model = TransitionModel.restore(transition_path)
+    def __init__(self, transition_model: TransitionModel, inference_path: str, seq_length: int):
+        self._transition_model = transition_model
         self._seq_length = seq_length  # T
         
         inference_model = read_pickle_gz(inference_path)
@@ -67,9 +67,10 @@ class Server:
 
         recovered_list: List[np.ndarray] = []
         for seq_idx in range(self._seq_length):
+
             if (sent_counter < len(indices)) and (seq_idx == indices[sent_counter]):
                 # The server receives the value from the sensor
-                m = recv[sent_counter]
+                m = recv[sent_counter].reshape(-1, 1)  # [D, 1]
                 sent_counter += 1
             else:
                 # The server must infer the value using

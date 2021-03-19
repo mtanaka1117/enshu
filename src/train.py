@@ -22,7 +22,7 @@ def train(train_file: str, val_file: str, output_file: str):
     model_output = output.reshape(-1)
 
     # Fit the inference model
-    clf = MLPClassifier(hidden_layer_sizes=[100, 100], alpha=0.1, random_state=281, max_iter=500)
+    clf = MLPClassifier(hidden_layer_sizes=[64, 64], alpha=0.1, random_state=281, max_iter=500)
     clf.fit(model_inputs, model_output)
 
     # Evaluate the inference model

@@ -1,0 +1,7 @@
+{
+    "name": "uniform",
+    "model_type": "linear",
+    "target": 0.4,
+    "precision": 6,
+    "width": 8
+}

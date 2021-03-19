@@ -1,0 +1,11 @@
+{
+    "name": "adaptive",
+    "model_type": "quantile",
+    "use_confidence": true,
+    "target": 0.2,
+    "threshold": 0.5,
+    "precision": 6,
+    "width": 8,
+    "compression_name": "block",
+    "compression_params": { }
+}

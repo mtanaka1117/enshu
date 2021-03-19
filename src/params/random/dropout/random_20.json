@@ -1,0 +1,7 @@
+{
+    "name": "random",
+    "target": 0.2,
+    "model_type": "dropout",
+    "precision": 6,
+    "width": 8
+}

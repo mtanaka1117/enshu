@@ -9,8 +9,10 @@ from typing import Optional, List, Tuple, Dict, Any
 from policies import Policy, make_policy
 from server import Server
 from rounding import quantize
+from transition_model import TransitionModel, LinearModel, DropoutModel, IntervalModel, BootstrapModel, QuantileModel
 from utils.file_utils import read_pickle_gz, save_pickle_gz, read_json
 from utils.data_utils import  calculate_bytes
+from utils.constants import LINEAR_TRANSITION, DROPOUT_TRANSITION, INTERVAL_TRANSITION, BOOTSTRAP_TRANSITION, QUANTILE_TRANSITION
 
 
 X_OFFSET = 0.2
@@ -177,7 +179,6 @@ if __name__ == '__main__':
         else:
             param_files.append(param_file)
 
-    transition_path = os.path.join(args.model_folder, 'transition_model.pkl.gz')
     model_path = os.path.join(args.model_folder, 'model.pkl.gz')
     data_file = os.path.join(args.data_folder, 'test', 'data.h5')
 
@@ -195,14 +196,35 @@ if __name__ == '__main__':
         print('Starting {0}'.format(params_path))
         print('==========')
 
+        # Get the policy parameters
+        policy_params = read_json(params_path)
+
+        # Get the transition model path
+        if policy_params['model_type'] == 'linear':
+            transition_path = os.path.join(args.model_folder, '{0}.pkl.gz'.format(LINEAR_TRANSITION))
+            transition_model = LinearModel.restore(transition_path)
+        elif policy_params['model_type'] == 'dropout':
+            transition_path = os.path.join(args.model_folder, '{0}.pkl.gz'.format(DROPOUT_TRANSITION))
+            transition_model = DropoutModel.restore(transition_path)
+        elif policy_params['model_type'] == 'interval':
+            transition_path = os.path.join(args.model_folder, '{0}.pkl.gz'.format(INTERVAL_TRANSITION))
+            transition_model = IntervalModel.restore(transition_path)
+        elif policy_params['model_type'] == 'bootstrap':
+            transition_path = os.path.join(args.model_folder, '{0}.pkl.gz'.format(BOOTSTRAP_TRANSITION))
+            transition_model = BootstrapModel.restore(transition_path)
+        elif policy_params['model_type'] == 'quantile':
+            transition_path = os.path.join(args.model_folder, '{0}.pkl.gz'.format(QUANTILE_TRANSITION))
+            transition_model = QuantileModel.restore(transition_path)
+        else:
+            raise ValueError('Unknown model type: {0}'.format(policy_params['model_type']))
+
         # Create the server
-        server = Server(transition_path=transition_path,
+        server = Server(transition_model=transition_model,
                         inference_path=model_path,
                         seq_length=seq_length)
 
         # Make the policy
-        policy_params = read_json(params_path)
-        policy = make_policy(transition_path=transition_path,
+        policy = make_policy(transition_model=transition_model,
                              seq_length=seq_length,
                              num_features=num_features,
                              **policy_params)

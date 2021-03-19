@@ -3,20 +3,40 @@ import os
 import numpy as np
 from argparse import ArgumentParser
 from scipy import stats
-from collections import namedtuple
+from collections import namedtuple, OrderedDict
 from typing import Any, Dict, List, Optional
 
 from utils.file_utils import read_pickle_gz
 
 
 SimResult = namedtuple('SimResult', ['inference', 'attack', 'targets', 'size', 'name'])
+MODEL_ORDER = ['Random', 'Uniform', 'Adaptive', 'Adaptive Block', 'Adaptive Stream']
 
 COLORS = {
-    'random': '#ca0020',
-    'adaptive block': '#f4a582',
-    'adaptive fixed': '#92c5de',
-    'adaptive pid': '#0571b0'
+    'Random': '#d73027',
+    'Uniform': '#fc8d59',
+    'Adaptive': '#9ecae1',
+    'Adaptive Stream': '#6baed6',
+    'Adaptive Block': '#08519c'
 }
+
+
+def get_name(policy: OrderedDict, is_padded: bool) -> str:
+    name = policy['name'].capitalize()
+
+    if name == 'Adaptive':
+        compression = policy['compression_name'].capitalize()
+
+        if compression == 'Fixed':
+            return 'Adaptive'
+
+        if not is_padded:
+            if compression == 'Block':
+                return '{0} Stream'.format(name)
+
+        return '{0} {1}'.format(name, compression)
+
+    return name
 
 
 def to_label(label: str) -> str:
@@ -28,37 +48,36 @@ def geometric_mean(x: List[float]) -> float:
     return np.power(x_prod, 1.0 / len(x))
 
 
-def plot(sim_results: List[SimResult], output_file: Optional[str]):
+def plot(sim_results: Dict[str, SimResult], dataset_name: str, output_file: Optional[str]):
 
     with plt.style.context('seaborn-ticks'):
-        fig, (ax1, ax2, ax3) = plt.subplots(nrows=1, ncols=3, figsize=(14, 6))
+        fig, ax = plt.subplots()
 
-        for r in sim_results:
-            ax1.plot(r.targets, r.inference, marker='o', linewidth=4, markersize=8, label=to_label(r.name), color=COLORS[r.name])
-            ax2.plot(r.targets, r.attack, marker='o', linewidth=4, markersize=8, label=to_label(r.name), color=COLORS[r.name])
-            ax3.plot(r.targets, r.size, marker='o', linewidth=4, markersize=8, label=to_label(r.name), color=COLORS[r.name])
+        for name in MODEL_ORDER:
+            if name not in sim_results:
+                continue
+
+            r = sim_results[name]
+            ax.plot(r.targets, r.inference, marker='o', linewidth=4, markersize=8, label=to_label(r.name), color=COLORS[r.name])
+            # ax2.plot(r.targets, r.attack, marker='o', linewidth=4, markersize=8, label=to_label(r.name), color=COLORS[r.name])
+            # ax3.plot(r.targets, r.size, marker='o', linewidth=4, markersize=8, label=to_label(r.name), color=COLORS[r.name])
 
             print('{0} & {1:.4f} & {2:.4f}'.format(r.name, geometric_mean(r.inference), geometric_mean(r.attack)))
 
-        for r in sim_results:
-            for s in sim_results:
-                test_result = stats.ttest_ind(r.attack, s.attack, equal_var=False)
-                print('{0} vs {1}: {2:.4f}'.format(r.name, s.name, test_result.pvalue))
-
-        ax1.set_xlabel('Fraction of Measurements')
-        ax2.set_xlabel('Fraction of Measurements')
-        ax3.set_xlabel('Fraction of Measurements')
+        ax.set_xlabel('Fraction of Measurements')
+        # ax2.set_xlabel('Fraction of Measurements')
+        # ax3.set_xlabel('Fraction of Measurements')
         
-        ax1.set_ylabel('Inference Accuracy')
-        ax2.set_ylabel('Attack Accuracy')
-        ax3.set_ylabel('Message Size')
+        ax.set_ylabel('Inference Accuracy')
+        # ax2.set_ylabel('Attack Accuracy')
+        # ax3.set_ylabel('Message Size')
 
-        ax1.set_title('Inference Accuracy for Transmit Policies')
-        ax2.set_title('Attacker Accuracy for Transmit Policies')
-        ax3.set_title('Average Message Sizes')
+        ax.set_title('Inference Accuracy on the {0} Dataset'.format(dataset_name.capitalize()))
+        # ax2.set_title('Attacker Accuracy for Transmit Policies')
+        # ax3.set_title('Average Message Sizes')
 
-        ax1.legend()
-        ax2.legend()
+        ax.legend()
+        # ax2.legend()
 
         if output_file is None:
             plt.show()
@@ -79,10 +98,7 @@ def extract_results(folder: str) -> SimResult:
         attack = serialized['attack']['test_accuracy']
         size = serialized['avg_bytes']
         
-        policy_name = serialized['policy']['name']
-        if policy_name == 'adaptive':
-            policy_name = '{0} {1}'.format(policy_name, serialized['policy']['compression_name'])
-
+        policy_name = get_name(serialized['policy'], is_padded=serialized.get('is_padded', True))
         accuracy[target] = (inference, attack, size)
 
     inference_list: List[float] = []
@@ -106,9 +122,10 @@ def extract_results(folder: str) -> SimResult:
 if __name__ == '__main__':
     parser = ArgumentParser()
     parser.add_argument('--policy-folders', type=str, nargs='+', required=True)
+    parser.add_argument('--dataset-name', type=str, required=True)
     parser.add_argument('--output-file', type=str)
     args = parser.parse_args()
 
-    sim_results = list(map(extract_results, args.policy_folders))
-    plot(sim_results, output_file=args.output_file)
+    sim_results = {r.name: r for r in map(extract_results, args.policy_folders)}
+    plot(sim_results, output_file=args.output_file, dataset_name=args.dataset_name)
 

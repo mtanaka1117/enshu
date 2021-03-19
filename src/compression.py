@@ -9,6 +9,9 @@ from utils.data_utils import calculate_grouped_bytes, get_num_groups
 from utils.constants import AES_BLOCK_SIZE, BIG_NUMBER
 
 
+MAX_ITER = 25
+
+
 class AdaptiveWidth:
 
     def __init__(self, target_frac: float, seq_length: int, num_features: int, width: int):
@@ -109,17 +112,21 @@ class BlockWidth(AdaptiveWidth):
     def get_width(self, num_transmitted: int, should_pad: bool) -> int:
         
         # The total number of bits if we were to send everything (at cost)
-        proj_transmitted = int(round(self._target_frac * self._seq_length))
-        stable_bytes = calculate_bytes(width=self._width,
-                                       num_transmitted=proj_transmitted,
-                                       num_features=self._num_features,
-                                       should_pad=should_pad)
+
+        if should_pad:
+            proj_transmitted = int(self._target_frac * self._seq_length)
+            stable_bytes = calculate_bytes(width=self._width,
+                                           num_transmitted=proj_transmitted,
+                                           num_features=self._num_features,
+                                           should_pad=should_pad)
+        else:
+            stable_bytes = int(self.target_bytes)
 
         # Pick the largest width to fit in the block
         num_groups = get_num_groups(num_transmitted=num_transmitted,
                                     group_size=self.group_size)
 
-        start_width = int((self.target_bits / (self._num_features * num_transmitted)))
+        start_width = int(math.ceil(self.target_bits / (self._num_features * num_transmitted)))
 
         widths: List[int] = [start_width for _ in range(num_groups)]
 
@@ -134,31 +141,39 @@ class BlockWidth(AdaptiveWidth):
         best_widths = [start_width for _ in range(num_groups)]
         best_error = BIG_NUMBER
 
-        i = 0
-        while (i < 25) and (data_bytes != stable_bytes):
-            if (data_bytes <= stable_bytes):
-                widths[group_idx] += 1
-            else:
+        if should_pad:
+            i = 0
+            while (i < MAX_ITER) and (data_bytes != stable_bytes):
+                if (data_bytes <= stable_bytes):
+                    widths[group_idx] += 1
+                else:
+                    widths[group_idx] -= 1
+
+                data_bytes = calculate_grouped_bytes(widths=widths,
+                                                     num_transmitted=num_transmitted,
+                                                     num_features=self._num_features,
+                                                     group_size=self.group_size,
+                                                     should_pad=should_pad)
+                i += 1
+                group_idx += 1
+                group_idx = group_idx % len(widths)
+        else:
+            i = 0
+            while (i < MAX_ITER) and (data_bytes > stable_bytes):
                 widths[group_idx] -= 1
-
-            data_bytes = calculate_grouped_bytes(widths=widths,
-                                                 num_transmitted=num_transmitted,
-                                                 num_features=self._num_features,
-                                                 group_size=self.group_size,
-                                                 should_pad=should_pad)
-            i += 1
-            group_idx += 1
-            group_idx = group_idx % len(widths)
-
-            error = abs(data_bytes - stable_bytes)
-            if error < best_error:
-                best_widths = [w for w in widths]
-                best_error = error
+                data_bytes = calculate_grouped_bytes(widths=widths,
+                                                     num_transmitted=num_transmitted,
+                                                     num_features=self._num_features,
+                                                     group_size=self.group_size,
+                                                     should_pad=should_pad)
+                i += 1
+                group_idx += 1
+                group_idx = group_idx % len(widths)
 
         # Should never hit this
         # assert data_bytes == stable_bytes, 'Transmitted: {0}, Widths: {1}, Data Bytes: {2}, Max Bytes: {3}'.format(num_transmitted, widths, data_bytes, max_bytes)
 
-        return best_widths
+        return widths
 
 
 class PIDWidth(AdaptiveWidth):

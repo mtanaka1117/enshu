@@ -6,6 +6,26 @@ from typing import List
 from utils.constants import AES_BLOCK_SIZE
 
 
+def apply_dropout(mat: np.ndarray, drop_rate: float, rand: np.random.RandomState) -> np.ndarray:
+    rand_mat = rand.uniform(low=0.0, high=1.0, size=mat.shape)
+    mask = np.less(rand_mat, drop_rate).astype(float)
+
+    scale = 1.0 / (1.0 - drop_rate)
+    scaled_mask = mask * scale
+    
+    return mat * scaled_mask
+
+
+def leaky_relu(x: np.ndarray, alpha: float) -> np.ndarray:
+    return np.where(x > 0, x, alpha * x)
+
+
+def softmax(x: np.ndarray, axis: int) -> np.ndarray:
+    max_x = np.max(x, axis=axis, keepdims=True)
+    exp_x = np.exp(x - max_x)
+    return exp_x / np.sum(exp_x, axis=axis, keepdims=True)
+
+
 def to_fixed_point(x: float, precision: int, width: int) -> int:
     multiplier = (1 << precision)
     fp = int(x * multiplier)
