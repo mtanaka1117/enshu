@@ -1,0 +1,11 @@
+{
+    "name": "adaptive",
+    "model_type": "linear",
+    "use_confidence": false,
+    "target": 0.3,
+    "threshold": 4.0,
+    "precision": 6,
+    "width": 8,
+    "compression_name": "fixed",
+    "compression_params": { }
+}

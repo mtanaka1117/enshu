@@ -1,0 +1,7 @@
+{
+    "name": "uniform",
+    "model_type": "dropout",
+    "target": 0.8,
+    "precision": 6,
+    "width": 8
+}

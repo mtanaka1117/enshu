@@ -1,0 +1,4 @@
+scikit-learn
+more-itertools
+numpy
+scipy
