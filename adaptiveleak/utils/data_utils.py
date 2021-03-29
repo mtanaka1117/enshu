@@ -58,6 +58,22 @@ def array_to_float(fp_arr: np.ndarray, precision: int) -> np.ndarray:
     return map_fn(fp_arr)
 
 
+def linear_extrapolate(prev: np.ndarray, curr: np.ndarray, delta: float) -> np.ndarray:
+    """
+    This function uses a linear approximation over the given readings to project
+    the next value 'delta' units ahead.
+
+    Args:
+        prev: A [D] array containing the previous value
+        curr: A [D] array containing the current value
+        delta: The time between consecutive readings
+    Returns:
+        A [D] array containing the projected reading (`delta` steps ahead).
+    """
+    slope = (curr - prev) / delta
+    return slope * (2 * delta) + prev
+
+
 def round_to_block(x: float, block_size: int) -> int:
     return int(math.ceil(x / block_size)) * block_size
 

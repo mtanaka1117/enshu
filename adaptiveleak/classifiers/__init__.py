@@ -7,19 +7,13 @@ from .convnet import ConvNet
 def make_model(name: str):
     if name == 'mlp':
         return MLP(batch_size=16,
-                   learning_rate=1e-3,
-                   train_frac=0.8,
                    hidden_units=512)
     elif name == 'conv':
-        return ConvNet(batch_size=32,
-                       learning_rate=1e-3,
-                       train_frac=0.8,
-                       num_filters=64)
+        return ConvNet(batch_size=16,
+                       num_filters=128)
     elif name == 'resnet':
         return ResNet(batch_size=64,
-                      learning_rate=1e-3,
-                      train_frac=0.8,
-                      num_filters=64)
+                      num_filters=128)
     else:
         raise ValueError('Unknown classifier: {0}'.format(name))
 

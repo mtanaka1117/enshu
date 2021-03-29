@@ -77,7 +77,7 @@ class Policy:
 
         return result, total_bytes
 
-    def step(self, count: int):
+    def step(self, count: int, seq_idx: int):
         self._measurement_count += count
         self._seq_count += 1
 
@@ -93,6 +93,7 @@ class AdaptivePolicy(Policy):
     def __init__(self,
                  transition_model: TransitionModel,
                  target: float,
+                 threshold: float,
                  precision: int,
                  width: int,
                  seq_length: int,
@@ -116,14 +117,14 @@ class AdaptivePolicy(Policy):
                                               **compression_params)
 
         self._max_skip = int(1.0 / target) + 1
-        self._current_skip = 0
-        self._sample_skip = 0
+        self._current_skip = 0.0
+        self._sample_skip = 0.0
         self._confidence = 0
 
         self._pid = PIDController(kp=(1.0 / 16.0),
                                   ki=(1.0 / 32.0),
                                   kd=(1.0 / 128.0))
-        self._threshold = 0.0
+        self._threshold = threshold
 
     def transmit(self, measurement: np.ndarray, seq_idx: int) -> int:
         if self._use_confidence:
@@ -168,14 +169,14 @@ class AdaptivePolicy(Policy):
         self._sample_skip = 0
         self._confidence = 0
 
-    def step(self, count: int):
-        super().step(count=count)
+    def step(self, count: int, seq_idx: int):
+        super().step(count=count, seq_idx=seq_idx)
 
         avg = self._measurement_count / (self._seq_count * self._seq_length)
         signal = self._pid.step(estimate=avg, target=self._target)
 
-        self._threshold = -1 * signal
-        # print(self._threshold)
+        if (seq_idx % 20) == 0:
+            self._threshold = -1 * signal
 
     def quantize_seq(self, measurements: np.ndarray, num_transmitted: int, width: int, should_pad: bool) -> Tuple[np.ndarray, int]:
         # Find the number of non-fractional bits. This part
@@ -317,6 +318,7 @@ def make_policy(name: str, transition_model: TransitionModel, seq_length: int, n
     elif name == 'adaptive':
         return AdaptivePolicy(transition_model=transition_model,
                               target=kwargs['target'],
+                              threshold=kwargs.get('threshold', 0.0),
                               precision=kwargs['precision'],
                               width=kwargs['width'],
                               seq_length=seq_length,

@@ -5,6 +5,7 @@ from argparse import ArgumentParser
 from collections import defaultdict, namedtuple
 from sklearn.preprocessing import StandardScaler
 from sklearn.neural_network import MLPClassifier
+from sklearn.ensemble import AdaBoostClassifier
 from typing import Any, Dict, Tuple, List
 
 from utils.file_utils import read_pickle_gz, save_pickle_gz
@@ -52,7 +53,7 @@ def fit_attack_model(inputs: np.ndarray, output: np.ndarray, train_frac: float):
     train_inputs, test_inputs = model_inputs[train_idx], model_inputs[test_idx]
     train_output, test_output = output[train_idx], output[test_idx]
 
-    clf = MLPClassifier(hidden_layer_sizes=[64], alpha=0.01, max_iter=10000, random_state=rand)
+    clf = MLPClassifier(hidden_layer_sizes=[32, 32], alpha=0.1, max_iter=10000, random_state=rand)
     clf.fit(train_inputs, train_output)
 
     train_accuracy = clf.score(train_inputs, train_output)

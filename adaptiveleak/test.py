@@ -1,5 +1,6 @@
 import os.path
 import h5py
+import numpy as np
 from argparse import ArgumentParser
 
 from classifiers import restore_model
@@ -11,7 +12,10 @@ def test(dataset_path: str, model_folder: str, model_name: str):
     with h5py.File(dataset_path, 'r') as fin:
         inputs = fin['inputs'][:]
         output = fin['output'][:]
-    
+
+    if len(inputs.shape) == 2:
+        inputs = np.expand_dims(inputs, axis=-1)
+
     # Make the model
     model = restore_model(name=model_name, save_folder=model_folder)
 

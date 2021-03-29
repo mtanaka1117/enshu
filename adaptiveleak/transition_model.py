@@ -30,6 +30,9 @@ class TransitionModel:
         with h5py.File(data_file, 'r') as fin:
             dataset = fin['inputs'][:]  # [N, T, D]
 
+        if len(dataset.shape) == 2:
+            dataset = np.expand_dims(dataset, axis=-1)
+
         # Unpack the shape
         num_samples = dataset.shape[0]  # N
         seq_length = dataset.shape[1]  # T
@@ -723,38 +726,28 @@ class IntervalModel(NeuralNetworkModel):
 
 if __name__ == '__main__':
     parser = ArgumentParser()
-    parser.add_argument('--data-folder', type=str, required=True)
-    parser.add_argument('--inference-model', type=str, required=True)
-    parser.add_argument('--output-folder', type=str, required=True)
+    parser.add_argument('--dataset-name', type=str, required=True)
     parser.add_argument('--model-type', type=str, choices=['linear', 'dropout', 'interval', 'bootstrap', 'quantile'], required=True)
     args = parser.parse_args()
 
-    data_file = os.path.join(args.data_folder, 'validation', 'data.h5')
+    data_file = os.path.join('datasets', args.dataset_name, 'validation', 'data.h5')
 
-    inference_model = read_pickle_gz(args.inference_model)
-    scaler = inference_model['scaler']
+    scaler = read_pickle_gz(os.path.join('saved_models', args.dataset_name, 'mlp_scaler.pkl.gz'))
+    output_folder = os.path.join('saved_models', args.dataset_name)
 
-    inputs = np.array([0.60455006, -0.7615511, -0.5080333, 0.2597174, 1.8209921, -1.3440958 ]).reshape(-1, 1)
-    outputs = np.array([0.4389351, -0.84473556, -0.22710092, 0.25898224, 1.314877, -1.2083242]).reshape(-1, 1)
-
-    transition_model = QuantileModel.restore('saved_models/uci_har/quantile_transition.pkl.gz')
-
-    # print(model.predict(x=inputs))
-    # print(model.confidence(x=inputs))
-
-    #if args.model_type == 'linear':
-    #    transition_model = LinearModel()
-    #elif args.model_type == 'dropout':
-    #    transition_model = DropoutModel(hidden_units=20)
-    #elif args.model_type == 'interval':
-    #    transition_model = IntervalModel(hidden_units=16, num_bins=16)
-    #elif args.model_type == 'bootstrap':
-    #    transition_model = BootstrapModel()
-    #elif args.model_type == 'quantile':
-    #    transition_model = QuantileModel()
-    #else:
-    #    raise ValueError('Unknown model type {0}'.format(args.model_type))
+    if args.model_type == 'linear':
+        transition_model = LinearModel()
+    elif args.model_type == 'dropout':
+        transition_model = DropoutModel(hidden_units=20)
+    elif args.model_type == 'interval':
+        transition_model = IntervalModel(hidden_units=16, num_bins=16)
+    elif args.model_type == 'bootstrap':
+        transition_model = BootstrapModel()
+    elif args.model_type == 'quantile':
+        transition_model = QuantileModel()
+    else:
+        raise ValueError('Unknown model type {0}'.format(args.model_type))
 
     transition_model.train(data_file=data_file,
                            scaler=scaler,
-                           output_folder=args.output_folder)
+                           output_folder=output_folder)

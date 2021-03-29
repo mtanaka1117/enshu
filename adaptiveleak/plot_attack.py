@@ -16,8 +16,8 @@ COLORS = {
     'Random': '#d73027',
     'Uniform': '#fc8d59',
     'Adaptive': '#9ecae1',
-    'Adaptive Stream': '#6baed6',
-    'Adaptive Block': '#08519c'
+    'Adaptive Block': '#6baed6',
+    'Adaptive Stream': '#08519c'
 }
 
 

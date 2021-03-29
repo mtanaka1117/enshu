@@ -1,10 +1,11 @@
 import numpy as np
+import os.path
 from sklearn.preprocessing import StandardScaler
-from sklearn.neural_network import MLPClassifier
 from typing import Any, Dict, List
 
-from utils.file_utils import read_pickle_gz
-from transition_model import TransitionModel
+from adaptiveleak.classifiers import BaseClassifier, restore_model
+from adaptiveleak.transition_model import TransitionModel
+from adaptiveleak.utils.file_utils import read_pickle_gz
 
 
 class Server:
@@ -12,14 +13,18 @@ class Server:
     This class mimics a server that infers 'missing' objects
     and performs inference
     """
-
     def __init__(self, transition_model: TransitionModel, inference_path: str, seq_length: int):
         self._transition_model = transition_model
         self._seq_length = seq_length  # T
-        
-        inference_model = read_pickle_gz(inference_path)
-        self._clf: MLPClassifier = inference_model['model']
-        self._scaler: StandardScaler = inference_model['scaler']
+
+        #inference_model = read_pickle_gz(inference_path)
+        # self._clf: MLPClassifier = inference_model['model']
+        # self._scaler: StandardScaler = inference_model['scaler']
+
+        model_name = 'mlp'
+
+        self._clf: BaseClassifier = restore_model(name=model_name, save_folder=inference_path)
+        self._scaler: StandardScaler = read_pickle_gz(os.path.join(inference_path, '{0}_scaler.pkl.gz'.format(model_name)))
 
     @property
     def seq_length(self) -> int:
@@ -73,21 +78,14 @@ class Server:
                 m = recv[sent_counter].reshape(-1, 1)  # [D, 1]
                 sent_counter += 1
             else:
+                pass
                 # The server must infer the value using
                 # the transition matrix
-                # m = np.matmul(self._transition_mat, m)
-                m = self._transition_model.predict(m)
+                # m = self._transition_model.predict(m)
 
             recovered_list.append(m.reshape(1, -1))
 
         return np.vstack(recovered_list)
-
-        #measurements = np.vstack(recovered_list)  # [T, D]
-        #scaled = self.scale(measurements)  # [T, D]
-        #scaled = scaled.reshape(1, -1)  # [1, T * D]
-
-        #pred = self._clf.predict(scaled)  # [1]
-        #return pred[0]
 
     def predict(self, inputs: np.ndarray) -> np.ndarray:
         """
@@ -99,10 +97,10 @@ class Server:
             A [N] array containing the classification predictions
         """
         # Unpack the shape
-        num_samples, seq_length, num_features = inputs.shape
- 
+        # num_samples, seq_length, num_features = inputs.shape
+
         # Scale the inputs
         # scaled = self.scale(inputs.reshape(-1, num_features))  # [N * T, D]
-        model_inputs = inputs.reshape(num_samples, -1)  # [N, T * D]
-    
-        return self._clf.predict(model_inputs)  # [N]
+        # model_inputs = inputs.reshape(num_samples, -1)  # [N, T * D]
+
+        return self._clf.predict(inputs)  # [N]

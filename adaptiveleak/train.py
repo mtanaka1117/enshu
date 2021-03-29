@@ -15,19 +15,27 @@ def train(model_name: str, train_file: str, val_file: str, save_folder: str, num
         train_inputs = fin['inputs'][:]
         train_output = fin['output'][:]
 
+    # Ensure all inputs are 3d
+    if len(train_inputs.shape) == 2:
+        train_inputs = np.expand_dims(train_inputs, axis=-1)
+
     # Fit the data normalization object
     scaler = StandardScaler()
 
     train_shape = train_inputs.shape
     train_inputs = scaler.fit_transform(train_inputs.reshape(-1, train_shape[-1]))  # [N * T, D]
     train_inputs = train_inputs.reshape(train_shape)  # [N, T, D]
-    
+
     train_output = train_output.reshape(-1)
 
     # Read and scale the validation set
     with h5py.File(val_file, 'r') as fval:
         val_inputs = fval['inputs'][:]
         val_output = fval['output'][:]
+
+    # Ensure all inputs are 3d
+    if len(val_inputs.shape) == 2:
+        val_inputs = np.expand_dims(val_inputs, axis=-1)
 
     val_shape = val_inputs.shape
     val_inputs = scaler.transform(val_inputs.reshape(-1, val_shape[-1]))
@@ -48,7 +56,6 @@ def train(model_name: str, train_file: str, val_file: str, save_folder: str, num
     # Save the results
     scaler_file = os.path.join(save_folder, '{0}_scaler.pkl.gz'.format(clf.name))
     save_pickle_gz(scaler, scaler_file)
-
 
 if __name__ == '__main__':
     parser = ArgumentParser()

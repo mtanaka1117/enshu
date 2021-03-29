@@ -13,8 +13,8 @@ COLORS = {
     'Random': '#d73027',
     'Uniform': '#fc8d59',
     'Adaptive': '#9ecae1',
-    'Adaptive Stream': '#6baed6',
-    'Adaptive Block': '#08519c'
+    'Adaptive Block': '#6baed6',
+    'Adaptive Stream': '#08519c'
 }
 
 #MODEL_ORDER = ['Random', 'Adaptive Heuristic', 'Adaptive Quantile']
@@ -134,7 +134,7 @@ def plot(information_results: DefaultDict[str, Dict[float, float]], output_file:
 
         ax.set_title('Empirical Mutual Information between Message Size and Prediction')
         ax.set_xlabel('Target Fraction', size=12)
-        ax.set_ylabel('Mutual Information', size=12)
+        ax.set_ylabel('Mutual Information (nits)', size=12)
 
         if output_file is None:
             plt.show()

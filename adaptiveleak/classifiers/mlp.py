@@ -7,15 +7,17 @@ from .dnn import NeuralNetwork
 
 class MLP(NeuralNetwork):
 
-    def __init__(self, batch_size: int, train_frac: float, learning_rate: float, hidden_units: int):
-        super().__init__(batch_size=batch_size,
-                         train_frac=train_frac,
-                         learning_rate=learning_rate)
+    def __init__(self, batch_size: int, hidden_units: int):
+        super().__init__(batch_size=batch_size)
         self._hidden_units = hidden_units
 
     @property
     def name(self) -> str:
         return 'mlp'
+
+    @property
+    def lr_decay(self) -> int:
+        return 200
 
     @property
     def hidden_units(self) -> int:
@@ -37,7 +39,7 @@ class MLP(NeuralNetwork):
         hidden_2 = keras.layers.Dropout(0.2)(hidden_2)
 
         hidden_3 = keras.layers.Dense(self.hidden_units, activation='relu')(hidden_2)
-        hidden_3 = keras.layers.Dropout(0.2)(hidden_3)
+        hidden_3 = keras.layers.Dropout(0.3)(hidden_3)
 
         # Apply the output layer
         probs = keras.layers.Dense(num_classes, activation='softmax')(hidden_3)

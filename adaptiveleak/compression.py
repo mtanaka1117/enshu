@@ -104,7 +104,7 @@ class BlockWidth(AdaptiveWidth):
 
     @property
     def group_size(self) -> int:
-        return int(math.floor((8 * AES_BLOCK_SIZE) / self._num_features))
+        return max(int(math.floor((8 * AES_BLOCK_SIZE) / self._num_features)), 1)
 
     def __str__(self) -> str:
         return 'Block'

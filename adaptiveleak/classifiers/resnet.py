@@ -30,15 +30,17 @@ def residual_block(inputs: keras.layers.Layer, num_filters: int) -> keras.layers
 
 class ResNet(NeuralNetwork):
 
-    def __init__(self, batch_size: int, train_frac: float, learning_rate: float, num_filters: int):
-        super().__init__(batch_size=batch_size,
-                         train_frac=train_frac,
-                         learning_rate=learning_rate)
+    def __init__(self, batch_size: int, num_filters: int):
+        super().__init__(batch_size=batch_size)
         self._num_filters = num_filters
  
     @property
     def name(self) -> str:
         return 'resnet'
+
+    @property
+    def lr_decay(self) -> int:
+        return 50
 
     @property
     def num_filters(self) -> int:

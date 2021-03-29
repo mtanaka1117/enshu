@@ -3,20 +3,19 @@ import h5py
 import os
 from argparse import ArgumentParser
 from collections import defaultdict
-from sklearn.metrics import accuracy_score
+from datetime import datetime
+from sklearn.metrics import accuracy_score, mean_squared_error
 from typing import Optional, List, Tuple, Dict, Any
 
 from policies import Policy, make_policy
 from server import Server
 from rounding import quantize
 from transition_model import TransitionModel, LinearModel, DropoutModel, IntervalModel, BootstrapModel, QuantileModel
-from utils.file_utils import read_pickle_gz, save_pickle_gz, read_json
+from utils.file_utils import read_pickle_gz, save_pickle_gz, read_json, make_dir
 from utils.data_utils import  calculate_bytes
 from utils.constants import LINEAR_TRANSITION, DROPOUT_TRANSITION, INTERVAL_TRANSITION, BOOTSTRAP_TRANSITION, QUANTILE_TRANSITION
 
 
-X_OFFSET = 0.2
-Y_OFFSET = 0.01
 PRINT_FREQ = 100
 
 
@@ -53,6 +52,7 @@ def run(inputs: np.ndarray,
     # Count the number of transmitted values per class
     transmit_dist: DefaultDict[int, List[int]] = defaultdict(list)
     size_dist: DefaultDict[int, List[int]] = defaultdict(list)
+    reconstruct_errors: List[float] = []
 
     # Store the measurements captured by the server
     server_recieved: List[int] = []
@@ -72,7 +72,7 @@ def run(inputs: np.ndarray,
         num_transmitted = 0
         for seq_idx, input_features in enumerate(seq_features):
             # Update the estimate
-            policy.transition()
+            # policy.transition()
 
             # Determine whether to transmit the measurement
             measurement = np.expand_dims(input_features, axis=-1)  # [D, 1]
@@ -112,8 +112,11 @@ def run(inputs: np.ndarray,
         size_dist[label].append(total_bytes)
         total_transmitted += num_transmitted
 
+        error = mean_squared_error(y_true=seq_features, y_pred=recv)
+        reconstruct_errors.append(error)
+
         # Update the policy after each sequence
-        policy.step(count=num_transmitted)
+        policy.step(count=num_transmitted, seq_idx=sample_idx)
 
         if (sample_idx + 1) % PRINT_FREQ == 0:
             print('Completed {0} sequences.'.format(sample_idx + 1), end='\r')
@@ -126,15 +129,16 @@ def run(inputs: np.ndarray,
     predictions = server.predict(inputs=recieved)
     test_accuracy = accuracy_score(y_true=output, y_pred=predictions)
     print('Evaluation Accuracy: {0:.5f}'.format(test_accuracy))
+    print('Reconstruction Error: {0:.5f}'.format(np.average(reconstruct_errors)))
 
     # Compile some aggregate results for convenience
     total_bytes = sum(sum(byte_list) for byte_list in size_dist.values())
     avg_bytes = total_bytes / num_samples
 
-    print('Avg Bytes Per Sequence: {0:.4f}'.format(avg_bytes))
+    print('Avg Bytes Per Sequence: {0:.5f}'.format(avg_bytes))
 
     avg_transmitted = total_transmitted / num_samples
-    print('Avg Messages per Sequence: {0:.4f}/{1} ({2:.4f})'.format(avg_transmitted, seq_length, avg_transmitted / seq_length))
+    print('Avg Messages per Sequence: {0:.5f}/{1} ({2:.5f})'.format(avg_transmitted, seq_length, avg_transmitted / seq_length))
 
     # Save the result
     result = {
@@ -143,6 +147,7 @@ def run(inputs: np.ndarray,
         'avg_transmitted': avg_transmitted,
         'byte_dist': size_dist,
         'transmission_dist': transmit_dist,
+        'reconstruct_errors': reconstruct_errors,
         'policy': policy_params,
         'is_padded': should_pad
     }
@@ -156,10 +161,9 @@ def run(inputs: np.ndarray,
 
 if __name__ == '__main__':
     parser = ArgumentParser()
-    parser.add_argument('--model-folder', type=str, required=True)
-    parser.add_argument('--data-folder', type=str, required=True)
+    parser.add_argument('--dataset-name', type=str, required=True)
+    parser.add_argument('--policy-name', type=str, required=True, choices=['random', 'uniform', 'adaptive_standard', 'adaptive_encoded'])
     parser.add_argument('--policy-params', type=str, required=True, nargs='+')
-    parser.add_argument('--output-folder', type=str, required=True)
     parser.add_argument('--should-pad', action='store_true')
     parser.add_argument('--max-num-samples', type=int)
     args = parser.parse_args()
@@ -173,13 +177,25 @@ if __name__ == '__main__':
         else:
             param_files.append(param_file)
 
-    model_path = os.path.join(args.model_folder, 'model.pkl.gz')
-    data_file = os.path.join(args.data_folder, 'test', 'data.h5')
+    # Set the relevant paths
+    model_folder = os.path.join('saved_models', args.dataset_name)
+    data_file = os.path.join('datasets', args.dataset_name, 'test', 'data.h5')
+    
+    # Make the output folder
+    current_date = datetime.now().strftime('%Y-%m-%d')
+    base = os.path.join('saved_models', args.dataset_name, current_date)
+    make_dir(base)
+
+    output_folder = os.path.join(base, args.policy_name)
+    make_dir(output_folder)
 
     # Read the input data into memory
     with h5py.File(data_file, 'r') as fin:
         inputs = fin['inputs'][:]
         output = fin['output'][:]
+
+    if len(inputs.shape) == 2:
+        inputs = np.expand_dims(inputs, axis=-1)
 
     seq_length = inputs.shape[1]
     num_features = inputs.shape[2]
@@ -195,26 +211,26 @@ if __name__ == '__main__':
 
         # Get the transition model path
         if policy_params['model_type'] == 'linear':
-            transition_path = os.path.join(args.model_folder, '{0}.pkl.gz'.format(LINEAR_TRANSITION))
+            transition_path = os.path.join(model_folder, '{0}.pkl.gz'.format(LINEAR_TRANSITION))
             transition_model = LinearModel.restore(transition_path)
         elif policy_params['model_type'] == 'dropout':
-            transition_path = os.path.join(args.model_folder, '{0}.pkl.gz'.format(DROPOUT_TRANSITION))
+            transition_path = os.path.join(model_folder, '{0}.pkl.gz'.format(DROPOUT_TRANSITION))
             transition_model = DropoutModel.restore(transition_path)
         elif policy_params['model_type'] == 'interval':
-            transition_path = os.path.join(args.model_folder, '{0}.pkl.gz'.format(INTERVAL_TRANSITION))
+            transition_path = os.path.join(model_folder, '{0}.pkl.gz'.format(INTERVAL_TRANSITION))
             transition_model = IntervalModel.restore(transition_path)
         elif policy_params['model_type'] == 'bootstrap':
-            transition_path = os.path.join(args.model_folder, '{0}.pkl.gz'.format(BOOTSTRAP_TRANSITION))
+            transition_path = os.path.join(model_folder, '{0}.pkl.gz'.format(BOOTSTRAP_TRANSITION))
             transition_model = BootstrapModel.restore(transition_path)
         elif policy_params['model_type'] == 'quantile':
-            transition_path = os.path.join(args.model_folder, '{0}.pkl.gz'.format(QUANTILE_TRANSITION))
+            transition_path = os.path.join(model_folder, '{0}.pkl.gz'.format(QUANTILE_TRANSITION))
             transition_model = QuantileModel.restore(transition_path)
         else:
             raise ValueError('Unknown model type: {0}'.format(policy_params['model_type']))
 
         # Create the server
         server = Server(transition_model=transition_model,
-                        inference_path=model_path,
+                        inference_path=model_folder,
                         seq_length=seq_length)
 
         # Make the policy
@@ -231,4 +247,4 @@ if __name__ == '__main__':
             policy_params=policy_params,
             should_pad=args.should_pad,
             max_num_samples=args.max_num_samples,
-            output_folder=args.output_folder)
+            output_folder=output_folder)

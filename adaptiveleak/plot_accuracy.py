@@ -9,15 +9,15 @@ from typing import Any, Dict, List, Optional
 from utils.file_utils import read_pickle_gz
 
 
-SimResult = namedtuple('SimResult', ['inference', 'attack', 'targets', 'size', 'name'])
+SimResult = namedtuple('SimResult', ['inference', 'targets', 'reconstruct', 'name'])
 MODEL_ORDER = ['Random', 'Uniform', 'Adaptive', 'Adaptive Block', 'Adaptive Stream']
 
 COLORS = {
     'Random': '#d73027',
     'Uniform': '#fc8d59',
     'Adaptive': '#9ecae1',
-    'Adaptive Stream': '#6baed6',
-    'Adaptive Block': '#08519c'
+    'Adaptive Block': '#6baed6',
+    'Adaptive Stream': '#08519c'
 }
 
 
@@ -51,33 +51,33 @@ def geometric_mean(x: List[float]) -> float:
 def plot(sim_results: Dict[str, SimResult], dataset_name: str, output_file: Optional[str]):
 
     with plt.style.context('seaborn-ticks'):
-        fig, ax = plt.subplots()
+        fig, (ax1, ax2) = plt.subplots(nrows=1, ncols=2, figsize=(10, 8))
 
         for name in MODEL_ORDER:
             if name not in sim_results:
                 continue
 
             r = sim_results[name]
-            ax.plot(r.targets, r.inference, marker='o', linewidth=4, markersize=8, label=to_label(r.name), color=COLORS[r.name])
-            # ax2.plot(r.targets, r.attack, marker='o', linewidth=4, markersize=8, label=to_label(r.name), color=COLORS[r.name])
+            ax1.plot(r.targets, r.inference, marker='o', linewidth=4, markersize=8, label=to_label(r.name), color=COLORS[r.name])
+            ax2.plot(r.targets, r.reconstruct, marker='o', linewidth=4, markersize=8, label=to_label(r.name), color=COLORS[r.name])
             # ax3.plot(r.targets, r.size, marker='o', linewidth=4, markersize=8, label=to_label(r.name), color=COLORS[r.name])
 
-            print('{0} & {1:.4f} & {2:.4f}'.format(r.name, geometric_mean(r.inference), geometric_mean(r.attack)))
+            print('{0} & {1:.4f} & {2:.4f}'.format(r.name, geometric_mean(r.inference), geometric_mean(r.reconstruct)))
 
-        ax.set_xlabel('Fraction of Measurements')
-        # ax2.set_xlabel('Fraction of Measurements')
+        ax1.set_xlabel('Fraction of Measurements')
+        ax2.set_xlabel('Fraction of Measurements')
         # ax3.set_xlabel('Fraction of Measurements')
         
-        ax.set_ylabel('Inference Accuracy')
-        # ax2.set_ylabel('Attack Accuracy')
+        ax1.set_ylabel('Inference Accuracy')
+        ax2.set_ylabel('Average Reconstruction Error')
         # ax3.set_ylabel('Message Size')
 
-        ax.set_title('Inference Accuracy on the {0} Dataset'.format(dataset_name.capitalize()))
-        # ax2.set_title('Attacker Accuracy for Transmit Policies')
+        ax1.set_title('Inference Accuracy on the {0} Dataset'.format(dataset_name.capitalize()))
+        ax2.set_title('Average Reconstruction Error on the {0} Dataset'.format(dataset_name.capitalize()))
         # ax3.set_title('Average Message Sizes')
 
-        ax.legend()
-        # ax2.legend()
+        ax1.legend()
+        ax2.legend()
 
         if output_file is None:
             plt.show()
@@ -95,27 +95,23 @@ def extract_results(folder: str) -> SimResult:
 
         target = serialized['policy']['target']
         inference = serialized['accuracy']
-        attack = serialized['attack']['test_accuracy']
-        size = serialized['avg_bytes']
+        reconstruct = np.average(serialized['reconstruct_errors'])
         
         policy_name = get_name(serialized['policy'], is_padded=serialized.get('is_padded', True))
-        accuracy[target] = (inference, attack, size)
+        accuracy[target] = (inference, reconstruct)
 
     inference_list: List[float] = []
-    attack_list: List[float] = []
+    reconstruct_list: List[float] = []
     target_list: List[float] = []
-    size_list: List[float] = []
 
-    for target, (inf, att, size) in sorted(accuracy.items()):
+    for target, (acc, rec) in sorted(accuracy.items()):
         target_list.append(target)
-        inference_list.append(inf)
-        attack_list.append(att)
-        size_list.append(size)
+        inference_list.append(acc)
+        reconstruct_list.append(rec)
 
     return SimResult(inference=inference_list,
-                     attack=attack_list,
                      targets=target_list,
-                     size=size_list,
+                     reconstruct=reconstruct_list,
                      name=policy_name)
 
 

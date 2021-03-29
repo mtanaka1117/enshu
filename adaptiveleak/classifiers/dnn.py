@@ -9,22 +9,21 @@ from .base import BaseClassifier
 
 class NeuralNetwork(BaseClassifier):
 
-    def __init__(self, batch_size: int, train_frac: float, learning_rate: float):
-        self._learning_rate = learning_rate
+    def __init__(self, batch_size: int):
         self._batch_size = batch_size
-        self._train_frac = train_frac
+        self._optimizer = keras.optimizers.Adam()
 
     @property
     def batch_size(self) -> int:
         return self._batch_size
 
     @property
-    def train_frac(self) -> float:
-        return self._train_frac
+    def lr_decay(self) -> int:
+        return 200
 
     @property
-    def learning_rate(self) -> float:
-        return self._learning_rate
+    def min_learning_rate(self) -> float:
+        return 1e-4
 
     @property
     def weights_file_name(self) -> str:
@@ -67,15 +66,15 @@ class NeuralNetwork(BaseClassifier):
 
         # Compile the model
         model.compile(loss='sparse_categorical_crossentropy',
-                      optimizer=keras.optimizers.Adam(learning_rate=self.learning_rate),
+                      optimizer=self._optimizer,
                       metrics=['accuracy'])
         model.summary()
 
         # Set Training Callbacks
         lr_decay = keras.callbacks.ReduceLROnPlateau(monitor='val_loss',
                                                      factor=0.5,
-                                                     patience=100,
-                                                     min_lr=1e-5)
+                                                     patience=self.lr_decay,
+                                                     min_lr=self.min_learning_rate)
 
         save_path = os.path.join(save_folder, self.weights_file_name)
         checkpoint = keras.callbacks.ModelCheckpoint(filepath=save_path, monitor='val_loss', save_best_only=True)
@@ -83,7 +82,7 @@ class NeuralNetwork(BaseClassifier):
         callbacks = [lr_decay, checkpoint]
 
         # Train the model
-        batch_size = min(train_inputs.shape[0], self.batch_size)
+        batch_size = min(int(train_inputs.shape[0] / 10), self.batch_size)
         history = model.fit(train_inputs, train_labels,
                             batch_size=batch_size,
                             epochs=num_epochs,

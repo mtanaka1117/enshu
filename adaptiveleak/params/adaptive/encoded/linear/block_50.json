@@ -1,9 +1,11 @@
 {
     "name": "adaptive",
+    "model_type": "linear",
     "target": 0.5,
-    "threshold": 0.25,
+    "threshold": 2.5,
+    "use_confidence": false,
     "precision": 6,
     "width": 8,
-    "compression_name": "stochastic_block",
+    "compression_name": "block",
     "compression_params": { }
 }
