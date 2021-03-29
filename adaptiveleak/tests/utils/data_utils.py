@@ -128,6 +128,37 @@ class TestQuantization(unittest.TestCase):
         self.assertTrue(np.all(np.isclose(expected, result)))
 
 
+class TestExtrapolation(unittest.TestCase):
+
+    def test_one(self):
+        prev = np.array([1, 1, 1, 1], dtype=float)
+        curr = np.array([2, 2, 2, 2], dtype=float)
+
+        predicted = data_utils.linear_extrapolate(prev=prev, curr=curr, delta=1)
+        expected = np.array([3, 3, 3, 3], dtype=float)
+
+        self.assertTrue(np.all(np.isclose(predicted, expected)))
+
+    def test_rand(self):
+        size = 10
+
+        rand = np.random.RandomState(seed=38)
+        m = rand.uniform(low=-1.0, high=1.0, size=size)
+        b = rand.uniform(low=-1.0, high=1.0, size=size)
+
+        t0 = np.ones_like(m) * 1.0
+        prev = m * t0 + b
+
+        t1 = np.ones_like(m) * 1.25
+        curr = m * t1 + b
+
+        predicted = data_utils.linear_extrapolate(prev=prev, curr=curr, delta=0.25)
+        
+        t2 = np.ones_like(m) * 1.5
+        expected = m * t2 + b
+
+        self.assertTrue(np.all(np.isclose(predicted, expected)))
+
+
 if __name__ == '__main__':
     unittest.main()
-
