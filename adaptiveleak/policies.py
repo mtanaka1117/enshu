@@ -1,12 +1,19 @@
 import numpy as np
 import math
+from enum import Enum, auto
 from typing import Tuple, List, Dict, Any
 
-from controllers import PIDController
+from adaptiveleak.controllers import PIDController
+from adaptiveleak.utils.constants import BIT_WIDTH
+from adaptiveleak.utils.data_utils import get_group_widths, get_num_groups
+from adaptiveleak.utils.message import encode_byte_measurements, decode_byte_measurements
+from adaptiveleak.utils.message import encode_grouped_measurements, decode_grouped_measurements
+from adaptiveleak.utils.encryption import AES_BLOCK_SIZE, EncryptionMode
 
-from adaptiveleak.utils.data_utils import array_to_fp, array_to_float, round_to_block, truncate_to_block, calculate_bytes, get_group_widths
-from adaptiveleak.utils.message import encode_byte_measurements, decode_byte_measurements, encode_grouped_measurements, decode_grouped_measurements
-from adaptiveleak.utils.encryption import AES_BLOCK_SIZE, EncryptionType
+
+class EncodingMode(Enum):
+    NONE = auto()
+    GROUP = auto()
 
 
 class Policy:
@@ -16,13 +23,15 @@ class Policy:
                  precision: int,
                  width: int,
                  num_features: int,
-                 seq_length: int):
+                 seq_length: int,
+                 encryption_mode: EncryptionMode):
         self._estimate = np.zeros((num_features, 1))  # [D, 1]
         self._precision = precision
         self._width = width
         self._num_features = num_features
         self._seq_length = seq_length
         self._target = target
+        self._encryption_mode = encryption_mode
 
         self._rand = np.random.RandomState(seed=78362)
 
@@ -49,6 +58,10 @@ class Policy:
     @property
     def target(self) -> float:
         return self._target
+
+    @property
+    def encryption_mode(self) -> EncryptionMode:
+        return self._encryption_mode
 
     def collect(self, measurement: np.ndarray):
         self._estimate = np.copy(measurement.reshape(-1, 1))
@@ -79,10 +92,11 @@ class Policy:
             'name': str(self),
             'target': self.target,
             'width': self.width,
-            'precision': self.precision
+            'precision': self.precision,
+            'encryption_mode': self._encryption_mode.name
         }
 
-    def should_collect(self, measurement: np.ndarray, seq_idx: int) -> bool:
+    def should_collect(self, seq_idx: int) -> bool:
         raise NotImplementedError()
 
 
@@ -95,15 +109,17 @@ class AdaptivePolicy(Policy):
                  width: int,
                  seq_length: int,
                  num_features: int,
-                 encoding_name: str):
+                 encryption_mode: EncryptionMode,
+                 encoding_mode: EncodingMode):
         super().__init__(precision=precision,
                          width=width,
                          target=target,
                          num_features=num_features,
-                         seq_length=seq_length)
+                         seq_length=seq_length,
+                         encryption_mode=encryption_mode)
 
         # Name of the encoding algorithm
-        self._encoding_name = encoding_name
+        self._encoding_mode = encoding_mode
 
         # Variables used to track the adaptive sampling policy
         self._max_skip = int(1.0 / target) + 1
@@ -116,12 +132,23 @@ class AdaptivePolicy(Policy):
                                   kd=(1.0 / 128.0))
         self._threshold = threshold
 
-    def should_collect(self, measurement: np.ndarray, seq_idx: int) -> bool:
+    @property
+    def encoding_mode(self) -> EncodingMode:
+        return self._encoding_mode
+
+    @property
+    def group_size(self) -> int:
+        return max(int(math.floor((BIT_WIDTH * AES_BLOCK_SIZE) / self.num_features)), 1)
+
+    def should_collect(self, seq_idx: int) -> bool:
         if self._sample_skip > 0:
             self._sample_skip -= 1
             return False
 
-        diff = np.linalg.norm(self._estimate - measurement, ord=2)
+        return True
+
+    def collect(self, measurement: np.ndarray):
+        diff = np.square(np.abs(self._estimate - measurement))
         self._estimate = measurement
 
         if diff > self._threshold:
@@ -130,8 +157,6 @@ class AdaptivePolicy(Policy):
             self._current_skip = min(self._current_skip + 1, self._max_skip)
 
         self._sample_skip = self._current_skip
-
-        return True
 
     def reset(self):
         super().reset()
@@ -149,14 +174,13 @@ class AdaptivePolicy(Policy):
             self._threshold = -1 * signal
 
     def encode(self, measurements: np.ndarray, collected_indices: List[int]) -> bytes:
-        if self._encoding_type == EncodingType.ALL:
+        if self.encoding_mode == EncodingMode.NONE:
             return super().encode(measurements, collected_indices)
-        elif self._encoding_type == EncodingType.GROUP:
+        elif self.encoding_mode == EncodingMode.GROUP:
             num_collected = len(measurements)
-            should_pad = self.encryption_type == EncryptionType.BLOCK
 
             # Get the group widths
-            num_groups = get_num_groups(num_transmitted=num_collected,
+            num_groups = get_num_groups(num_collected=num_collected,
                                         group_size=self.group_size)
 
             widths = get_group_widths(num_groups=num_groups,
@@ -164,45 +188,19 @@ class AdaptivePolicy(Policy):
                                       num_features=self.num_features,
                                       seq_length=self.seq_length,
                                       target_frac=self.target,
-                                      encryption_type=self.encryption_type)
+                                      encryption_mode=self.encryption_mode)
 
-            return encode_group_measurements(measurements=measurements,
-                                             collected_indices=collected_indices,
-                                             seq_length=self.seq_length,
-                                             widths=widths,
-                                             non_fractional=2)
+            non_fractional = self.width - self.precision
+            return encode_grouped_measurements(measurements=measurements,
+                                               collected_indices=collected_indices,
+                                               seq_length=self.seq_length,
+                                               widths=widths,
+                                               non_fractional=non_fractional)
         else:
-            raise ValueError('Unknown encoding type {0}'.format(self._encoding_type.name))
-
-
-
-#    def quantize_seq(self, measurements: np.ndarray, num_transmitted: int, width: int, should_pad: bool) -> Tuple[np.ndarray, int]:
-#        # Find the number of non-fractional bits. This part
-#        # stays constant
-#        non_fractional = self._width - self._precision
-#
-#        # Calculate the adaptive fixed-point parameters
-#        seq_length = len(measurements)
-#        num_features = len(measurements[0])
-#
-#        adaptive_width = max(width, non_fractional + 1)
-#        adaptive_precision = min(adaptive_width - non_fractional, 20)
-#
-#        quantized = array_to_fp(measurements,
-#                                width=adaptive_width,
-#                                precision=adaptive_precision)
-#
-#        result = array_to_float(quantized, precision=adaptive_precision)
-#
-#        total_bytes = calculate_bytes(width=adaptive_width,
-#                                      num_features=self._num_features,
-#                                      num_transmitted=num_transmitted,
-#                                      should_pad=should_pad)
-#
-#        return result, total_bytes
+            raise ValueError('Unknown encoding type {0}'.format(self._encoding_mode.name))
 
     def __str__(self) -> str:
-        return 'Adaptive {0}'.format(self._encoding_name)
+        return 'Adaptive {0}'.format(self._encoding_mode.name)
 
 
 class RandomPolicy(Policy):
@@ -226,12 +224,14 @@ class UniformPolicy(Policy):
                  precision: int,
                  width: int,
                  seq_length: int,
-                 num_features: int):
+                 num_features: int,
+                 encryption_mode: EncryptionMode):
         super().__init__(precision=precision,
                          width=width,
                          target=target,
                          num_features=num_features,
-                         seq_length=seq_length)
+                         seq_length=seq_length,
+                         encryption_mode=encryption_mode)
         target_samples = int(math.ceil(target * seq_length))
 
         skip = max(1.0 / target, 1)
@@ -300,36 +300,31 @@ def run_policy(policy: Policy, sequence: np.ndarray) -> Tuple[np.ndarray, List[i
     return np.vstack(collected_list), collected_indices
 
 
-def make_policy(name: str, seq_length: int, num_features: int, **kwargs: Dict[str, Any]) -> Policy:
+def make_policy(name: str, seq_length: int, num_features: int, precision: int, encryption_mode: EncryptionMode, target: float, **kwargs: Dict[str, Any]) -> Policy:
     name = name.lower()
 
     if name == 'random':
-        return RandomPolicy(target=kwargs['target'],
-                            precision=kwargs['precision'],
-                            width=kwargs['width'],
+        return RandomPolicy(target=target,
+                            precision=precision,
+                            width=BIT_WIDTH,
                             num_features=num_features,
-                            seq_length=seq_length)
+                            seq_length=seq_length,
+                            encryption_mode=encryption_mode)
     elif name == 'adaptive':
-        return AdaptivePolicy(target=kwargs['target'],
-                              threshold=kwargs.get('threshold', 0.0),
-                              precision=kwargs['precision'],
-                              width=kwargs['width'],
+        return AdaptivePolicy(target=target,
+                              threshold=float(kwargs.get('threshold', 0.0)),
+                              precision=precision,
+                              width=BIT_WIDTH,
                               seq_length=seq_length,
                               num_features=num_features,
-                              use_confidence=kwargs['use_confidence'],
-                              compression_name=kwargs['compression_name'],
-                              compression_params=kwargs['compression_params'])
+                              encryption_mode=encryption_mode,
+                              encoding_mode=EncodingMode[str(kwargs['encoding']).upper()])
     elif name == 'uniform':
-        return UniformPolicy(target=kwargs['target'],
-                             precision=kwargs['precision'],
-                             width=kwargs['width'],
+        return UniformPolicy(target=target,
+                             precision=precision,
+                             width=BIT_WIDTH,
                              num_features=num_features,
-                             seq_length=seq_length)
-    elif name == 'all':
-        return AllPolicy(target=kwargs['target'],
-                         precision=kwargs['precision'],
-                         width=kwargs['width'],
-                         num_features=num_features,
-                         seq_length=seq_length)
+                             seq_length=seq_length,
+                             encryption_mode=encryption_mode)
     else:
         raise ValueError('Unknown policy with name: {0}'.format(name))
