@@ -3,7 +3,7 @@ import math
 from functools import partial
 from typing import List
 
-from adaptiveleak.utils.encryption import AES_BLOCK_SIZE, EncryptionMode
+from adaptiveleak.utils.encryption import AES_BLOCK_SIZE, EncryptionMode, CHACHA_NONCE_LEN
 
 
 MAX_ITER = 20
@@ -203,7 +203,9 @@ def get_group_widths(group_size: int,
     target_bytes = calculate_bytes(width=8,
                                    num_collected=int(target_frac * seq_length),
                                    num_features=num_features,
-                                   should_pad=should_pad)
+                                   encryption_mode=encryption_mode,
+                                   metadata_bytes=1)
+
     target_bits = target_bytes * 8
 
     num_groups = get_num_groups(num_transmitted=num_collected,
@@ -243,38 +245,84 @@ def get_group_widths(group_size: int,
     return widths
 
 
-def calculate_bytes(width: int, num_collected: int, num_features: int, should_pad: bool) -> int:
+def calculate_bytes(width: int, num_collected: int, num_features: int, seq_length: int, encryption_mode: EncryptionMode) -> int:
+    """
+    Calculates the number of bytes required to send the given
+    number of features and measurements of the provided width.
+
+    Args:
+        width: The bit-width of each features
+        num_collected: The number of collected measurements
+        num_features: The number of features per measurement
+        seq_length: The length of a full sequence
+        encryption_mode: The type of encryption (block or stream)
+    Returns:
+        The total number of bytes in the encrypted message.
+    """
     data_bits = width * num_collected * num_features
     data_bytes = int(math.ceil(data_bits / 8))
 
-    if should_pad:
-        return round_to_block(data_bytes, AES_BLOCK_SIZE)
+    # Include the meta-data (precision) and the sequence bit mask
+    message_bytes = data_bytes + 1 + int(math.ceil(seq_length / 8))
 
-    return data_bytes
+    if encryption_mode == EncryptionMode.BLOCK:
+        # Account for the IV
+        return round_to_block(message_bytes + AES_BLOCK_SIZE, block_size=AES_BLOCK_SIZE)
+    elif encryption_mode == EncryptionMode.STREAM:
+        # Account for the nonce
+        return message_bytes + CHACHA_NONCE_LEN
+    else:
+        raise ValueError('Unknown encryption mode: {0}'.format(encryption_mode.name))
 
 
-def get_num_groups(num_transmitted: int, group_size: int) -> int:
-    return int(math.ceil(num_transmitted / group_size))
+def get_num_groups(num_collected: int, group_size: int) -> int:
+    return int(math.ceil(num_collected / group_size))
 
 
-def calculate_grouped_bytes(widths: List[int], num_collected: int, num_features: int, group_size: int, should_pad: bool) -> int:
+def calculate_grouped_bytes(widths: List[int],
+                            num_collected: int,
+                            num_features: int,
+                            group_size: int,
+                            encryption_mode: EncryptionMode,
+                            seq_length: int) -> int:
+    """
+    Calculates the number of bytes required to encode the given groups of features.
+
+    Args:
+        widths: A list of the bit-widths for each group
+        num_collected: The number of collected measurements
+        num_features: The number of features per measurement
+        group_size: The number of measurements per group
+        encryption_mode: The type of encryption algorithm (block or stream)
+        seq_length: The length of a full sequence
+    Returns:
+        The number of bytes in the encoded message.
+    """
     # Validate arguments
-    num_groups = get_num_groups(num_transmitted=num_collected, group_size=group_size)
+    num_groups = get_num_groups(num_collected=num_collected, group_size=group_size)
     assert len(widths) == num_groups, 'Must provide {0} widths. Got: {1}'.format(num_groups, len(widths))
 
     total_bytes = 0
     so_far = 0
 
+    # Calculate the number of data bytes in the encoded message
     for idx, width in enumerate(widths):
         group_elements = min(group_size, num_collected - so_far)
 
-        total_bytes += calculate_bytes(width=width,
-                                       num_collected=group_elements,
-                                       num_features=num_features,
-                                       should_pad=False)
+        data_bits = width * group_elements * num_features
+        data_bytes = int(math.ceil(data_bits / 8))
+
+        total_bytes += data_bytes
         so_far += group_elements
 
-    if should_pad:
-        return round_to_block(total_bytes, AES_BLOCK_SIZE)
+    # Include the meta-data (group widths) and the sequence mask
+    total_bytes += len(widths) + 2 + int(math.ceil(seq_length / 8))
 
-    return total_bytes
+    if encryption_mode == EncryptionMode.BLOCK:
+        # Include the IV
+        return AES_BLOCK_SIZE + round_to_block(total_bytes, AES_BLOCK_SIZE)
+    elif encryption_mode == EncryptionMode.STREAM:
+        # Include the Nonce
+        return CHACHA_NONCE_LEN + total_bytes
+    else:
+        raise ValueError('Unknown encryption mode: {0}'.format(encryption_mode.name))
