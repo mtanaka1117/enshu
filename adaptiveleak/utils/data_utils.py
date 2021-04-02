@@ -3,10 +3,11 @@ import math
 from functools import partial
 from typing import List
 
+from adaptiveleak.utils.constants import BIT_WIDTH
 from adaptiveleak.utils.encryption import AES_BLOCK_SIZE, EncryptionMode, CHACHA_NONCE_LEN
 
 
-MAX_ITER = 20
+MAX_ITER = 100
 
 
 def apply_dropout(mat: np.ndarray, drop_rate: float, rand: np.random.RandomState) -> np.ndarray:
@@ -198,21 +199,21 @@ def get_group_widths(group_size: int,
     Returns:
         A list of bit-widths for each group.
     """
-    should_pad = (encryption_mode == EncryptionMode.BLOCK)
+    # Get the target values
+    target_data_bits = BIT_WIDTH * num_collected * num_features
 
-    target_bytes = calculate_bytes(width=8,
+    target_bytes = calculate_bytes(width=BIT_WIDTH,
                                    num_collected=int(target_frac * seq_length),
                                    num_features=num_features,
-                                   encryption_mode=encryption_mode,
-                                   metadata_bytes=1)
+                                   seq_length=seq_length,
+                                   encryption_mode=encryption_mode)
 
-    target_bits = target_bytes * 8
-
-    num_groups = get_num_groups(num_transmitted=num_collected,
+    # Get the number of groups
+    num_groups = get_num_groups(num_collected=num_collected,
                                 group_size=group_size)
 
-    # Pick the larger initial widths
-    start_width = int(math.ceil(target_bits / (num_features * num_collected)))
+    # Pick the larger initial widths (add a fudge constant to ensure we over-estimate)
+    start_width = int(math.ceil(target_data_bits / (num_features * num_collected)))
     widths = [start_width for _ in range(num_groups)]
 
     # Calculate the number of bytes with the initial widths
@@ -220,27 +221,54 @@ def get_group_widths(group_size: int,
                                          num_collected=num_collected,
                                          num_features=num_features,
                                          group_size=group_size,
-                                         should_pad=False)
-
-    # Account for the overhead of sending individual bit widths
-    data_bytes += 1 + num_groups
-
-    padded_bytes = round_to_block(data_bytes, AES_BLOCK_SIZE) if should_pad else data_bytes
+                                         seq_length=seq_length,
+                                         encryption_mode=encryption_mode)
 
     # Set the group widths in a round-robin fashion
     i = 0
     group_idx = 0
-    while (i < MAX_ITER) and (padded_bytes > target_bytes):
-        widths[group_idx] -= 1
 
-        byte_diff = int(math.ceil(group_size / 8))
-        data_bytes = data_bytes - byte_diff
+    # if encryption_mode == EncryptionMode.BLOCK:
+    while (i < MAX_ITER):
+        # Adjust the group width
+        widths[group_idx] += 1 if data_bytes <= target_bytes else -1
 
-        padded_bytes = round_to_block(data_bytes, AES_BLOCK_SIZE) if should_pad else data_bytes
+        # Update the byte count
+        updated_bytes = calculate_grouped_bytes(widths=widths,
+                                                num_collected=num_collected,
+                                                num_features=num_features,
+                                                group_size=group_size,
+                                                seq_length=seq_length,
+                                                encryption_mode=encryption_mode)
 
+        # Exit the loop when we find the inflection point
+        if (data_bytes <= target_bytes and updated_bytes > target_bytes):
+            widths[group_idx] -= 1
+            break
+
+        data_bytes = updated_bytes
         i += 1
         group_idx += 1
         group_idx = group_idx % len(widths)
+
+    #elif encryption_mode == EncryptionMode.STREAM:
+    #    while (i < MAX_ITER) and (data_bytes > target_bytes):
+    #        # Adjust the group width
+    #        widths[group_idx] -= 1
+
+    #        # Update the byte count
+    #        data_bytes = calculate_grouped_bytes(widths=widths,
+    #                                             num_collected=num_collected,
+    #                                             num_features=num_features,
+    #                                             group_size=group_size,
+    #                                             seq_length=seq_length,
+    #                                             encryption_mode=encryption_mode)
+
+    #        i += 1
+    #        group_idx += 1
+    #        group_idx = group_idx % len(widths)
+    #else:
+    #    raise ValueError('Unknown encryption mode: {0}'.format(encryption_mode.name))
 
     return widths
 

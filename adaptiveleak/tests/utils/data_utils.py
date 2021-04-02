@@ -528,23 +528,58 @@ class TestCalculateBytes(unittest.TestCase):
         self.assertEqual(message_bytes, len(encrypted))
 
 
+class TestGroupWidths(unittest.TestCase):
 
-#class TestGroupWidths(unittest.TestCase):
-#
-#    def test_widths_block(self):
-#
-#        widths = data_utils.get_group_widths(group_size=2,
-#                                             num_collected=6,
-#                                             num_features=3,
-#                                             seq_length=10,
-#                                             target_frac=0.5,
-#                                             encryption_mode=EncryptionMode.BLOCK)
-#
-#        self.assertEqual(len(widths), 3)
-#        self.assertEqual(widths[0], 6)
-#        self.assertEqual(widths[1], 6)
-#        self.assertEqual(widths[2], 6)
-#
+    def test_widths_block_above(self):
+        widths = data_utils.get_group_widths(group_size=2,
+                                             num_collected=6,
+                                             num_features=3,
+                                             seq_length=10,
+                                             target_frac=0.5,
+                                             encryption_mode=EncryptionMode.BLOCK)
+
+        self.assertEqual(len(widths), 3)
+        self.assertEqual(widths[0], 11)
+        self.assertEqual(widths[1], 10)
+        self.assertEqual(widths[2], 10)
+
+    def test_widths_block_below(self):
+        widths = data_utils.get_group_widths(group_size=2,
+                                             num_collected=3,
+                                             num_features=3,
+                                             seq_length=10,
+                                             target_frac=0.5,
+                                             encryption_mode=EncryptionMode.BLOCK)
+
+        self.assertEqual(len(widths), 2)
+        self.assertEqual(widths[0], 22)
+        self.assertEqual(widths[1], 22)
+
+    def test_widths_stream_above(self):
+        widths = data_utils.get_group_widths(group_size=2,
+                                             num_collected=6,
+                                             num_features=3,
+                                             seq_length=10,
+                                             target_frac=0.5,
+                                             encryption_mode=EncryptionMode.STREAM)
+
+        self.assertEqual(len(widths), 3)
+        self.assertEqual(widths[0], 4)
+        self.assertEqual(widths[1], 5)
+        self.assertEqual(widths[2], 5)
+
+    def test_widths_stream_below(self):
+        widths = data_utils.get_group_widths(group_size=2,
+                                             num_collected=3,
+                                             num_features=3,
+                                             seq_length=10,
+                                             target_frac=0.5,
+                                             encryption_mode=EncryptionMode.STREAM)
+
+        self.assertEqual(len(widths), 2)
+        self.assertEqual(widths[0], 10)
+        self.assertEqual(widths[1], 10)
+
 
 if __name__ == '__main__':
     unittest.main()
