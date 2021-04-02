@@ -3,7 +3,10 @@ import math
 from functools import partial
 from typing import List
 
-from adaptiveleak.utils.constants import AES_BLOCK_SIZE
+from adaptiveleak.utils.encryption import AES_BLOCK_SIZE, EncryptionMode
+
+
+MAX_ITER = 20
 
 
 def apply_dropout(mat: np.ndarray, drop_rate: float, rand: np.random.RandomState) -> np.ndarray:
@@ -74,6 +77,17 @@ def linear_extrapolate(prev: np.ndarray, curr: np.ndarray, delta: float) -> np.n
     return slope * (2 * delta) + prev
 
 
+def pad_to_length(message: bytes, length: int) -> bytes:
+    """
+    Pads larger messages to the given length.
+    """
+    if len(message) >= length:
+        return message
+
+    padding = bytes(length - len(message))
+    return message + padding
+
+
 def round_to_block(x: float, block_size: int) -> int:
     return int(math.ceil(x / block_size)) * block_size
 
@@ -82,9 +96,156 @@ def truncate_to_block(x: float, block_size: int) -> int:
     return int(math.floor(x / block_size)) * block_size
 
 
-def calculate_bytes(width: int, num_transmitted: int, num_features: int, should_pad: bool) -> int:
-    data_bits = width * num_transmitted * num_features
-    data_bytes = int(math.ceil(data_bits / 8)) + 1  # Account for the need to send along the width
+def pack(values: List[int], width: int) -> bytes:
+    """
+    Packs the list of (quantized) values with the given width
+    into a packed bit-string.
+
+    Args:
+        values: The list of quantized values
+        width: The width of each quantized value
+    Returns:
+        A packed string containing the quantized values.
+    """
+    packed: List[int] = [0]
+    consumed = 0
+
+    for value in values:
+        num_bytes = int(math.ceil(width / 8))
+
+        for i in range(num_bytes):
+            # Get the current byte
+            current_byte = (value >> (i * 8)) & 0xFF
+
+            # Get the number of used bits in the current byte
+            num_bits = 8 if i < (num_bytes - 1) else (width % 8)
+
+            # Set bits in the packed string
+            packed[-1] |= current_byte << consumed
+            packed[-1] &= 0xFF
+
+            # Add to the number of consumed bits
+            used_bits = min(8 - consumed, num_bits)
+            consumed += num_bits
+
+            # If we have consumed more than a byte, then the remaining amount
+            # spills onto the next byte
+            if consumed > 8:
+                consumed = consumed - 8
+                remaining_value = current_byte >> used_bits
+
+                # Add the remaining value to the running string
+                packed.append(remaining_value)
+
+    return bytes(bytearray(packed))
+
+
+def unpack(encoded: bytes, width: int,  num_values: int) -> List[int]:
+    """
+    Unpacks the encoded values into a list of integers of the given bit-width.
+
+    Args:
+        encoded: The encoded list of values (output of pack())
+        width: The bit width for each value
+        num_value: The number of encoded values
+    Returns:
+        A list of integer values
+    """
+    result: List[int] = []
+    current = 0
+    current_length = 0
+    byte_idx = 0
+
+    for i in range(num_values):
+        # Get at at least the next 'width' bits
+        while (current_length < width):
+            current |= (encoded[byte_idx] << current_length)
+            current_length += 8
+            byte_idx += 1
+
+        # Truncate down to 'width' bits
+        mask = (1 << width) - 1
+        value = current & mask
+        result.append(value)
+
+        current = current >> width
+        current_length = current_length - width
+
+    # Include any residual values
+    if len(result) < num_values:
+        result.append(current)
+
+    return result
+
+
+def get_group_widths(group_size: int,
+                     num_collected: int,
+                     num_features: int,
+                     seq_length: int,
+                     target_frac: float,
+                     encryption_mode: EncryptionMode) -> List[int]:
+    """
+    Calculates the bit-width of each group such that the final encrypted message
+    has the same length as the target value.
+
+    Args:
+        group_size: The number of measurements per group
+        num_collected: The number of collected measurements
+        num_features: The number of features per measurement
+        seq_length: The number of elements in a full sequence
+        target_frac: The target collection / sending fraction (on average)
+        encryption_mode: The type of encryption algorithm (block or stream)
+    Returns:
+        A list of bit-widths for each group.
+    """
+    should_pad = (encryption_mode == EncryptionMode.BLOCK)
+
+    target_bytes = calculate_bytes(width=8,
+                                   num_collected=int(target_frac * seq_length),
+                                   num_features=num_features,
+                                   should_pad=should_pad)
+    target_bits = target_bytes * 8
+
+    num_groups = get_num_groups(num_transmitted=num_collected,
+                                group_size=group_size)
+
+    # Pick the larger initial widths
+    start_width = int(math.ceil(target_bits / (num_features * num_collected)))
+    widths = [start_width for _ in range(num_groups)]
+
+    # Calculate the number of bytes with the initial widths
+    data_bytes = calculate_grouped_bytes(widths=widths,
+                                         num_collected=num_collected,
+                                         num_features=num_features,
+                                         group_size=group_size,
+                                         should_pad=False)
+
+    # Account for the overhead of sending individual bit widths
+    data_bytes += 1 + num_groups
+
+    padded_bytes = round_to_block(data_bytes, AES_BLOCK_SIZE) if should_pad else data_bytes
+
+    # Set the group widths in a round-robin fashion
+    i = 0
+    group_idx = 0
+    while (i < MAX_ITER) and (padded_bytes > target_bytes):
+        widths[group_idx] -= 1
+
+        byte_diff = int(math.ceil(group_size / 8))
+        data_bytes = data_bytes - byte_diff
+
+        padded_bytes = round_to_block(data_bytes, AES_BLOCK_SIZE) if should_pad else data_bytes
+
+        i += 1
+        group_idx += 1
+        group_idx = group_idx % len(widths)
+
+    return widths
+
+
+def calculate_bytes(width: int, num_collected: int, num_features: int, should_pad: bool) -> int:
+    data_bits = width * num_collected * num_features
+    data_bytes = int(math.ceil(data_bits / 8))
 
     if should_pad:
         return round_to_block(data_bytes, AES_BLOCK_SIZE)
@@ -96,21 +257,24 @@ def get_num_groups(num_transmitted: int, group_size: int) -> int:
     return int(math.ceil(num_transmitted / group_size))
 
 
-def calculate_grouped_bytes(widths: List[int], num_transmitted: int, num_features: int, group_size: int, should_pad: bool) -> int:
+def calculate_grouped_bytes(widths: List[int], num_collected: int, num_features: int, group_size: int, should_pad: bool) -> int:
     # Validate arguments
-    num_groups = get_num_groups(num_transmitted=num_transmitted, group_size=group_size)
+    num_groups = get_num_groups(num_transmitted=num_collected, group_size=group_size)
     assert len(widths) == num_groups, 'Must provide {0} widths. Got: {1}'.format(num_groups, len(widths))
 
     total_bytes = 0
     so_far = 0
 
     for idx, width in enumerate(widths):
-        group_elements = min(group_size, num_transmitted - so_far)
+        group_elements = min(group_size, num_collected - so_far)
 
         total_bytes += calculate_bytes(width=width,
-                                       num_transmitted=group_elements,
+                                       num_collected=group_elements,
                                        num_features=num_features,
-                                       should_pad=should_pad)
+                                       should_pad=False)
         so_far += group_elements
+
+    if should_pad:
+        return round_to_block(total_bytes, AES_BLOCK_SIZE)
 
     return total_bytes

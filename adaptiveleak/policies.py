@@ -3,23 +3,20 @@ import math
 from typing import Tuple, List, Dict, Any
 
 from controllers import PIDController
-from compression import AdaptiveWidth, make_compression
-from utils.file_utils import read_pickle_gz
-from utils.data_utils import array_to_fp, array_to_float, round_to_block, truncate_to_block, calculate_bytes
-from utils.constants import AES_BLOCK_SIZE
-from transition_model import TransitionModel
+
+from adaptiveleak.utils.data_utils import array_to_fp, array_to_float, round_to_block, truncate_to_block, calculate_bytes, get_group_widths
+from adaptiveleak.utils.message import encode_byte_measurements, decode_byte_measurements, encode_grouped_measurements, decode_grouped_measurements
+from adaptiveleak.utils.encryption import AES_BLOCK_SIZE, EncryptionType
 
 
 class Policy:
 
     def __init__(self,
-                 transition_model: TransitionModel,
                  target: float,
                  precision: int,
                  width: int,
                  num_features: int,
                  seq_length: int):
-        self._transition_model = transition_model
         self._estimate = np.zeros((num_features, 1))  # [D, 1]
         self._precision = precision
         self._width = width
@@ -27,11 +24,6 @@ class Policy:
         self._seq_length = seq_length
         self._target = target
 
-        self._width_policy = make_compression(name='fixed',
-                                              num_features=num_features,
-                                              seq_length=seq_length,
-                                              target_frac=target,
-                                              width=width)
         self._rand = np.random.RandomState(seed=78362)
 
         # Track the average number of measurements sent
@@ -43,39 +35,37 @@ class Policy:
         return self._width
 
     @property
+    def precision(self) -> int:
+        return self._precision
+
+    @property
+    def seq_length(self) -> int:
+        return self._seq_length
+
+    @property
+    def num_features(self) -> int:
+        return self._num_features
+
+    @property
     def target(self) -> float:
         return self._target
 
-    @property
-    def width_policy(self) -> AdaptiveWidth:
-        return self._width_policy
-
+    def collect(self, measurement: np.ndarray):
+        self._estimate = np.copy(measurement.reshape(-1, 1))
+    
     def reset(self):
         self._estimate = np.zeros((self._num_features, 1))  # [D, 1]
 
-    def transition(self):
-        self._estimate = self._transition_model.predict(self._estimate)
+    def encode(self, measurements: np.ndarray, collected_indices: List[int]) -> bytes:
+        return encode_byte_measurements(measurements=measurements,
+                                        collected_indices=collected_indices,
+                                        seq_length=self.seq_length,
+                                        precision=self.precision)
 
-    def get_estimate(self) -> np.ndarray:
-        return self._estimate
-
-    def quantize_seq(self, measurements: np.ndarray, num_transmitted: int, width: int, should_pad: bool) -> Tuple[np.ndarray, int]:
-        non_fractional = self._width - self._precision
-        precision = width - non_fractional
-
-        quantized = array_to_fp(arr=measurements,
-                                precision=precision,
-                                width=width)
-
-        result = array_to_float(fp_arr=quantized,
-                                precision=precision)
-
-        total_bytes = calculate_bytes(width=width,
-                                      num_transmitted=num_transmitted,
-                                      num_features=len(measurements[0]),
-                                      should_pad=should_pad)
-
-        return result, total_bytes
+    def decode(self, message: bytes) -> Tuple[np.ndarray, List[int]]:
+        return decode_byte_measurements(byte_str=message,
+                                        seq_length=self.seq_length,
+                                        num_features=self.num_features)
 
     def step(self, count: int, seq_idx: int):
         self._measurement_count += count
@@ -84,84 +74,64 @@ class Policy:
     def __str__(self) -> str:
         return 'Policy'
 
-    def transmit(self, measurement: np.ndarray, seq_idx: int) -> int:
+    def as_dict(self) -> Dict[str, Any]:
+        return {
+            'name': str(self),
+            'target': self.target,
+            'width': self.width,
+            'precision': self.precision
+        }
+
+    def should_collect(self, measurement: np.ndarray, seq_idx: int) -> bool:
         raise NotImplementedError()
 
 
 class AdaptivePolicy(Policy):
 
     def __init__(self,
-                 transition_model: TransitionModel,
                  target: float,
                  threshold: float,
                  precision: int,
                  width: int,
                  seq_length: int,
                  num_features: int,
-                 use_confidence: bool,
-                 compression_name: str,
-                 compression_params: Dict[str, Any]):
-        super().__init__(transition_model=transition_model,
-                         precision=precision,
+                 encoding_name: str):
+        super().__init__(precision=precision,
                          width=width,
                          target=target,
                          num_features=num_features,
                          seq_length=seq_length)
-        self._use_confidence = use_confidence
 
-        self._width_policy = make_compression(name=compression_name,
-                                              num_features=num_features,
-                                              seq_length=seq_length,
-                                              width=width,
-                                              target_frac=target,
-                                              **compression_params)
+        # Name of the encoding algorithm
+        self._encoding_name = encoding_name
 
+        # Variables used to track the adaptive sampling policy
         self._max_skip = int(1.0 / target) + 1
         self._current_skip = 0.0
         self._sample_skip = 0.0
-        self._confidence = 0
 
+        # Controller automatically set the threshold
         self._pid = PIDController(kp=(1.0 / 16.0),
                                   ki=(1.0 / 32.0),
                                   kd=(1.0 / 128.0))
         self._threshold = threshold
 
-    def transmit(self, measurement: np.ndarray, seq_idx: int) -> int:
-        if self._use_confidence:
-            # Heuristics to guard against over-confident behavior
-            if (seq_idx == 0) or (self._sample_skip >= self._max_skip):
-                self._estimate = measurement
-                self._sample_skip = 0
-                self._confidence = 0
-                return 1
+    def should_collect(self, measurement: np.ndarray, seq_idx: int) -> bool:
+        if self._sample_skip > 0:
+            self._sample_skip -= 1
+            return False
 
-            # Perform sampling based on confidence
-            self._confidence += self._transition_model.confidence(x=measurement)
+        diff = np.linalg.norm(self._estimate - measurement, ord=2)
+        self._estimate = measurement
 
-            if self._confidence > self._threshold:
-                self._estimate = measurement
-                self._sample_skip = 0
-                self._confidence = 0
-                return 1
-
-            self._sample_skip += 1
-            return 0
+        if diff > self._threshold:
+            self._current_skip = 0
         else:
-            if self._sample_skip > 0:
-                self._sample_skip -= 1
-                return 0
+            self._current_skip = min(self._current_skip + 1, self._max_skip)
 
-            diff = np.linalg.norm(self._estimate - measurement, ord=2)
-            self._estimate = measurement
+        self._sample_skip = self._current_skip
 
-            if diff > self._threshold:
-                self._current_skip = 0
-            else:
-                self._current_skip = min(self._current_skip + 1, self._max_skip)
-
-            self._sample_skip = self._current_skip
-
-            return 1
+        return True
 
     def reset(self):
         super().reset()
@@ -178,45 +148,72 @@ class AdaptivePolicy(Policy):
         if (seq_idx % 20) == 0:
             self._threshold = -1 * signal
 
-    def quantize_seq(self, measurements: np.ndarray, num_transmitted: int, width: int, should_pad: bool) -> Tuple[np.ndarray, int]:
-        # Find the number of non-fractional bits. This part
-        # stays constant
-        non_fractional = self._width - self._precision
+    def encode(self, measurements: np.ndarray, collected_indices: List[int]) -> bytes:
+        if self._encoding_type == EncodingType.ALL:
+            return super().encode(measurements, collected_indices)
+        elif self._encoding_type == EncodingType.GROUP:
+            num_collected = len(measurements)
+            should_pad = self.encryption_type == EncryptionType.BLOCK
 
-        # Calculate the adaptive fixed-point parameters
-        seq_length = len(measurements)
-        num_features = len(measurements[0])
+            # Get the group widths
+            num_groups = get_num_groups(num_transmitted=num_collected,
+                                        group_size=self.group_size)
 
-        adaptive_width = max(width, non_fractional + 1)
-        adaptive_precision = min(adaptive_width - non_fractional, 20)
+            widths = get_group_widths(num_groups=num_groups,
+                                      num_collected=num_collected,
+                                      num_features=self.num_features,
+                                      seq_length=self.seq_length,
+                                      target_frac=self.target,
+                                      encryption_type=self.encryption_type)
 
-        quantized = array_to_fp(measurements,
-                                width=adaptive_width,
-                                precision=adaptive_precision)
+            return encode_group_measurements(measurements=measurements,
+                                             collected_indices=collected_indices,
+                                             seq_length=self.seq_length,
+                                             widths=widths,
+                                             non_fractional=2)
+        else:
+            raise ValueError('Unknown encoding type {0}'.format(self._encoding_type.name))
 
-        result = array_to_float(quantized, precision=adaptive_precision)
 
-        total_bytes = calculate_bytes(width=adaptive_width,
-                                      num_features=self._num_features,
-                                      num_transmitted=num_transmitted,
-                                      should_pad=should_pad)
 
-        return result, total_bytes
+#    def quantize_seq(self, measurements: np.ndarray, num_transmitted: int, width: int, should_pad: bool) -> Tuple[np.ndarray, int]:
+#        # Find the number of non-fractional bits. This part
+#        # stays constant
+#        non_fractional = self._width - self._precision
+#
+#        # Calculate the adaptive fixed-point parameters
+#        seq_length = len(measurements)
+#        num_features = len(measurements[0])
+#
+#        adaptive_width = max(width, non_fractional + 1)
+#        adaptive_precision = min(adaptive_width - non_fractional, 20)
+#
+#        quantized = array_to_fp(measurements,
+#                                width=adaptive_width,
+#                                precision=adaptive_precision)
+#
+#        result = array_to_float(quantized, precision=adaptive_precision)
+#
+#        total_bytes = calculate_bytes(width=adaptive_width,
+#                                      num_features=self._num_features,
+#                                      num_transmitted=num_transmitted,
+#                                      should_pad=should_pad)
+#
+#        return result, total_bytes
 
     def __str__(self) -> str:
-        return 'Adaptive, {0}'.format(self._width_policy)
+        return 'Adaptive {0}'.format(self._encoding_name)
 
 
 class RandomPolicy(Policy):
 
-    def transmit(self, measurement: np.ndarray, seq_idx: int) -> int:
+    def should_collect(self, seq_idx: int) -> bool:
         r = self._rand.uniform()
 
         if r < self._target or seq_idx == 0:
-            self._estimate = measurement
-            return 1
+            return True
 
-        return 0
+        return False
 
     def __str__(self) -> str:
         return 'Random'
@@ -225,14 +222,12 @@ class RandomPolicy(Policy):
 class UniformPolicy(Policy):
     
     def __init__(self,
-                 transition_model: TransitionModel,
                  target: float,
                  precision: int,
                  width: int,
                  seq_length: int,
                  num_features: int):
-        super().__init__(transition_model=transition_model,
-                         precision=precision,
+        super().__init__(precision=precision,
                          width=width,
                          target=target,
                          num_features=num_features,
@@ -260,13 +255,12 @@ class UniformPolicy(Policy):
         self._skip_indices = self._skip_indices[:target_samples]
         self._skip_idx = 0
 
-    def transmit(self, measurement: np.ndarray, seq_idx: int) -> int:
+    def should_collect(self, seq_idx: int) -> bool:
         if (seq_idx == 0) or (self._skip_idx < len(self._skip_indices) and seq_idx == self._skip_indices[self._skip_idx]):
-            self._estimate = measurement
             self._skip_idx += 1
-            return 1
+            return True
 
-        return 0
+        return False
 
     def __str__(self) -> str:
         return 'Uniform'
@@ -275,49 +269,48 @@ class UniformPolicy(Policy):
         self._skip_idx = 0
 
 
-class AllPolicy(Policy):
+def run_policy(policy: Policy, sequence: np.ndarray) -> Tuple[np.ndarray, List[int]]:
+    """
+    Executes the policy on the given sequence.
 
-    def __init__(self,
-                 transition_model: TransitionModel,
-                 target: float,
-                 precision: int,
-                 width: int,
-                 num_features: int,
-                 seq_length: int):
-        super().__init__(transition_model=transition_model,
-                         target=target,
-                         precision=precision,
-                         width=width,
-                         num_features=num_features,
-                         seq_length=seq_length)
+    Args:
+        policy: The sampling policy
+        sequence: A [T, D] array of features (D) for each element (T)
+    Returns:
+        A tuple of two elements:
+            (1) A [K, D] array of the collected measurements
+            (2) The K indices of the collected elements
+    """
+    assert len(sequence.shape) == 2, 'Must provide a 2d sequence'
 
-        self._width_policy = make_compression(name='stable',
-                                              num_features=num_features,
-                                              seq_length=seq_length,
-                                              target_frac=target,
-                                              width=width)
+    collected_list: List[np.ndarray] = []
+    collected_indices: List[int] = []
 
-    def transmit(self, measurement: np.ndarray, seq_idx: int) -> int:
-        self._estimate = measurement
-        return 1
+    for seq_idx in range(sequence.shape[0]):
+        
+        should_collect = policy.should_collect(seq_idx=seq_idx)
 
-    def __str__(self) -> str:
-        return 'All'
+        if should_collect:
+            measurement = sequence[seq_idx]
+            policy.collect(measurement=measurement)
+
+            collected_list.append(measurement.reshape(1, -1))
+            collected_indices.append(seq_idx)
+
+    return np.vstack(collected_list), collected_indices
 
 
-def make_policy(name: str, transition_model: TransitionModel, seq_length: int, num_features: int, **kwargs: Dict[str, Any]) -> Policy:
+def make_policy(name: str, seq_length: int, num_features: int, **kwargs: Dict[str, Any]) -> Policy:
     name = name.lower()
 
     if name == 'random':
-        return RandomPolicy(transition_model=transition_model,
-                            target=kwargs['target'],
+        return RandomPolicy(target=kwargs['target'],
                             precision=kwargs['precision'],
                             width=kwargs['width'],
                             num_features=num_features,
                             seq_length=seq_length)
     elif name == 'adaptive':
-        return AdaptivePolicy(transition_model=transition_model,
-                              target=kwargs['target'],
+        return AdaptivePolicy(target=kwargs['target'],
                               threshold=kwargs.get('threshold', 0.0),
                               precision=kwargs['precision'],
                               width=kwargs['width'],
@@ -327,15 +320,13 @@ def make_policy(name: str, transition_model: TransitionModel, seq_length: int, n
                               compression_name=kwargs['compression_name'],
                               compression_params=kwargs['compression_params'])
     elif name == 'uniform':
-        return UniformPolicy(transition_model=transition_model,
-                             target=kwargs['target'],
+        return UniformPolicy(target=kwargs['target'],
                              precision=kwargs['precision'],
                              width=kwargs['width'],
                              num_features=num_features,
                              seq_length=seq_length)
     elif name == 'all':
-        return AllPolicy(transition_model=transition_model,
-                         target=kwargs['target'],
+        return AllPolicy(target=kwargs['target'],
                          precision=kwargs['precision'],
                          width=kwargs['width'],
                          num_features=num_features,

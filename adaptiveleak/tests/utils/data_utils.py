@@ -1,6 +1,10 @@
 import unittest
 import numpy as np
+from Cryptodome.Random import get_random_bytes
+
 from adaptiveleak.utils import data_utils
+from adaptiveleak.utils.encryption import AES_BLOCK_SIZE, encrypt_aes128, EncryptionMode, encrypt
+from adaptiveleak.utils.message import encode_byte_measurements
 
 
 class TestNeuralNetwork(unittest.TestCase):
@@ -158,6 +162,198 @@ class TestExtrapolation(unittest.TestCase):
         expected = m * t2 + b
 
         self.assertTrue(np.all(np.isclose(predicted, expected)))
+
+
+class TestPadding(unittest.TestCase):
+
+    def test_round_is_multiple(self):
+        message = get_random_bytes(AES_BLOCK_SIZE)
+        key = get_random_bytes(AES_BLOCK_SIZE)
+
+        padded_size = data_utils.round_to_block(x=len(message), block_size=AES_BLOCK_SIZE)
+        padded_size += AES_BLOCK_SIZE  # Account for the IV
+
+        expected_size = len(encrypt_aes128(message, key=key))
+
+        self.assertEqual(padded_size + AES_BLOCK_SIZE, expected_size)
+
+    def test_round_non_multiple(self):
+        message = get_random_bytes(9)
+        key = get_random_bytes(AES_BLOCK_SIZE)
+
+        padded_size = data_utils.round_to_block(x=len(message), block_size=AES_BLOCK_SIZE)
+        padded_size += AES_BLOCK_SIZE  # Account for the IV
+
+        expected_size = len(encrypt_aes128(message, key=key))
+
+        self.assertEqual(padded_size, expected_size)
+
+
+class TestPacking(unittest.TestCase):
+
+    def test_pack_single_byte_ones(self):
+        values = [0xF, 0xF]
+        packed = data_utils.pack(values, width=4)
+
+        expected = bytes([0xFF])
+
+        self.assertEqual(packed, expected)
+
+    def test_pack_single_byte_diff(self):
+        values = [0x1, 0xF]
+        packed = data_utils.pack(values, width=4)
+
+        expected = bytes([0xF1])
+
+        self.assertEqual(packed, expected)
+
+    def test_pack_multi_byte(self):
+        values = [0x1, 0x12]
+        packed = data_utils.pack(values, width=5)
+
+        expected = bytes([0x41, 0x2])
+
+        self.assertEqual(packed, expected)
+
+    def test_pack_multi_byte_three(self):
+        values = [0x1, 0x12, 0x06]
+        packed = data_utils.pack(values, width=5)
+
+        expected = bytes([0x41, 0x1A])
+
+        self.assertEqual(packed, expected)
+
+    def test_pack_multi_byte_values(self):
+        values = [0x101, 0x092]
+        packed = data_utils.pack(values, width=9)
+
+        expected = bytes([0x01, 0x25, 0x01])
+
+        self.assertEqual(packed, expected)
+
+    def test_unpack_single_byte_ones(self):
+        encoded = bytes([0xFF])
+        values = data_utils.unpack(encoded, width=4, num_values=2)
+
+        self.assertEqual(len(values), 2)
+        self.assertEqual(values[0], 0xF)
+        self.assertEqual(values[1], 0xF)
+
+    def test_unpack_single_byte_diff(self):
+        encoded = bytes([0xF1])
+        values = data_utils.unpack(encoded, width=4, num_values=2)
+
+        self.assertEqual(len(values), 2)
+        self.assertEqual(values[0], 0x1)
+        self.assertEqual(values[1], 0xF)
+
+    def test_unpack_multi_byte(self):
+        encoded = bytes([0x41, 0x2])
+        values = data_utils.unpack(encoded, width=5, num_values=2)
+
+        self.assertEqual(len(values), 2)
+        self.assertEqual(values[0], 0x1)
+        self.assertEqual(values[1], 0x12)
+
+    def test_unpack_multi_byte_three(self):
+        encoded = bytes([0x41, 0x1A])
+        values = data_utils.unpack(encoded, width=5, num_values=3)
+
+        self.assertEqual(len(values), 3)
+        self.assertEqual(values[0], 0x1)
+        self.assertEqual(values[1], 0x12)
+        self.assertEqual(values[2], 0x06)
+
+    def test_unpack_multi_byte_values(self):
+        encoded = bytes([0x01, 0x25, 0x01])
+        values = data_utils.unpack(encoded, width=9, num_values=2)
+
+        self.assertEqual(len(values), 2)
+        self.assertEqual(values[0], 0x101)
+        self.assertEqual(values[1], 0x092)
+
+
+class TestCaculateBytes(unittest.TestCase):
+
+    def test_byte_block(self):
+        # 42 bits -> 6 bytes -> 16 bytes
+        data_bytes = data_utils.calculate_bytes(width=7,
+                                                num_features=3,
+                                                num_collected=2,
+                                                should_pad=True)
+        self.assertEqual(data_bytes, 16)
+
+    def test_byte_stream(self):
+        # 42 bits -> 6 bytes
+        data_bytes = data_utils.calculate_bytes(width=7,
+                                                num_features=3,
+                                                num_collected=2,
+                                                should_pad=False)
+
+        self.assertEqual(data_bytes, 6)
+
+    def test_byte_stream_end_to_end_one(self):
+        # Encode and encrypt measurements
+        measurements = np.ones(shape=(2, 3))
+        collected_indices = [0, 6]
+        seq_length = 8
+        precision = 4
+
+        encoded = encode_byte_measurements(measurements=measurements,
+                                           collected_indices=collected_indices,
+                                           seq_length=seq_length,
+                                           precision=precision)
+
+        key = get_random_bytes(32)
+        encrypted = encrypt(message=encoded, key=key, mode=EncryptionMode.STREAM)
+        metadata = 14  # 12 bytes for nonce, 1 byte for precision, 1 byte for collected bit-mask
+
+        message_bytes = data_utils.calculate_bytes(width=8,
+                                                   num_features=measurements.shape[1],
+                                                   num_collected=measurements.shape[0],
+                                                   should_pad=False)
+
+        self.assertEqual(message_bytes + metadata, len(encrypted))
+
+    def test_byte_stream_end_to_end_two(self):
+        # Encode and encrypt measurements
+        measurements = np.ones(shape=(2, 3))
+        collected_indices = [0, 6]
+        seq_length = 12
+        precision = 4
+
+        encoded = encode_byte_measurements(measurements=measurements,
+                                           collected_indices=collected_indices,
+                                           seq_length=seq_length,
+                                           precision=precision)
+
+        key = get_random_bytes(32)
+        encrypted = encrypt(message=encoded, key=key, mode=EncryptionMode.STREAM)
+        metadata = 15  # 12 bytes for nonce, 1 byte for precision, 2 bytes for collected bit-mask
+
+        message_bytes = data_utils.calculate_bytes(width=8,
+                                                   num_features=measurements.shape[1],
+                                                   num_collected=measurements.shape[0],
+                                                   should_pad=False)
+
+        self.assertEqual(message_bytes + metadata, len(encrypted))
+
+
+class TestGroupWidths(unittest.TestCase):
+
+    def test_widths_block(self):
+
+        widths = data_utils.get_group_widths(group_size=2,
+                                             num_collected=6,
+                                             num_features=3,
+                                             seq_length=10,
+                                             target_frac=0.5,
+                                             encryption_mode=EncryptionMode.BLOCK)
+
+        self.assertEqual(len(widths), 3)
+        self.assertEqual(widths[0], 6)
+        self.assertEqual(widths[1], 6)
+        self.assertEqual(widths[2], 6)
 
 
 if __name__ == '__main__':
