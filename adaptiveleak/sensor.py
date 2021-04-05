@@ -1,7 +1,7 @@
 import socket
-import h5py
 import os.path
 import numpy as np
+import time
 from argparse import ArgumentParser
 from typing import Optional
 
@@ -9,6 +9,7 @@ from adaptiveleak.policies import make_policy, run_policy, Policy
 from adaptiveleak.utils.encryption import encrypt, EncryptionMode
 from adaptiveleak.utils.message import encode_byte_measurements
 from adaptiveleak.utils.loading import load_data
+from adaptiveleak.utils.file_utils import read_json
 
 
 class Sensor:
@@ -50,8 +51,8 @@ class Sensor:
             sock.connect((self.host, self.port))
 
             # Set the maximum number of sequences
-            limit = inputs.shape[0]
-            limit = min(limit, max_sequences) if max_sequences is not None else limit
+            num_samples = inputs.shape[0]
+            limit = min(num_samples, max_sequences) if max_sequences is not None else num_samples
 
             seq_length = inputs.shape[1]
 
@@ -68,34 +69,54 @@ class Sensor:
                 message = policy.encode(measurements=measurements, collected_indices=indices)
 
                 # Encrypt and send the message
-                encrypted_message = encrypt(message=message, key=self._aes_key, mode=encryption_mode)
+                key = self._aes_key if encryption_mode == EncryptionMode.BLOCK else self._chacha_key
+                encrypted_message = encrypt(message=message, key=key, mode=encryption_mode)
+
+                # Pre-pend the message length to the front (4 bytes)
+                length = len(encrypted_message).to_bytes(4, byteorder='little')
+
+                encrypted_message = length + encrypted_message
 
                 sock.sendall(encrypted_message)
+
+                # Wait for a very small amount of time to rate limit a bit.
+                # The server take precautions to separate messages, but we 
+                # play it safe and just add a small separation between sequences.
+                time.sleep(1e-5)
 
 
 if __name__ == '__main__':
     parser = ArgumentParser()
     parser.add_argument('--dataset', type=str, required=True)
     parser.add_argument('--encryption', type=str, choices=['block', 'stream'], required=True)
+    parser.add_argument('--params', type=str, required=True)
+    parser.add_argument('--port', type=int, default=50000)
+    parser.add_argument('--max-num-samples', type=int)
     args = parser.parse_args()
 
     # Load the data
     inputs, _ = load_data(dataset_name=args.dataset, fold='test')
 
-    # Make the policy
-    policy = make_policy(name='uniform',
-                         target=0.6,
-                         width=8,
-                         precision=6,
-                         num_features=inputs.shape[2],
-                         seq_length=inputs.shape[1])
+    # Read the parameters
+    params = read_json(args.params)
 
     # Extract the encryption mode
     encryption_mode = EncryptionMode[args.encryption.upper()]
 
+    # Make the policy
+    policy = make_policy(name=params['name'],
+                         target=params['target'],
+                         precision=params['precision'],
+                         num_features=inputs.shape[2],
+                         seq_length=inputs.shape[1],
+                         encryption_mode=encryption_mode,
+                         encoding=params.get('encoding', 'unknown'))
+
     # Run the sensor
-    sensor = Sensor(server_host='localhost', server_port=50000)
+    sensor = Sensor(server_host='localhost', server_port=args.port)
     sensor.run(inputs=inputs,
                policy=policy,
-               max_sequences=2,
+               max_sequences=args.max_num_samples,
                encryption_mode=encryption_mode)
+
+    print('Completed Sensor.')

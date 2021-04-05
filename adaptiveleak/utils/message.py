@@ -69,7 +69,7 @@ def encode_byte_measurements(measurements: np.ndarray, collected_indices: List[i
     # Encode the measurements
     encoded = array_to_fp(measurements, precision=precision, width=8)
 
-    # Add the offset value (2^7 - 1) to ensure all positive values
+    # Add the offset value (2^7) to ensure all positive values
     encoded = encoded + 128
 
     # Begin message with the precision
@@ -144,20 +144,25 @@ def encode_grouped_measurements(measurements: np.ndarray, collected_indices: Lis
     # Divide features into groups and encode separately
     flattened = measurements.reshape(-1)  # [K * D]
 
-    group_size = int((measurements.shape[0] * measurements.shape[1]) / num_groups)
+    group_size = int(math.ceil((measurements.shape[0] * measurements.shape[1]) / num_groups))
 
     encoded_groups: List[bytes] = []
     for group_idx, width in enumerate(widths):
         # Extract the features in this group
         start, end = group_idx * group_size, (group_idx + 1) * group_size
-        group_features = flattened[start:end] 
+
+        if group_idx == (num_groups - 1):
+            group_features = flattened[start:]
+        else:
+            group_features = flattened[start:end]
 
         # Encode the features
-        precision = width - non_fractional
+        precision = max(width - non_fractional, 1)
         group_encoded = array_to_fp(group_features, precision=precision, width=width)
 
         # Add offset to ensure positive values
-        group_encoded = group_encoded + (1 << (precision - 1))
+        offset = 1 << (width - 1)
+        group_encoded = group_encoded + offset
 
         # Pack the features into a single bit-string
         group_packed = pack(group_encoded, width=width)
@@ -206,25 +211,33 @@ def decode_grouped_measurements(encoded: bytes, seq_length: int, num_features: i
     encoded = encoded[num_groups+2:]
 
     start = 0
-    group_size = int((num_measurements * num_features) / num_groups)
+    count = 0
+    group_size = int(math.ceil((num_measurements * num_features) / num_groups))
 
     # Unpack the measurement values
     features: List[float] = []
 
     for group_idx, width in enumerate(group_widths):
-        num_bytes = int(math.ceil(width * group_size / 8))
+        # Get the number of values in the current group
+        if group_idx == (num_groups - 1):
+            num_values = (num_measurements * num_features) - count
+        else:
+            num_values = group_size
+
+        num_bytes = int(math.ceil((width * num_values) / 8))
 
         group_encoded = encoded[start:start+num_bytes] 
-        group_features = unpack(group_encoded, width=width, num_values=group_size)
+        group_features = unpack(group_encoded, width=width, num_values=num_values)
 
         # Remove the offset value
-        precision = width - non_fractional
-        group_features = [x - (1 << (precision - 1)) for x in group_features]
+        precision = max(width - non_fractional, 1)
+        group_features = [x - (1 << (width - 1)) for x in group_features]
 
         raw_features = array_to_float(group_features, precision=precision)
         
         features.extend(raw_features)
         start += num_bytes
+        count += num_values
 
     # Ensure didn't grab any extra values
     features = features[0:(num_measurements * num_features)]
@@ -233,28 +246,3 @@ def decode_grouped_measurements(encoded: bytes, seq_length: int, num_features: i
     measurements = np.array(features).reshape(-1, num_features)
 
     return measurements, collected_indices
-
-
-#measurements = np.array([[0.25, 0.5], [0.75, 0.5]])
-#collected_idx = [0, 4]
-#seq_length = 8
-#widths = [5, 4]
-#non_fractional = 2
-#
-#encoded = encode_grouped_measurements(measurements=measurements,
-#                                      collected_indices=collected_idx,
-#                                      seq_length=seq_length,
-#                                      widths=widths,
-#                                      non_fractional=non_fractional)
-#
-#print(encoded)
-#
-#decoded, collected = decode_grouped_measurements(encoded=encoded,
-#                                      seq_length=seq_length,
-#                                      num_features=2,
-#                                      non_fractional=non_fractional)
-#
-#
-#print(decoded)
-#print(collected)
-

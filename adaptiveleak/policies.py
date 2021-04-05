@@ -5,14 +5,14 @@ from typing import Tuple, List, Dict, Any
 
 from adaptiveleak.controllers import PIDController
 from adaptiveleak.utils.constants import BIT_WIDTH
-from adaptiveleak.utils.data_utils import get_group_widths, get_num_groups
+from adaptiveleak.utils.data_utils import get_group_widths, get_num_groups, calculate_bytes, pad_to_length
 from adaptiveleak.utils.message import encode_byte_measurements, decode_byte_measurements
 from adaptiveleak.utils.message import encode_grouped_measurements, decode_grouped_measurements
-from adaptiveleak.utils.encryption import AES_BLOCK_SIZE, EncryptionMode
+from adaptiveleak.utils.encryption import AES_BLOCK_SIZE, EncryptionMode, CHACHA_NONCE_LEN
 
 
 class EncodingMode(Enum):
-    NONE = auto()
+    STANDARD = auto()
     GROUP = auto()
 
 
@@ -138,7 +138,7 @@ class AdaptivePolicy(Policy):
 
     @property
     def group_size(self) -> int:
-        return max(int(math.floor((BIT_WIDTH * AES_BLOCK_SIZE) / self.num_features)), 1)
+        return max(int(math.ceil((BIT_WIDTH * AES_BLOCK_SIZE) / self.num_features)), 1)
 
     def should_collect(self, seq_idx: int) -> bool:
         if self._sample_skip > 0:
@@ -148,7 +148,7 @@ class AdaptivePolicy(Policy):
         return True
 
     def collect(self, measurement: np.ndarray):
-        diff = np.square(np.abs(self._estimate - measurement))
+        diff = np.sum(np.abs(self._estimate - measurement))
         self._estimate = measurement
 
         if diff > self._threshold:
@@ -174,7 +174,7 @@ class AdaptivePolicy(Policy):
             self._threshold = -1 * signal
 
     def encode(self, measurements: np.ndarray, collected_indices: List[int]) -> bytes:
-        if self.encoding_mode == EncodingMode.NONE:
+        if self.encoding_mode == EncodingMode.STANDARD:
             return super().encode(measurements, collected_indices)
         elif self.encoding_mode == EncodingMode.GROUP:
             num_collected = len(measurements)
@@ -183,7 +183,7 @@ class AdaptivePolicy(Policy):
             num_groups = get_num_groups(num_collected=num_collected,
                                         group_size=self.group_size)
 
-            widths = get_group_widths(num_groups=num_groups,
+            widths = get_group_widths(group_size=self.group_size,
                                       num_collected=num_collected,
                                       num_features=self.num_features,
                                       seq_length=self.seq_length,
@@ -191,16 +191,47 @@ class AdaptivePolicy(Policy):
                                       encryption_mode=self.encryption_mode)
 
             non_fractional = self.width - self.precision
-            return encode_grouped_measurements(measurements=measurements,
-                                               collected_indices=collected_indices,
+            encoded = encode_grouped_measurements(measurements=measurements,
+                                                  collected_indices=collected_indices,
+                                                  seq_length=self.seq_length,
+                                                  widths=widths,
+                                                  non_fractional=non_fractional)
+
+            if self.encryption_mode == EncryptionMode.STREAM:
+                target_bytes = calculate_bytes(width=BIT_WIDTH,
+                                               num_collected=int(self.target * self.seq_length),
+                                               num_features=self.num_features,
                                                seq_length=self.seq_length,
-                                               widths=widths,
+                                               encryption_mode=self.encryption_mode)
+
+                print('{0} {1} {2}'.format(widths, target_bytes, len(encoded)))
+
+                return pad_to_length(encoded, length=target_bytes - CHACHA_NONCE_LEN)
+
+            return encoded
+        else:
+            raise ValueError('Unknown encoding type {0}'.format(self.encoding_mode.name))
+
+    def decode(self, message: bytes) -> Tuple[np.ndarray, List[int]]:
+        if self.encoding_mode == EncodingMode.STANDARD:
+            return super().decode(message)
+        elif self.encoding_mode == EncodingMode.GROUP:
+            non_fractional = self.width - self.precision
+
+            return decode_grouped_measurements(encoded=message,
+                                               seq_length=self.seq_length,
+                                               num_features=self.num_features,
                                                non_fractional=non_fractional)
         else:
-            raise ValueError('Unknown encoding type {0}'.format(self._encoding_mode.name))
+            raise ValueError('Unknown encoding type {0}'.format(self.encoding_mode.name))
 
     def __str__(self) -> str:
-        return 'Adaptive {0}'.format(self._encoding_mode.name)
+        return 'adaptive_{0}'.format(self._encoding_mode.name.lower())
+
+    def as_dict(self) -> Dict[str, Any]:
+        policy_dict = super().as_dict()
+        policy_dict['encoding'] = self._encoding_mode.name
+        return policy_dict
 
 
 class RandomPolicy(Policy):
@@ -214,7 +245,7 @@ class RandomPolicy(Policy):
         return False
 
     def __str__(self) -> str:
-        return 'Random'
+        return 'random'
 
 
 class UniformPolicy(Policy):
@@ -263,7 +294,7 @@ class UniformPolicy(Policy):
         return False
 
     def __str__(self) -> str:
-        return 'Uniform'
+        return 'uniform'
 
     def reset(self):
         self._skip_idx = 0

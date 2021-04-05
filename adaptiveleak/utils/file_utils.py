@@ -67,18 +67,6 @@ def read_pickle_gz(file_path: str) -> Any:
         return pickle.load(f)
 
 
-def read_json(file_path: str) -> OrderedDict:
-    assert file_path.endswith('.json'), 'Must provide a json file.'
-    with open(file_path, 'r') as f:
-        return json.load(f, object_pairs_hook=OrderedDict)
-
-
-def save_json(data: Any, file_path: str):
-    assert file_path.endswith('.json'), 'Must provide a json file.'
-    with open(file_path, 'w') as f:
-        json.dump(data, f)
-
-
 def read_pickle(file_path: str) -> Any:
     assert file_path.endswith('.pkl'), 'Must provide a pickle file.'
     with open(file_path, 'rb') as f:
@@ -91,3 +79,29 @@ def save_pickle(data: Any, file_path: str):
         pickle.dump(data, f)
 
 
+def read_json(file_path: str) -> OrderedDict:
+    assert file_path.endswith('.json'), 'Must provide a json file.'
+    with open(file_path, 'r') as f:
+        return json.load(f, object_pairs_hook=OrderedDict)
+
+
+def save_json(data: Any, file_path: str):
+    assert file_path.endswith('.json'), 'Must provide a json file.'
+    with open(file_path, 'w') as f:
+        json.dump(data, f)
+
+
+def read_json_gz(file_path: str) -> Any:
+    assert file_path.endswith('.json.gz'), 'Must provide a json gzip file.'
+    
+    with gzip.GzipFile(file_path, 'rb') as f:
+        reader = codecs.getreader('utf-8')
+        return json.load(reader(f), object_pairs_hook=OrderedDict)
+
+
+def save_json_gz(data: Any, file_path: str):
+    assert file_path.endswith('.json.gz'), 'Must provide a json gzip file.'
+
+    with gzip.GzipFile(file_path, 'wb') as f:
+        writer = codecs.getwriter('utf-8')
+        writer(f).write(json.dumps(data))

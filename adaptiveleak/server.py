@@ -10,6 +10,7 @@ from adaptiveleak.policies import make_policy, Policy
 from adaptiveleak.utils.encryption import decrypt, EncryptionMode
 from adaptiveleak.utils.message import decode_byte_measurements
 from adaptiveleak.utils.loading import load_data
+from adaptiveleak.utils.file_utils import read_json, save_json_gz
 
 
 def reconstruct_sequence(measurements: np.ndarray, collected_indices: List[int], seq_length: int) -> np.ndarray:
@@ -25,12 +26,13 @@ def reconstruct_sequence(measurements: np.ndarray, collected_indices: List[int],
     """
     collected_idx = 0
 
-    estimate = np.zeros(shape=(measurements.shape[-1], 1))  # [D, 1]
+    num_features = measurements.shape[-1]
+    estimate = np.zeros(shape=(1, num_features))  # [1, D]
 
     reconstructed: List[np.ndarray] = []
     for seq_idx in range(seq_length):
         if (collected_idx < len(collected_indices)) and (seq_idx == collected_indices[collected_idx]):
-            estimate = measurements[collected_idx].reshape(-1, 1)  # [D, 1]
+            estimate = measurements[collected_idx].reshape(1, num_features)  # [1, D]
             collected_idx += 1
 
         reconstructed.append(estimate)
@@ -59,7 +61,7 @@ class Server:
     def port(self) -> int:
         return self._port
 
-    def run(self, inputs: np.ndarray, labels: np.ndarray, policy: Policy, max_sequences: Optional[int], encryption_mode: EncryptionMode, should_print: bool):
+    def run(self, inputs: np.ndarray, labels: np.ndarray, policy: Policy, max_sequences: Optional[int], encryption_mode: EncryptionMode, should_print: bool, output_folder: str):
         """
         Opens the server for connections.
         """
@@ -84,7 +86,7 @@ class Server:
             sock.bind((self.host, self.port))
 
             if should_print:
-                print('Started Server. Waiting for a connection...')
+                print('Started Server.')
 
             # Listen on the given port and accept any inbound connections
             sock.listen()
@@ -97,13 +99,25 @@ class Server:
                 # Set the maximum number of samples
                 limit = min(max_sequences, num_samples) if max_sequences is not None else num_samples
 
+                # Create a buffer for messages
+                message_buffer = bytearray()
+
                 # Iterate over all samples
                 for idx in range(limit):
                     # Receive the given sequence (large-enough buffer)
-                    recv = conn.recv(1024)
+                    recv = conn.recv(2048)
+                    message_buffer.extend(recv)
+
+                    # Get the information for the current sample
+                    length = int.from_bytes(message_buffer[0:4], byteorder='little')
+                    recv_sample = bytes(message_buffer[4:4+length])
+
+                    # Move the message buffer
+                    message_buffer = message_buffer[4+length:]
 
                     # Decrypt the message
-                    message = decrypt(ciphertext=recv, key=self._aes_key, mode=encryption_mode)
+                    key = self._aes_key if encryption_mode == EncryptionMode.BLOCK else self._chacha_key
+                    message = decrypt(ciphertext=recv_sample, key=key, mode=encryption_mode)
 
                     # Decode the measurements
                     measurements, collected_indices = policy.decode(message=message)
@@ -117,29 +131,44 @@ class Server:
                     error = mean_squared_error(y_true=inputs[idx],
                                                y_pred=reconstructed)
 
+                    if (idx == 495):
+                        print(reconstructed)
+                        print(error)
+
                     # Log the results of this sequence
-                    num_bytes.append(len(recv))
+                    num_bytes.append(len(recv_sample))
                     num_measurements.append(len(measurements))
                     errors.append(error)
                     label_list.append(int(labels[idx]))
 
+                    if ((idx + 1) % 100) == 0:
+                        print('Completed {0} sequences.'.format(idx + 1))
+
         # Save the results
         result_dict = {
+            'avg_error': np.average(errors),
+            'avg_bytes': np.average(num_bytes),
+            'avg_measurements': np.average(num_measurements),
             'errors': errors,
             'num_bytes': num_bytes,
             'num_measurements': num_measurements,
             'labels': label_list,
             'encryption_mode': encryption_mode.name,
-            'policy': policy.as_dict(),
+            'policy': policy.as_dict()
         }
 
-        print(result_dict)
+        output_path = os.path.join(output_folder, '{0}_{1}.json.gz'.format(str(policy), int(policy.target * 100)))
+        save_json_gz(result_dict, output_path)
 
 
 if __name__ == '__main__':
     parser = ArgumentParser()
     parser.add_argument('--dataset', type=str, required=True)
     parser.add_argument('--encryption', type=str, choices=['block', 'stream'], required=True)
+    parser.add_argument('--params', type=str, required=True)
+    parser.add_argument('--output-folder', type=str, required=True)
+    parser.add_argument('--port', type=int, default=50000)
+    parser.add_argument('--max-num-samples', type=int)
     args = parser.parse_args()
 
     # Load the test data
@@ -149,20 +178,25 @@ if __name__ == '__main__':
     encryption_mode = EncryptionMode[args.encryption.upper()]
 
     # Make the server
-    server = Server(host='localhost', port=50000)
+    server = Server(host='localhost', port=args.port)
 
+    # Extract the parameters
+    params = read_json(args.params)
+    
     # Make the policy
-    policy = make_policy(name='uniform',
-                         target=0.6,
-                         width=8,
-                         precision=6,
+    policy = make_policy(name=params['name'],
+                         target=params['target'],
+                         precision=params['precision'],
                          num_features=inputs.shape[2],
-                         seq_length=inputs.shape[1])
+                         seq_length=inputs.shape[1],
+                         encryption_mode=encryption_mode,
+                         encoding=params.get('encoding', 'unknown'))
 
     # Run the experiment
     server.run(inputs=inputs,
                labels=labels,
-               max_sequences=2,
+               max_sequences=args.max_num_samples,
                should_print=True,
                policy=policy,
-               encryption_mode=encryption_mode)
+               encryption_mode=encryption_mode,
+               output_folder=args.output_folder)

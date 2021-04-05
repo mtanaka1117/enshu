@@ -1,6 +1,7 @@
 import numpy as np
 import math
 from functools import partial
+from Cryptodome.Random import get_random_bytes
 from typing import List
 
 from adaptiveleak.utils.constants import BIT_WIDTH
@@ -85,7 +86,7 @@ def pad_to_length(message: bytes, length: int) -> bytes:
     if len(message) >= length:
         return message
 
-    padding = bytes(length - len(message))
+    padding = get_random_bytes(length - len(message))
     return message + padding
 
 
@@ -110,16 +111,18 @@ def pack(values: List[int], width: int) -> bytes:
     """
     packed: List[int] = [0]
     consumed = 0
+    num_bytes = int(math.ceil(width / 8))
 
     for value in values:
-        num_bytes = int(math.ceil(width / 8))
-
         for i in range(num_bytes):
             # Get the current byte
             current_byte = (value >> (i * 8)) & 0xFF
 
             # Get the number of used bits in the current byte
-            num_bits = 8 if i < (num_bytes - 1) else (width % 8)
+            if i < (num_bytes - 1) or (width % 8) == 0:
+                num_bits = 8
+            else:
+                num_bits = width % 8
 
             # Set bits in the packed string
             packed[-1] |= current_byte << consumed
@@ -138,7 +141,7 @@ def pack(values: List[int], width: int) -> bytes:
                 # Add the remaining value to the running string
                 packed.append(remaining_value)
 
-    return bytes(bytearray(packed))
+    return bytes(packed)
 
 
 def unpack(encoded: bytes, width: int,  num_values: int) -> List[int]:
@@ -156,6 +159,7 @@ def unpack(encoded: bytes, width: int,  num_values: int) -> List[int]:
     current = 0
     current_length = 0
     byte_idx = 0
+    mask = (1 << width) - 1
 
     for i in range(num_values):
         # Get at at least the next 'width' bits
@@ -165,7 +169,6 @@ def unpack(encoded: bytes, width: int,  num_values: int) -> List[int]:
             byte_idx += 1
 
         # Truncate down to 'width' bits
-        mask = (1 << width) - 1
         value = current & mask
         result.append(value)
 
@@ -250,25 +253,6 @@ def get_group_widths(group_size: int,
         i += 1
         group_idx += 1
         group_idx = group_idx % len(widths)
-
-    #elif encryption_mode == EncryptionMode.STREAM:
-    #    while (i < MAX_ITER) and (data_bytes > target_bytes):
-    #        # Adjust the group width
-    #        widths[group_idx] -= 1
-
-    #        # Update the byte count
-    #        data_bytes = calculate_grouped_bytes(widths=widths,
-    #                                             num_collected=num_collected,
-    #                                             num_features=num_features,
-    #                                             group_size=group_size,
-    #                                             seq_length=seq_length,
-    #                                             encryption_mode=encryption_mode)
-
-    #        i += 1
-    #        group_idx += 1
-    #        group_idx = group_idx % len(widths)
-    #else:
-    #    raise ValueError('Unknown encryption mode: {0}'.format(encryption_mode.name))
 
     return widths
 

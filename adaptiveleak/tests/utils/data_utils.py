@@ -188,6 +188,24 @@ class TestPadding(unittest.TestCase):
 
         self.assertEqual(padded_size, expected_size)
 
+    def test_pad_below(self):
+        message = get_random_bytes(9)
+        padded = data_utils.pad_to_length(message=message, length=AES_BLOCK_SIZE)
+
+        self.assertEqual(len(padded), AES_BLOCK_SIZE)
+
+    def test_pad_above(self):
+        message = get_random_bytes(20)
+        padded = data_utils.pad_to_length(message=message, length=AES_BLOCK_SIZE)
+
+        self.assertEqual(len(padded), 20)
+
+    def test_pad_equal(self):
+        message = get_random_bytes(AES_BLOCK_SIZE)
+        padded = data_utils.pad_to_length(message=message, length=AES_BLOCK_SIZE)
+
+        self.assertEqual(len(padded), AES_BLOCK_SIZE)
+
 
 class TestPacking(unittest.TestCase):
 
@@ -205,6 +223,13 @@ class TestPacking(unittest.TestCase):
 
         expected = bytes([0xF1])
 
+        self.assertEqual(packed, expected)
+
+    def test_pack_full_byte(self):
+        values = [0xAB, 0xCD]
+        packed = data_utils.pack(values, width=8)
+
+        expected = bytes([0xAB, 0xCD])
         self.assertEqual(packed, expected)
 
     def test_pack_multi_byte(self):
@@ -246,6 +271,13 @@ class TestPacking(unittest.TestCase):
         self.assertEqual(len(values), 2)
         self.assertEqual(values[0], 0x1)
         self.assertEqual(values[1], 0xF)
+
+    def test_unpack_full_byte(self):
+        encoded = bytes([0xAB, 0xCD])
+        values = data_utils.unpack(encoded, width=8, num_values=2)
+
+        expected = [0xAB, 0xCD]
+        self.assertEqual(values, expected)
 
     def test_unpack_multi_byte(self):
         encoded = bytes([0x41, 0x2])

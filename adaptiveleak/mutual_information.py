@@ -4,17 +4,16 @@ from argparse import ArgumentParser
 from collections import Counter, defaultdict, OrderedDict
 from typing import Dict, List, DefaultDict, Optional
 
-from utils.file_utils import read_pickle_gz, iterate_dir
+from utils.file_utils import read_json_gz, iterate_dir
 
 
-MODEL_ORDER = ['Random', 'Uniform', 'Adaptive', 'Adaptive Block', 'Adaptive Stream']
+MODEL_ORDER = ['random', 'uniform', 'adaptive_standard', 'adaptive_group']
 
 COLORS = {
-    'Random': '#d73027',
-    'Uniform': '#fc8d59',
-    'Adaptive': '#9ecae1',
-    'Adaptive Block': '#6baed6',
-    'Adaptive Stream': '#08519c'
+    'random': '#d73027',
+    'uniform': '#fc8d59',
+    'adaptive_standard': '#9ecae1',
+    'adaptive_group': '#08519c'
 }
 
 #MODEL_ORDER = ['Random', 'Adaptive Heuristic', 'Adaptive Quantile']
@@ -68,6 +67,10 @@ def get_conditional_distribution(byte_dist: Dict[int, List[int]]) -> Dict[int, D
         result[size] = {label: count / total for label, count in label_counts.items()}
 
     return result
+
+
+def to_label(name: str) -> str:
+    return ' '.join(t.capitalize() for t in name.split('_'))
 
 
 def mutual_information(byte_dist: Dict[int, List[int]]) -> float:
@@ -126,7 +129,7 @@ def plot(information_results: DefaultDict[str, Dict[float, float]], output_file:
             fractions = sorted(information.keys())
             values = [information[frac] for frac in fractions]
 
-            ax.plot(fractions, values, label=name, color=COLORS[name], linewidth=4, marker='o', markersize=8)
+            ax.plot(fractions, values, label=to_label(name), color=COLORS[name], linewidth=4, marker='o', markersize=8)
 
             print('{0} & {1:.4f}'.format(name, np.max(values)))
 
@@ -134,7 +137,7 @@ def plot(information_results: DefaultDict[str, Dict[float, float]], output_file:
 
         ax.set_title('Empirical Mutual Information between Message Size and Prediction')
         ax.set_xlabel('Target Fraction', size=12)
-        ax.set_ylabel('Mutual Information (nits)', size=12)
+        ax.set_ylabel('Empirical Mutual Information (nits)', size=12)
 
         if output_file is None:
             plt.show()
@@ -151,11 +154,17 @@ if __name__ == '__main__':
     information_results: DefaultDict[str, Dict[float, float]] = defaultdict(dict)
 
     for folder in args.policy_folders:
-        for sim_file in iterate_dir(folder, pattern='.*pkl.gz'):
-            model = read_pickle_gz(sim_file)
+        for sim_file in iterate_dir(folder, pattern='.*json.gz'):
+            model = read_json_gz(sim_file)
 
-            byte_dist = model['byte_dist']
-            name = get_name(model['policy'], is_padded=model.get('is_padded', True))
+            num_bytes = model['num_bytes']
+            labels = model['labels']
+
+            byte_dist: DefaultDict[int, List[int]] = defaultdict(list)
+            for label, byte_count in zip(labels, num_bytes):
+                byte_dist[label].append(byte_count)
+
+            name = model['policy']['name']
             target = model['policy']['target']
 
             information_results[name][target] = mutual_information(byte_dist)
