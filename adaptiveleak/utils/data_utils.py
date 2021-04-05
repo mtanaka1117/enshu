@@ -2,9 +2,9 @@ import numpy as np
 import math
 from functools import partial
 from Cryptodome.Random import get_random_bytes
-from typing import List
+from typing import List, Union, Tuple
 
-from adaptiveleak.utils.constants import BIT_WIDTH
+from adaptiveleak.utils.constants import BIT_WIDTH, BIG_NUMBER
 from adaptiveleak.utils.encryption import AES_BLOCK_SIZE, EncryptionMode, CHACHA_NONCE_LEN
 
 
@@ -32,9 +32,11 @@ def softmax(x: np.ndarray, axis: int) -> np.ndarray:
 
 
 def to_fixed_point(x: float, precision: int, width: int) -> int:
-    multiplier = (1 << precision)
-    fp = int(x * multiplier)
-    
+    assert width >= 1, 'Must have a non-negative width'
+
+    multiplier = 1 << abs(precision)
+    fp = int(x * multiplier) if precision > 0 else int(x / multiplier)
+
     max_val = (1 << (width - 1)) - 1
     min_val = -max_val
 
@@ -46,8 +48,8 @@ def to_fixed_point(x: float, precision: int, width: int) -> int:
 
 
 def to_float(fp: int, precision: int) -> float:
-    multiplier = float(1 << precision)
-    return float(fp) / multiplier
+    multiplier = float(1 << abs(precision))
+    return float(fp) / multiplier if precision > 0 else float(fp) * multiplier
 
 
 def array_to_fp(arr: np.ndarray, precision: int, width: int) -> np.ndarray:
@@ -61,6 +63,40 @@ def array_to_float(fp_arr: np.ndarray, precision: int) -> np.ndarray:
     map_fn = np.vectorize(convert_fn)
 
     return map_fn(fp_arr)
+
+
+def select_range_shift(measurements: np.ndarray, width: int, precision: int, num_range_bits: int) -> int:
+    """
+    Selects the lowest-error range multiplier.
+
+    Args:
+        measurements: An array of measurement features
+        width: The width of each feature
+        precision: The precision of each feature
+        num_range_bits: The number of bits for the range exponent
+    Returns:
+        The range exponent in [-2^{range_bits - 1}, 2^{range_bits - 1}]
+    """
+    assert num_range_bits >= 1, 'Number of range bits must be non-negative'
+    assert width >= 1, 'Number of width bits must be non-negative'
+
+    best_shift = 0
+    best_error = BIG_NUMBER
+
+    offset = 1 << (num_range_bits - 1)
+    for x in range(pow(2, num_range_bits)):
+        shift = x - offset
+
+        quantized_fixed_point = array_to_fp(measurements, width=width, precision=precision + shift)
+        quantized = array_to_float(quantized_fixed_point, precision=precision + shift)
+
+        error = np.sum(np.abs(quantized - measurements))
+
+        if error < best_error:
+            best_error = error
+            best_shift = shift
+
+    return best_shift
 
 
 def linear_extrapolate(prev: np.ndarray, curr: np.ndarray, delta: float) -> np.ndarray:
@@ -81,7 +117,8 @@ def linear_extrapolate(prev: np.ndarray, curr: np.ndarray, delta: float) -> np.n
 
 def pad_to_length(message: bytes, length: int) -> bytes:
     """
-    Pads larger messages to the given length.
+    Pads larger messages to the given length by appending
+    random bytes.
     """
     if len(message) >= length:
         return message
@@ -90,12 +127,70 @@ def pad_to_length(message: bytes, length: int) -> bytes:
     return message + padding
 
 
-def round_to_block(x: float, block_size: int) -> int:
-    return int(math.ceil(x / block_size)) * block_size
+def round_to_block(length: Union[int, float], block_size: int) -> int:
+    """
+    Rounds the given length to the nearest (larger) multiple of
+    the block size.
+    """
+    return int(math.ceil(length / block_size)) * block_size
 
 
-def truncate_to_block(x: float, block_size: int) -> int:
-    return int(math.floor(x / block_size)) * block_size
+def truncate_to_block(length: Union[int, float], block_size: int) -> int:
+    """
+    Rounds the given length to the nearest (smaller) multiple of
+    the block size.
+    """
+    return int(math.floor(length / block_size)) * block_size
+
+
+def get_max_collected(seq_length: int,
+                      num_features: int,
+                      group_size: int,
+                      min_width: int,
+                      target_size: int,
+                      encryption_mode: EncryptionMode) -> int:
+    """
+    Returns the maximum number of measurements that can be quantized
+    to the given target size with features of (at least) the minimum width.
+
+    Args:
+        seq_length: The length of a full sequence
+        num_features: The number of features in a single measurement
+        group_size: The size of each group except (possibly) the last
+        min_width: The minimum bit width of a single feature
+        target_size: The target number of bytes
+        encryption_mode: The type of encryption algorithm (block or stream)
+    Returns:
+        The maximum number of measurements
+    """
+    # Get the number of bytes per group (in the worst case)
+    size_per_group = int(math.ceil((num_features * group_size * min_width) / BIT_WIDTH))
+
+    # Get the number of meta-data bytes
+    meta_size = int(math.ceil(seq_length / BIT_WIDTH)) + 2
+    if encryption_mode == EncryptionMode.BLOCK:
+        meta_size += AES_BLOCK_SIZE
+    elif encryption_mode == EncryptionMode.STREAM:
+        meta_size += CHACHA_NONCE_LEN
+    else:
+        raise ValueError('Unknown encryption mode {0}'.format(encryption_mode.name))
+
+    # Calculate the maximum number of groups
+    max_groups = int(math.floor((target_size - meta_size) / (size_per_group + 1.0)))
+
+    # Determine the number of consumed bytes thus far
+    current_size = int(max_groups * size_per_group + max_groups + meta_size)
+
+    # Get the maximum number of measurements based on
+    # even-sized groups
+    max_measurements = max_groups * group_size
+
+    # Add in extra measurements to the final group (may be smaller than other groups)
+    extra_measurements = int(math.floor((BIT_WIDTH * ((target_size - current_size) - 1)) / (num_features * min_width)))
+    max_measurements += extra_measurements
+
+    # Cap the number of measurements at the sequence length
+    return min(max_measurements, seq_length)
 
 
 def pack(values: List[int], width: int) -> bytes:
@@ -338,3 +433,45 @@ def calculate_grouped_bytes(widths: List[int],
         return CHACHA_NONCE_LEN + total_bytes
     else:
         raise ValueError('Unknown encryption mode: {0}'.format(encryption_mode.name))
+
+
+def prune_sequence(measurements: np.ndarray, collected_indices: List[int], max_collected: int) -> Tuple[np.ndarray, List[int]]:
+    """
+    Prunes the given sequence to use at most the maximum number
+    of measurements. We remove measurements that induce the approximate lowest
+    amount of additional error.
+
+    Args:
+        measurements: A [K, D] array of collected measurement vectors
+        collected_indices: A list of [K] indices of the collected measurements
+        max_collected: The maximum number of allowed measurements
+    Returns:
+        A tuple of two elements:
+            (1) A [K', D] array of the pruned measurements
+            (2) A [K'] list of the remaining indices
+    """
+    assert len(measurements.shape) == 2, 'Must provide a 2d array of measurements'
+    assert measurements.shape[0] == len(collected_indices), 'Misaligned measurements ({0}) and collected indices ({1})'.format(measurements.shape[0], len(collected_indices))
+
+    num_collected = len(collected_indices)
+    if num_collected <= max_collected:
+        return measurements, collected_indices
+
+    ahead_errors = np.sum(np.abs(measurements[1:] - measurements[:-1]), axis=-1)  # [K - 1]
+    total_errors = ahead_errors[1:] + ahead_errors[:-1]  # [K - 2]
+
+    num_to_remove = num_collected - max_collected
+    partitioned = np.argpartition(total_errors, kth=num_to_remove) + 1
+
+    highest_error_indices = partitioned[num_to_remove:]
+    kept_measurements = measurements[highest_error_indices]
+
+    first = np.expand_dims(measurements[0], axis=0)
+    last = np.expand_dims(measurements[-1], axis=0)
+
+    pruned = np.vstack([first, kept_measurements, last])
+
+    first_idx, last_idx = collected_indices[0], collected_indices[-1]
+    kept_indices = [first_idx] + [i for i in highest_error_indices] + [last_idx]
+
+    return pruned, kept_indices

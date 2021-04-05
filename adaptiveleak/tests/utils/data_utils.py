@@ -95,6 +95,19 @@ class TestQuantization(unittest.TestCase):
         self.assertEqual(-255, data_utils.to_fixed_point(-5, precision=6, width=9))
         self.assertEqual(-255, data_utils.to_fixed_point(-12, precision=6, width=9))
 
+    def test_to_fp_neg_shift(self):
+        self.assertEqual(1, data_utils.to_fixed_point(2, precision=-1, width=6))
+        self.assertEqual(1, data_utils.to_fixed_point(4, precision=-2, width=7))
+        self.assertEqual(2, data_utils.to_fixed_point(5, precision=-1, width=5))
+        self.assertEqual(3, data_utils.to_fixed_point(12, precision=-2, width=3))
+        self.assertEqual(3, data_utils.to_fixed_point(15, precision=-2, width=3))
+        
+        self.assertEqual(-1, data_utils.to_fixed_point(-2, precision=-1, width=6))
+        self.assertEqual(-1, data_utils.to_fixed_point(-4, precision=-2, width=7))
+        self.assertEqual(-2, data_utils.to_fixed_point(-5, precision=-1, width=5))
+        self.assertEqual(-3, data_utils.to_fixed_point(-12, precision=-2, width=3))
+        self.assertEqual(-3, data_utils.to_fixed_point(-15, precision=-2, width=3))
+
     def test_array_to_fp(self):
         array = np.array([0.25, -0.28700833, 0.95151288, 0.63029945])
         result = data_utils.array_to_fp(array, precision=10, width=12)
@@ -125,11 +138,61 @@ class TestQuantization(unittest.TestCase):
         self.assertTrue(np.isclose(-0.9375, data_utils.to_float(-60, precision=6)))
         self.assertTrue(np.isclose(-0.62890625, data_utils.to_float(-161, precision=8)))
 
+    def test_to_float_neg_shift(self):
+        self.assertEqual(2, data_utils.to_float(1, precision=-1))
+        self.assertEqual(4, data_utils.to_float(1, precision=-2))
+        self.assertEqual(4, data_utils.to_float(2, precision=-1))
+        self.assertEqual(12, data_utils.to_float(3, precision=-2))
+ 
+        self.assertEqual(-2, data_utils.to_float(-1, precision=-1))
+        self.assertEqual(-4, data_utils.to_float(-1, precision=-2))
+        self.assertEqual(-4, data_utils.to_float(-2, precision=-1))
+        self.assertEqual(-12, data_utils.to_float(-3, precision=-2))
+
     def test_array_to_float(self):
         array = np.array([-256, 293, 974, -645])
         result = data_utils.array_to_float(array, precision=10)
         expected = np.array([-0.25, 0.2861328125, 0.951171875, -0.6298828125])
         self.assertTrue(np.all(np.isclose(expected, result)))
+
+
+class TestRangeShift(unittest.TestCase):
+
+    def test_range_integers(self):
+        measurements = np.array([[1.0, 2.0, -3.0], [4.0, -1.0, 3.0]])
+        width = 8
+        precision = 7
+        num_range_bits = 3
+
+        shift = data_utils.select_range_shift(measurements=measurements,
+                                              width=width,
+                                              precision=precision,
+                                              num_range_bits=num_range_bits)
+        self.assertEqual(shift, -4)
+
+    def test_range_mixed_one(self):
+        measurements = np.array([[1.5, 2.0, -3.5], [4.75, -1.0, 3.0]])
+        width = 5
+        precision = 4
+        num_range_bits = 3
+
+        shift = data_utils.select_range_shift(measurements=measurements,
+                                              width=width,
+                                              precision=precision,
+                                              num_range_bits=num_range_bits)
+        self.assertEqual(shift, -3)
+
+    def test_range_mixed_two(self):
+        measurements = np.array([[1.5, 2.0, -3.5], [4.75, -1.0, 3.0]])
+        width = 6
+        precision = 4
+        num_range_bits = 4
+
+        shift = data_utils.select_range_shift(measurements=measurements,
+                                              width=width,
+                                              precision=precision,
+                                              num_range_bits=num_range_bits)
+        self.assertEqual(shift, -2)
 
 
 class TestExtrapolation(unittest.TestCase):
@@ -170,7 +233,7 @@ class TestPadding(unittest.TestCase):
         message = get_random_bytes(AES_BLOCK_SIZE)
         key = get_random_bytes(AES_BLOCK_SIZE)
 
-        padded_size = data_utils.round_to_block(x=len(message), block_size=AES_BLOCK_SIZE)
+        padded_size = data_utils.round_to_block(length=len(message), block_size=AES_BLOCK_SIZE)
         padded_size += AES_BLOCK_SIZE  # Account for the IV
 
         expected_size = len(encrypt_aes128(message, key=key))
@@ -181,7 +244,7 @@ class TestPadding(unittest.TestCase):
         message = get_random_bytes(9)
         key = get_random_bytes(AES_BLOCK_SIZE)
 
-        padded_size = data_utils.round_to_block(x=len(message), block_size=AES_BLOCK_SIZE)
+        padded_size = data_utils.round_to_block(length=len(message), block_size=AES_BLOCK_SIZE)
         padded_size += AES_BLOCK_SIZE  # Account for the IV
 
         expected_size = len(encrypt_aes128(message, key=key))
@@ -611,6 +674,79 @@ class TestGroupWidths(unittest.TestCase):
         self.assertEqual(len(widths), 2)
         self.assertEqual(widths[0], 10)
         self.assertEqual(widths[1], 10)
+
+
+class TestMaxGroups(unittest.TestCase):
+
+    def test_size_one_feature(self):
+        target_frac = 0.2
+        seq_length = 235
+        num_features = 1
+        min_width = 3
+        group_size = 100
+        encryption_mode = EncryptionMode.STREAM
+
+        target_collected = int(seq_length * target_frac)
+        target_size = data_utils.calculate_bytes(width=8,
+                                                 num_collected=target_collected,
+                                                 num_features=num_features,
+                                                 seq_length=seq_length,
+                                                 encryption_mode=encryption_mode)
+
+        max_collected = data_utils.get_max_collected(seq_length=seq_length,
+                                                     num_features=num_features,
+                                                     group_size=group_size,
+                                                     min_width=min_width,
+                                                     target_size=target_size,
+                                                     encryption_mode=encryption_mode)
+
+        # Verify the count
+        self.assertEqual(max_collected, 116)
+
+        # Verify the number of bytes
+        grouped_size = data_utils.calculate_grouped_bytes(widths=[min_width, min_width],
+                                                          num_collected=max_collected,
+                                                          num_features=num_features,
+                                                          group_size=group_size,
+                                                          encryption_mode=encryption_mode,
+                                                          seq_length=seq_length)
+
+        self.assertLessEqual(grouped_size, target_size)
+
+    def test_size_multi_feature(self):
+        target_frac = 0.2
+        seq_length = 50
+        num_features = 8
+        min_width = 3
+        group_size = 16
+        encryption_mode = EncryptionMode.STREAM
+
+        target_collected = int(seq_length * target_frac)
+        target_size = data_utils.calculate_bytes(width=8,
+                                                 num_collected=target_collected,
+                                                 num_features=num_features,
+                                                 seq_length=seq_length,
+                                                 encryption_mode=encryption_mode)
+
+        max_collected = data_utils.get_max_collected(seq_length=seq_length,
+                                                     num_features=num_features,
+                                                     group_size=group_size,
+                                                     min_width=min_width,
+                                                     target_size=target_size,
+                                                     encryption_mode=encryption_mode)
+
+        # Verify the count
+        self.assertEqual(max_collected, 25)
+
+        # Verify the number of bytes
+        grouped_size = data_utils.calculate_grouped_bytes(widths=[min_width, min_width],
+                                                          num_collected=max_collected,
+                                                          num_features=num_features,
+                                                          group_size=group_size,
+                                                          encryption_mode=encryption_mode,
+                                                          seq_length=seq_length)
+
+        self.assertLessEqual(grouped_size, target_size)
 
 
 if __name__ == '__main__':

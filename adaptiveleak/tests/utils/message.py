@@ -104,10 +104,8 @@ class TestGroups(unittest.TestCase):
                                                                num_features=measurements.shape[1],
                                                                non_fractional=non_fractional)
 
-        expected = np.array([[0.25, -0.125, 0.75], [0.0, 0.5, -0.5]])
-
         # Check recovered values
-        self.assertTrue(np.all(np.isclose(decoded, expected)))
+        self.assertTrue(np.all(np.isclose(decoded, measurements)))
 
         # Check indices
         self.assertEqual(len(indices), 2)
@@ -242,7 +240,29 @@ class TestGroups(unittest.TestCase):
         error = np.average(np.sum(np.square(decoded - inputs), axis=-1))
         self.assertLessEqual(error, 0.01)
 
- 
+
+class TestGroupWidths(unittest.TestCase):
+
+    def test_encode_decode_widths(self):
+        widths = [31, 1, 9, 12]
+        shifts = [3, -4, 0, 2] 
+
+        encoded = message.encode_group_widths(widths=widths, shifts=shifts)
+        rec_widths, rec_shifts = message.decode_group_widths(encoded=encoded)
+
+        self.assertEqual(rec_widths, widths)
+        self.assertEqual(rec_shifts, shifts)
+
+    def test_encode_decode_overflow(self):
+        widths = [32, 4, 6]
+        shifts = [1, 4, -5]
+
+        encoded = message.encode_group_widths(widths=widths, shifts=shifts)
+        rec_widths, rec_shifts = message.decode_group_widths(encoded=encoded)
+
+        self.assertEqual(rec_widths, [31, 4, 6])
+        self.assertEqual(rec_shifts, [1, 3, -4])
+
+
 if __name__ == '__main__':
     unittest.main()
-

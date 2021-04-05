@@ -1,5 +1,5 @@
-src/saved_models/*
-src/datasets/*
+adaptiveleak/saved_models/*
+adaptiveleak/datasets/*
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
