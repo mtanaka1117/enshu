@@ -4,7 +4,7 @@ from functools import partial
 from Cryptodome.Random import get_random_bytes
 from typing import List, Union, Tuple
 
-from adaptiveleak.utils.constants import BIT_WIDTH, BIG_NUMBER
+from adaptiveleak.utils.constants import BIT_WIDTH, BIG_NUMBER, MIN_WIDTH
 from adaptiveleak.utils.encryption import AES_BLOCK_SIZE, EncryptionMode, CHACHA_NONCE_LEN
 
 
@@ -330,6 +330,7 @@ def get_group_widths(group_size: int,
     while (i < MAX_ITER):
         # Adjust the group width
         widths[group_idx] += 1 if data_bytes <= target_bytes else -1
+        widths[group_idx] = max(widths[group_idx], MIN_WIDTH)
 
         # Update the byte count
         updated_bytes = calculate_grouped_bytes(widths=widths,
@@ -341,7 +342,7 @@ def get_group_widths(group_size: int,
 
         # Exit the loop when we find the inflection point
         if (data_bytes <= target_bytes and updated_bytes > target_bytes):
-            widths[group_idx] -= 1
+            widths[group_idx] = max(widths[group_idx] - 1, MIN_WIDTH)
             break
 
         data_bytes = updated_bytes
@@ -453,25 +454,31 @@ def prune_sequence(measurements: np.ndarray, collected_indices: List[int], max_c
     assert len(measurements.shape) == 2, 'Must provide a 2d array of measurements'
     assert measurements.shape[0] == len(collected_indices), 'Misaligned measurements ({0}) and collected indices ({1})'.format(measurements.shape[0], len(collected_indices))
 
+    # Avoid pruning measurements which are under budget
     num_collected = len(collected_indices)
     if num_collected <= max_collected:
         return measurements, collected_indices
 
+    # Calculate the local measurement error (assuming removal)
     ahead_errors = np.sum(np.abs(measurements[1:] - measurements[:-1]), axis=-1)  # [K - 1]
     total_errors = ahead_errors[1:] + ahead_errors[:-1]  # [K - 2]
 
+    # Partition the indices based on error
     num_to_remove = num_collected - max_collected
     partitioned = np.argpartition(total_errors, kth=num_to_remove) + 1
 
+    # Keep the measurements with the highest induced error
     highest_error_indices = partitioned[num_to_remove:]
     kept_measurements = measurements[highest_error_indices]
 
+    # Always include the first and last measurements
     first = np.expand_dims(measurements[0], axis=0)
     last = np.expand_dims(measurements[-1], axis=0)
 
+    # Collect the pruned measurements and indices
     pruned = np.vstack([first, kept_measurements, last])
 
     first_idx, last_idx = collected_indices[0], collected_indices[-1]
-    kept_indices = [first_idx] + [i for i in highest_error_indices] + [last_idx]
+    kept_indices = [first_idx] + [collected_indices[i] for i in highest_error_indices] + [last_idx]
 
     return pruned, kept_indices

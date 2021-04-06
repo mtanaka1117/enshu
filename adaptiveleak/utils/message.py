@@ -121,7 +121,7 @@ def decode_byte_measurements(byte_str: bytes, seq_length: int, num_features: int
     return decoded.reshape(-1, num_features), collected_indices
 
 
-def encode_grouped_measurements(measurements: np.ndarray, collected_indices: List[int], widths: List[int], seq_length: int, non_fractional: int) -> bytes:
+def encode_grouped_measurements(measurements: np.ndarray, collected_indices: List[int], widths: List[int], seq_length: int, non_fractional: int, group_size: int) -> bytes:
     """
     Encodes the measurements into sets of grouped features with different widths.
 
@@ -132,6 +132,7 @@ def encode_grouped_measurements(measurements: np.ndarray, collected_indices: Lis
         seq_length: The length of the full sequence (T)
         widths: A list of bit-widths for features in each group
         non_fractional: The number of non-fractional bits per value
+        group_size: The number of measurements per group
     Returns:
         A hex string that represents the encoded measurements.
     """
@@ -142,12 +143,10 @@ def encode_grouped_measurements(measurements: np.ndarray, collected_indices: Lis
     num_measurements = len(measurements)
     shifts: List[int] = []
 
-    # group_metadata = bytes([num_measurements, num_groups]) + bytes(widths)
-
     # Divide features into groups and encode separately
     flattened = measurements.reshape(-1)  # [K * D]
 
-    group_size = int(math.ceil((measurements.shape[0] * measurements.shape[1]) / num_groups))
+    # group_size = int(math.ceil((measurements.shape[0] * measurements.shape[1]) / num_groups))
 
     encoded_groups: List[bytes] = []
     for group_idx, width in enumerate(widths):
@@ -195,7 +194,7 @@ def encode_grouped_measurements(measurements: np.ndarray, collected_indices: Lis
     return bytes(collected_mask) + group_metadata + encoded
 
 
-def decode_grouped_measurements(encoded: bytes, seq_length: int, num_features: int, non_fractional: int) -> Tuple[np.ndarray, List[int]]:
+def decode_grouped_measurements(encoded: bytes, seq_length: int, num_features: int, non_fractional: int, group_size: int) -> Tuple[np.ndarray, List[int]]:
     """
     Decodes the encoded group of measurements into the raw measurement values and collected
     sequence indices.
@@ -205,6 +204,7 @@ def decode_grouped_measurements(encoded: bytes, seq_length: int, num_features: i
         seq_length: The true sequence length
         num_features: The number of features per measurement
         non_fractional: The number of non-fractional bits
+        group_size: The number of measurements in each group (except for the last)
     Returns:
         A tuple of two values:
             (1) A [K, D] array of measurement values
@@ -231,7 +231,7 @@ def decode_grouped_measurements(encoded: bytes, seq_length: int, num_features: i
 
     start = 0
     count = 0
-    group_size = int(math.ceil((num_measurements * num_features) / num_groups))
+    # group_size = int(math.ceil((num_measurements * num_features) / num_groups))
 
     features: List[float] = []
 

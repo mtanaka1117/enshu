@@ -4,7 +4,7 @@ import numpy as np
 from typing import Tuple
 
 
-def load_data(dataset_name: str, fold: str, ) -> Tuple[np.ndarray, np.ndarray]:
+def load_data(dataset_name: str, fold: str) -> Tuple[np.ndarray, np.ndarray]:
     """
     Loads the dataset inputs and labels.
 

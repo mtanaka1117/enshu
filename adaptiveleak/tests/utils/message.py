@@ -66,17 +66,20 @@ class TestGroups(unittest.TestCase):
         seq_length = 8
         collected_indices = [0, 1]
         widths = [6, 5]
+        group_size = 3
 
         encoded = message.encode_grouped_measurements(measurements=measurements,
                                                       collected_indices=collected_indices,
                                                       seq_length=seq_length,
                                                       widths=widths,
-                                                      non_fractional=non_fractional)
+                                                      non_fractional=non_fractional,
+                                                      group_size=group_size)
 
         decoded, indices = message.decode_grouped_measurements(encoded=encoded,
                                                                seq_length=seq_length,
                                                                num_features=measurements.shape[1],
-                                                               non_fractional=non_fractional)
+                                                               non_fractional=non_fractional,
+                                                               group_size=group_size)
 
         # Check recovered values
         self.assertTrue(np.all(np.isclose(decoded, measurements)))
@@ -92,17 +95,20 @@ class TestGroups(unittest.TestCase):
         seq_length = 8
         collected_indices = [0, 5]
         widths = [6, 4]
+        group_size = 3
 
         encoded = message.encode_grouped_measurements(measurements=measurements,
                                                       collected_indices=collected_indices,
                                                       seq_length=seq_length,
                                                       widths=widths,
-                                                      non_fractional=non_fractional)
+                                                      non_fractional=non_fractional,
+                                                      group_size=group_size)
 
         decoded, indices = message.decode_grouped_measurements(encoded=encoded,
                                                                seq_length=seq_length,
                                                                num_features=measurements.shape[1],
-                                                               non_fractional=non_fractional)
+                                                               non_fractional=non_fractional,
+                                                               group_size=group_size)
 
         # Check recovered values
         self.assertTrue(np.all(np.isclose(decoded, measurements)))
@@ -118,17 +124,20 @@ class TestGroups(unittest.TestCase):
         seq_length = 8
         collected_indices = [0, 7]
         widths = [6, 5, 5]
+        group_size = 2
 
         encoded = message.encode_grouped_measurements(measurements=measurements,
                                                       collected_indices=collected_indices,
                                                       seq_length=seq_length,
                                                       widths=widths,
-                                                      non_fractional=non_fractional)
+                                                      non_fractional=non_fractional,
+                                                      group_size=2)
 
         decoded, indices = message.decode_grouped_measurements(encoded=encoded,
                                                                seq_length=seq_length,
                                                                num_features=measurements.shape[1],
-                                                               non_fractional=non_fractional)
+                                                               non_fractional=non_fractional,
+                                                               group_size=2)
 
         # Check recovered values
         self.assertTrue(np.all(np.isclose(decoded, measurements)))
@@ -144,19 +153,22 @@ class TestGroups(unittest.TestCase):
         seq_length = 8
         collected_indices = [0, 7]
         widths = [6, 5, 5]
+        group_size = 2
 
         encoded = message.encode_grouped_measurements(measurements=measurements,
                                                       collected_indices=collected_indices,
                                                       seq_length=seq_length,
                                                       widths=widths,
-                                                      non_fractional=non_fractional)
+                                                      non_fractional=non_fractional,
+                                                      group_size=group_size)
 
         padded = pad_to_length(encoded, length=len(encoded) + 6)
 
         decoded, indices = message.decode_grouped_measurements(encoded=padded,
                                                                seq_length=seq_length,
                                                                num_features=measurements.shape[1],
-                                                               non_fractional=non_fractional)
+                                                               non_fractional=non_fractional,
+                                                               group_size=group_size)
 
         # Check recovered values
         self.assertTrue(np.all(np.isclose(decoded, measurements)))
@@ -175,17 +187,20 @@ class TestGroups(unittest.TestCase):
         seq_length = inputs.shape[0]
         collected_indices = list(range(seq_length))
         non_fractional = 2
+        group_size = 100
 
         encoded = message.encode_grouped_measurements(measurements=inputs,
                                                       collected_indices=collected_indices,
                                                       seq_length=seq_length,
                                                       widths=widths,
-                                                      non_fractional=non_fractional)
+                                                      non_fractional=non_fractional,
+                                                      group_size=group_size)
 
         decoded, indices = message.decode_grouped_measurements(encoded=encoded,
                                                                seq_length=seq_length,
                                                                num_features=inputs.shape[1],
-                                                               non_fractional=non_fractional)
+                                                               non_fractional=non_fractional,
+                                                               group_size=group_size)
 
         error = np.average(np.sum(np.square(decoded - inputs), axis=-1))
         self.assertLessEqual(error, 0.01)
@@ -199,17 +214,20 @@ class TestGroups(unittest.TestCase):
         seq_length = inputs.shape[0]
         collected_indices = list(range(seq_length))
         non_fractional = 2
+        group_size = 100
 
         encoded = message.encode_grouped_measurements(measurements=inputs,
                                                       collected_indices=collected_indices,
                                                       seq_length=seq_length,
                                                       widths=widths,
-                                                      non_fractional=non_fractional)
+                                                      non_fractional=non_fractional,
+                                                      group_size=group_size)
 
         decoded, indices = message.decode_grouped_measurements(encoded=encoded,
                                                                seq_length=seq_length,
                                                                num_features=inputs.shape[1],
-                                                               non_fractional=non_fractional)
+                                                               non_fractional=non_fractional,
+                                                               group_size=group_size)
 
         error = np.average(np.sum(np.square(decoded - inputs), axis=-1))
         self.assertLessEqual(error, 0.01)
@@ -223,19 +241,22 @@ class TestGroups(unittest.TestCase):
         seq_length = inputs.shape[0]
         collected_indices = list(range(seq_length))
         non_fractional = 2
+        group_size = 100
 
         encoded = message.encode_grouped_measurements(measurements=inputs,
                                                       collected_indices=collected_indices,
                                                       seq_length=seq_length,
                                                       widths=widths,
-                                                      non_fractional=non_fractional)
+                                                      non_fractional=non_fractional,
+                                                      group_size=group_size)
 
         padded = pad_to_length(encoded, len(encoded) + 6)
 
         decoded, indices = message.decode_grouped_measurements(encoded=padded,
                                                                seq_length=seq_length,
                                                                num_features=inputs.shape[1],
-                                                               non_fractional=non_fractional)
+                                                               non_fractional=non_fractional,
+                                                               group_size=group_size)
 
         error = np.average(np.sum(np.square(decoded - inputs), axis=-1))
         self.assertLessEqual(error, 0.01)

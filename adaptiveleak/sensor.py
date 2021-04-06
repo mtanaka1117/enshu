@@ -9,7 +9,7 @@ from adaptiveleak.policies import make_policy, run_policy, Policy
 from adaptiveleak.utils.encryption import encrypt, EncryptionMode
 from adaptiveleak.utils.message import encode_byte_measurements
 from adaptiveleak.utils.loading import load_data
-from adaptiveleak.utils.file_utils import read_json
+from adaptiveleak.utils.file_utils import read_json, read_pickle_gz, save_pickle_gz
 
 
 class Sensor:
@@ -72,6 +72,14 @@ class Sensor:
                 key = self._aes_key if encryption_mode == EncryptionMode.BLOCK else self._chacha_key
                 encrypted_message = encrypt(message=message, key=key, mode=encryption_mode)
 
+                #if len(encrypted_message) != 150:
+                #    sample = {
+                #        'measurements': measurements,
+                #        'indices': indices
+                #    }
+                #    save_pickle_gz(sample, 'chlorine_sample.pkl.gz')
+                #    break
+
                 # Pre-pend the message length to the front (4 bytes)
                 length = len(encrypted_message).to_bytes(4, byteorder='little')
 
@@ -103,6 +111,10 @@ if __name__ == '__main__':
     # Extract the encryption mode
     encryption_mode = EncryptionMode[args.encryption.upper()]
 
+    # Check for any fitted (initial) thresholds
+    threshold_path = os.path.join('saved_models', args.dataset, 'thresholds.pkl.gz')
+    thresholds = read_pickle_gz(threshold_path) if os.path.exists(threshold_path) else dict()
+
     # Make the policy
     policy = make_policy(name=params['name'],
                          target=params['target'],
@@ -110,7 +122,8 @@ if __name__ == '__main__':
                          num_features=inputs.shape[2],
                          seq_length=inputs.shape[1],
                          encryption_mode=encryption_mode,
-                         encoding=params.get('encoding', 'unknown'))
+                         encoding=params.get('encoding', 'unknown'),
+                         threshold=thresholds.get(params['target'], 0.0))
 
     # Run the sensor
     sensor = Sensor(server_host='localhost', server_port=args.port)

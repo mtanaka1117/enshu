@@ -10,7 +10,7 @@ from adaptiveleak.policies import make_policy, Policy
 from adaptiveleak.utils.encryption import decrypt, EncryptionMode
 from adaptiveleak.utils.message import decode_byte_measurements
 from adaptiveleak.utils.loading import load_data
-from adaptiveleak.utils.file_utils import read_json, save_json_gz
+from adaptiveleak.utils.file_utils import read_json, save_json_gz, read_pickle_gz
 
 
 def reconstruct_sequence(measurements: np.ndarray, collected_indices: List[int], seq_length: int) -> np.ndarray:
@@ -131,10 +131,6 @@ class Server:
                     error = mean_squared_error(y_true=inputs[idx],
                                                y_pred=reconstructed)
 
-                    if (idx == 495):
-                        print(reconstructed)
-                        print(error)
-
                     # Log the results of this sequence
                     num_bytes.append(len(recv_sample))
                     num_measurements.append(len(measurements))
@@ -182,7 +178,11 @@ if __name__ == '__main__':
 
     # Extract the parameters
     params = read_json(args.params)
-    
+
+    # Get preset threshold (if present)
+    threshold_path = os.path.join('saved_models', args.dataset, 'thresholds.pkl.gz')
+    thresholds = read_pickle_gz(threshold_path) if os.path.exists(threshold_path) else dict()
+
     # Make the policy
     policy = make_policy(name=params['name'],
                          target=params['target'],
@@ -190,7 +190,8 @@ if __name__ == '__main__':
                          num_features=inputs.shape[2],
                          seq_length=inputs.shape[1],
                          encryption_mode=encryption_mode,
-                         encoding=params.get('encoding', 'unknown'))
+                         encoding=params.get('encoding', 'unknown'),
+                         threshold=thresholds.get(params['target'], 0.0))
 
     # Run the experiment
     server.run(inputs=inputs,

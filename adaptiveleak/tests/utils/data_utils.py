@@ -527,7 +527,8 @@ class TestCalculateBytes(unittest.TestCase):
                                               collected_indices=collected_indices,
                                               widths=widths,
                                               seq_length=seq_length,
-                                              non_fractional=non_fractional)
+                                              non_fractional=non_fractional,
+                                              group_size=group_size)                                              
 
         key = get_random_bytes(32)
         encrypted = encrypt(message=encoded, key=key, mode=EncryptionMode.STREAM)
@@ -554,7 +555,8 @@ class TestCalculateBytes(unittest.TestCase):
                                               collected_indices=collected_indices,
                                               widths=widths,
                                               seq_length=seq_length,
-                                              non_fractional=non_fractional)
+                                              non_fractional=non_fractional,
+                                              group_size=group_size)
 
         key = get_random_bytes(32)
         encrypted = encrypt(message=encoded, key=key, mode=EncryptionMode.STREAM)
@@ -581,7 +583,8 @@ class TestCalculateBytes(unittest.TestCase):
                                               collected_indices=collected_indices,
                                               widths=widths,
                                               seq_length=seq_length,
-                                              non_fractional=non_fractional)
+                                              non_fractional=non_fractional,
+                                              group_size=group_size)
 
         key = get_random_bytes(AES_BLOCK_SIZE)
         encrypted = encrypt(message=encoded, key=key, mode=EncryptionMode.BLOCK)
@@ -608,7 +611,8 @@ class TestCalculateBytes(unittest.TestCase):
                                               collected_indices=collected_indices,
                                               widths=widths,
                                               seq_length=seq_length,
-                                              non_fractional=non_fractional)
+                                              non_fractional=non_fractional,
+                                              group_size=group_size)
 
         key = get_random_bytes(AES_BLOCK_SIZE)
         encrypted = encrypt(message=encoded, key=key, mode=EncryptionMode.BLOCK)
@@ -747,6 +751,25 @@ class TestMaxGroups(unittest.TestCase):
                                                           seq_length=seq_length)
 
         self.assertLessEqual(grouped_size, target_size)
+
+
+class TestPruning(unittest.TestCase):
+
+
+    def test_prune_two(self):
+        measurements = np.array([[1.0, 1.0], [1.0, 1.0], [2.0, 2.0], [2.5, 4.0], [3.5, 3.0]])
+        max_collected = 3
+        collected_indices = [1, 3, 5, 9, 10]
+
+        pruned_features, pruned_indices = data_utils.prune_sequence(measurements=measurements,
+                                                                    max_collected=max_collected,
+                                                                    collected_indices=collected_indices)
+
+        expected_features = np.array([[1.0, 1.0], [2.5, 4.0], [3.5, 3.0]])
+        expected_indices = [1, 9, 10]
+
+        self.assertTrue(np.all(np.isclose(pruned_features, expected_features)))
+        self.assertEqual(pruned_indices, expected_indices)
 
 
 if __name__ == '__main__':

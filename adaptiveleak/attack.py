@@ -6,9 +6,10 @@ from collections import defaultdict, namedtuple
 from sklearn.preprocessing import StandardScaler
 from sklearn.neural_network import MLPClassifier
 from sklearn.ensemble import AdaBoostClassifier
+from sklearn.svm import SVC
 from typing import Any, Dict, Tuple, List
 
-from utils.file_utils import read_pickle_gz, save_pickle_gz
+from utils.file_utils import read_json_gz, save_json_gz
 
 
 AttackResult = namedtuple('AttackResult', ['train_accuracy', 'num_train', 'test_accuracy', 'num_test', 'most_freq_accuracy'])
@@ -16,7 +17,10 @@ AttackResult = namedtuple('AttackResult', ['train_accuracy', 'num_train', 'test_
 
 def create_dataset(policy_result: Dict[str, Any], window_size: int, stride: int) -> Tuple[np.ndarray, np.ndarray]:
 
-    bytes_dist = policy_result['byte_dist']
+    bytes_dist: DefaultDict[int, List[int]] = defaultdict(list)
+
+    for label, num_bytes in zip(policy_result['labels'], policy_result['num_bytes']):
+        bytes_dist[label].append(num_bytes)
 
     inputs: List[np.ndarray] = []
     output: List[int] = []
@@ -53,7 +57,8 @@ def fit_attack_model(inputs: np.ndarray, output: np.ndarray, train_frac: float):
     train_inputs, test_inputs = model_inputs[train_idx], model_inputs[test_idx]
     train_output, test_output = output[train_idx], output[test_idx]
 
-    clf = MLPClassifier(hidden_layer_sizes=[32, 32], alpha=0.1, max_iter=10000, random_state=rand)
+    clf = MLPClassifier(hidden_layer_sizes=[32], alpha=0.1, max_iter=10000, random_state=rand)
+    # clf = SVC(C=2.0, kernel='rbf')
     clf.fit(train_inputs, train_output)
 
     train_accuracy = clf.score(train_inputs, train_output)
@@ -85,7 +90,7 @@ if __name__ == '__main__':
     for policy_file in args.policy_files:
 
         if os.path.isdir(policy_file):
-            file_names = [name for name in os.listdir(policy_file) if name.endswith('.pkl.gz')]
+            file_names = [name for name in os.listdir(policy_file) if name.endswith('.json.gz')]
             policy_files.extend((os.path.join(policy_file, name) for name in file_names))
         else:
             policy_files.append(policy_file)
@@ -95,7 +100,7 @@ if __name__ == '__main__':
         print('Starting {0}'.format(policy_file))
         print('==========')
         
-        policy_result = read_pickle_gz(policy_file)
+        policy_result = read_json_gz(policy_file)
 
         inputs, output = create_dataset(policy_result, window_size=args.window_size, stride=args.stride)
 
@@ -103,4 +108,4 @@ if __name__ == '__main__':
 
         # Save the attack result
         policy_result['attack'] = attack_result._asdict()
-        save_pickle_gz(policy_result, policy_file)
+        save_json_gz(policy_result, policy_file)

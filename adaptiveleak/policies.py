@@ -4,8 +4,9 @@ from enum import Enum, auto
 from typing import Tuple, List, Dict, Any
 
 from adaptiveleak.controllers import PIDController
-from adaptiveleak.utils.constants import BIT_WIDTH
+from adaptiveleak.utils.constants import BIT_WIDTH, MIN_WIDTH
 from adaptiveleak.utils.data_utils import get_group_widths, get_num_groups, calculate_bytes, pad_to_length
+from adaptiveleak.utils.data_utils import prune_sequence, get_max_collected, calculate_grouped_bytes
 from adaptiveleak.utils.message import encode_byte_measurements, decode_byte_measurements
 from adaptiveleak.utils.message import encode_grouped_measurements, decode_grouped_measurements
 from adaptiveleak.utils.encryption import AES_BLOCK_SIZE, EncryptionMode, CHACHA_NONCE_LEN
@@ -109,6 +110,7 @@ class AdaptivePolicy(Policy):
                  width: int,
                  seq_length: int,
                  num_features: int,
+                 window: int,
                  encryption_mode: EncryptionMode,
                  encoding_mode: EncodingMode):
         super().__init__(precision=precision,
@@ -130,7 +132,10 @@ class AdaptivePolicy(Policy):
         self._pid = PIDController(kp=(1.0 / 16.0),
                                   ki=(1.0 / 32.0),
                                   kd=(1.0 / 128.0))
+
+        self._start_threshold = threshold
         self._threshold = threshold
+        self._window = window
 
     @property
     def encoding_mode(self) -> EncodingMode:
@@ -170,8 +175,8 @@ class AdaptivePolicy(Policy):
         avg = self._measurement_count / (self._seq_count * self._seq_length)
         signal = self._pid.step(estimate=avg, target=self._target)
 
-        if (seq_idx % 20) == 0:
-            self._threshold = -1 * signal
+        if ((seq_idx + 1) % self._window) == 0:
+            self._threshold = self._start_threshold - signal
 
     def encode(self, measurements: np.ndarray, collected_indices: List[int]) -> bytes:
         if self.encoding_mode == EncodingMode.STANDARD:
@@ -190,22 +195,42 @@ class AdaptivePolicy(Policy):
                                       target_frac=self.target,
                                       encryption_mode=self.encryption_mode)
 
+            # Get the maximum possible number of collected measurements
+            target_bytes = calculate_bytes(width=BIT_WIDTH,
+                                           num_collected=int(self.target * self.seq_length),
+                                           num_features=self.num_features,
+                                           seq_length=self.seq_length,
+                                           encryption_mode=self.encryption_mode)
+
+            max_collected = get_max_collected(seq_length=self.seq_length,
+                                              num_features=self.num_features,
+                                              group_size=self.group_size,
+                                              min_width=MIN_WIDTH,
+                                              target_size=target_bytes,
+                                              encryption_mode=self.encryption_mode)
+
+            # Prune away any excess measurements
+            measurements, collected_indices = prune_sequence(measurements=measurements,
+                                                             collected_indices=collected_indices,
+                                                             max_collected=max_collected)
+
+            # Encode the measurement values
             non_fractional = self.width - self.precision
             encoded = encode_grouped_measurements(measurements=measurements,
                                                   collected_indices=collected_indices,
                                                   seq_length=self.seq_length,
                                                   widths=widths,
-                                                  non_fractional=non_fractional)
+                                                  non_fractional=non_fractional,
+                                                  group_size=self.group_size)
+
+            expected_bytes = calculate_grouped_bytes(widths=widths,
+                                                     num_collected=num_collected,
+                                                     num_features=self.num_features,
+                                                     group_size=self.group_size,
+                                                     seq_length=self.seq_length,
+                                                     encryption_mode=self.encryption_mode)
 
             if self.encryption_mode == EncryptionMode.STREAM:
-                target_bytes = calculate_bytes(width=BIT_WIDTH,
-                                               num_collected=int(self.target * self.seq_length),
-                                               num_features=self.num_features,
-                                               seq_length=self.seq_length,
-                                               encryption_mode=self.encryption_mode)
-
-                print('{0} {1} {2}'.format(widths, target_bytes, len(encoded)))
-
                 return pad_to_length(encoded, length=target_bytes - CHACHA_NONCE_LEN)
 
             return encoded
@@ -221,7 +246,8 @@ class AdaptivePolicy(Policy):
             return decode_grouped_measurements(encoded=message,
                                                seq_length=self.seq_length,
                                                num_features=self.num_features,
-                                               non_fractional=non_fractional)
+                                               non_fractional=non_fractional,
+                                               group_size=self.group_size)
         else:
             raise ValueError('Unknown encoding type {0}'.format(self.encoding_mode.name))
 
@@ -349,7 +375,8 @@ def make_policy(name: str, seq_length: int, num_features: int, precision: int, e
                               seq_length=seq_length,
                               num_features=num_features,
                               encryption_mode=encryption_mode,
-                              encoding_mode=EncodingMode[str(kwargs['encoding']).upper()])
+                              encoding_mode=EncodingMode[str(kwargs['encoding']).upper()],
+                              window=50)
     elif name == 'uniform':
         return UniformPolicy(target=target,
                              precision=precision,
