@@ -285,5 +285,47 @@ class TestGroupWidths(unittest.TestCase):
         self.assertEqual(rec_shifts, [1, 3, -4])
 
 
+class TestDeltaEncode(unittest.TestCase):
+
+    def test_encode(self):
+        measurements = np.array([[10.0, 10.0], [12.0, 12.0], [12.5, 11.5]])
+        
+        encoded = message.delta_encode(measurements)
+        expected = np.array([[10.0, 10.0], [2.0, 2.0], [0.5, -0.5]]) 
+
+        self.assertTrue(np.all(np.isclose(encoded, expected)))
+
+    def test_decode(self):
+        encoded = np.array([[10.0, 10.0], [2.0, 2.0], [0.5, -0.5]]) 
+        recovered = message.delta_decode(encoded)
+
+        expected = np.array([[10.0, 10.0], [12.0, 12.0], [12.5, 11.5]])
+
+        self.assertTrue(np.all(np.isclose(recovered, expected)))
+
+    def test_single_feature(self):
+        rand = np.random.RandomState(seed=3489)
+        seq_length = 7
+
+        measurements = rand.uniform(low=-2.0, high=2.0, size=(seq_length, 1))
+
+        encoded = message.delta_encode(measurements)
+        recovered = message.delta_decode(encoded)
+
+        self.assertTrue(np.all(np.isclose(recovered, measurements)))
+
+    def test_many_features(self):
+        rand = np.random.RandomState(seed=3489)
+        seq_length = 12
+        num_features = 5
+
+        measurements = rand.uniform(low=-2.0, high=2.0, size=(seq_length, num_features))
+
+        encoded = message.delta_encode(measurements)
+        recovered = message.delta_decode(encoded)
+
+        self.assertTrue(np.all(np.isclose(recovered, measurements)))
+
+
 if __name__ == '__main__':
     unittest.main()

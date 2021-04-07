@@ -6,11 +6,10 @@ from argparse import ArgumentParser
 from sklearn.metrics import mean_squared_error
 from typing import List, Tuple
 
-from policies import make_policy, Policy
-from rounding import quantize
-from transition_model import LinearModel
-from utils.constants import LINEAR_TRANSITION
-from utils.file_utils import read_pickle_gz
+from adaptiveleak.server import reconstruct_sequence
+from adaptiveleak.policies import make_policy, Policy, run_policy
+from adaptiveleak.utils.encryption import EncryptionMode
+from adaptiveleak.utils.file_utils import read_pickle_gz
 
 
 def execute_policy(policy: Policy, sequence: np.ndarray) -> Tuple[np.ndarray, List[int]]:
@@ -25,11 +24,13 @@ def execute_policy(policy: Policy, sequence: np.ndarray) -> Tuple[np.ndarray, Li
         # policy.transition()
 
         measurement = np.expand_dims(sequence[idx], axis=-1)
-        did_send = policy.transmit(measurement=measurement, seq_idx=idx)
+        did_send = policy.should_collect(measurement=measurement, seq_idx=idx)
 
         estimate = policy.get_estimate().reshape(1, -1)  # [1, D]
 
         if did_send:
+            policy.collect()
+
             collected.append(idx)
             collected_list.append(estimate)
 
@@ -60,47 +61,55 @@ if __name__ == '__main__':
 
     data_file = os.path.join('datasets', args.dataset, 'train', 'data.h5')
     with h5py.File(data_file, 'r') as fin:
-        series = fin['inputs'][:]
+        inputs = fin['inputs'][:]
         label = fin['output'][:]
 
-    if len(series.shape) == 2:
-        series = np.expand_dims(series, axis=-1)
+    if len(inputs.shape) == 2:
+        inputs = np.expand_dims(inputs, axis=-1)
 
-    # Scale the input
-    input_shape = series.shape
-    scaler = read_pickle_gz(os.path.join('saved_models', args.dataset, 'mlp_scaler.pkl.gz'))
-    series = scaler.transform(series.reshape(-1, input_shape[-1])).reshape(input_shape)
+    # Unpack the shape
+    num_seq, seq_length, num_features = inputs.shape
 
-    # Collect the transition model
-    transition_path = os.path.join('saved_models', args.dataset, '{0}.pkl.gz'.format(LINEAR_TRANSITION))
-    transition_model = LinearModel.restore(transition_path)
+    # Get any existing thresholds
+    thresholds_path = os.path.join('saved_models', args.dataset, 'thresholds.pkl.gz')
+    thresholds = read_pickle_gz(thresholds_path)
 
     # Make the policy
+    target = 0.5
     policy = make_policy(name=args.policy,
-                         transition_model=transition_model,
-                         seq_length=series.shape[1],
-                         num_features=series.shape[2],
-                         target=0.5,
-                         threshold=0.0,
+                         seq_length=seq_length,
+                         num_features=num_features,
+                         target=target,
+                         threshold=thresholds.get(target, 0.0),
                          width=8,
                          precision=6,
-                         use_confidence=False,
-                         compression_name='block',
-                         compression_params=dict())
+                         encryption_mode=EncryptionMode.STREAM,
+                         encoding='standard')
 
     errors: List[float] = []
     estimate_list: List[np.ndarray] = []
     collected: List[List[int]] = []
-    for idx, inputs in enumerate(series):
-        estimates, collected_idx = execute_policy(policy=policy, sequence=inputs)
+
+    collected_seq = min(num_seq, 500)
+
+    for idx, sequence in enumerate(inputs):
+        if idx >= collected_seq:
+            break
+
+        policy.reset()
+
+        estimates, collected_idx = run_policy(policy=policy, sequence=sequence)
         policy.step(seq_idx=idx, count=len(collected_idx))
-        error = mean_squared_error(y_true=inputs, y_pred=estimates)
+
+        reconstructed = reconstruct_sequence(measurements=estimates, collected_indices=collected_idx, seq_length=seq_length)
+
+        error = mean_squared_error(y_true=sequence, y_pred=reconstructed)
 
         errors.append(error)
         collected.append(collected_idx)
-        estimate_list.append(estimates)
+        estimate_list.append(reconstructed)
 
-    num_samples = input_shape[0] * input_shape[1]
+    num_samples = collected_seq * seq_length
     num_collected = sum(len(c) for c in collected)
 
     print('MSE: {0:.5f}'.format(np.average(errors)))
@@ -116,8 +125,8 @@ if __name__ == '__main__':
     with plt.style.context('seaborn-ticks'):
         fig, (ax1, ax2) = plt.subplots(nrows=2, ncols=1)
 
-        xs = list(range(input_shape[1]))
-        ax1.plot(xs, series[data_idx, :, args.feature])
+        xs = list(range(seq_length))
+        ax1.plot(xs, inputs[data_idx, :, args.feature])
         ax1.plot(xs, estimates[:, args.feature])
         ax1.scatter(collected_idx, estimates[collected_idx, args.feature], marker='o')
 

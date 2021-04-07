@@ -348,3 +348,40 @@ def decode_group_widths(encoded: bytes) -> Tuple[List[int], List[int]]:
         shifts.append(s)
 
     return widths, shifts
+
+
+def delta_encode(measurements: np.ndarray) -> np.ndarray:
+    """
+    Encodes the given measurements using the difference
+    between consecutive features.
+
+    Args:
+        measurements: A [K, D] array of collected features
+    Returns:
+        A [K, D] array of delta encoded measurements. The first
+        value is a true feature vector, and the remaining values
+        are the consecutive differences.
+    """
+    assert len(measurements.shape) == 2, 'Must provide a 2d array'
+
+    initial = np.expand_dims(measurements[0], axis=0)  # [1, D]
+    diffs = measurements[1:] - measurements[:-1]  # [K - 1, D]
+
+    return np.vstack([initial, diffs])
+
+
+def delta_decode(measurements: np.ndarray) -> np.ndarray:
+    """
+    Decodes the given delta encoded measurements.
+
+    Args:
+        measurements: A [K, D] array of delta-encoded features
+    Returns:
+        The raw feature vectors
+    """
+    assert len(measurements.shape) == 2, 'Must provide a 2d array'
+
+    initial = np.expand_dims(measurements[0], axis=0)  # [1, D]
+    deltas = np.cumsum(measurements[1:], axis=0)  # [K - 1, D]
+
+    return np.vstack([initial, initial + deltas])

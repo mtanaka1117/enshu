@@ -1,5 +1,6 @@
 from enum import Enum, auto
 from Cryptodome.Cipher import AES, ChaCha20
+from Cryptodome.Hash import HMAC, SHA256
 from Cryptodome.Random import get_random_bytes
 from Cryptodome.Util.Padding import pad, unpad
 
@@ -7,6 +8,7 @@ from Cryptodome.Util.Padding import pad, unpad
 AES_BLOCK_SIZE = 16
 CHACHA_KEY_LEN = 32
 CHACHA_NONCE_LEN = 12
+SHA256_LEN = 32
 
 
 class EncryptionMode(Enum):
@@ -144,3 +146,39 @@ def decrypt_chacha20(ciphertext: bytes, key: bytes) -> bytes:
     message = cipher.decrypt(ciphertext)
 
     return message
+
+
+def add_hmac(message: bytes, secret: bytes) -> bytes:
+    """
+    Generates and appends a message authentication code
+    to the given message.
+
+    Args:
+        message: The message being sent
+        secret: The HMAC secret
+    Returns:
+        The message with the MAC pre-pended
+    """
+    hmac = HMAC.new(key=secret, msg=message, digestmod=SHA256)
+    return hmac.digest() + message
+
+
+def verify_hmac(mac: bytes, message: bytes, secret: bytes) -> bool:
+    """
+    Verifies the MAC-prepended message and strips away the MAC.
+
+    Args:
+        mac: The MAC tag.
+        message: The received message (without the MAC).
+        secret: The HMAC secret
+    Returns:
+        Whether the MAC is verified or not
+    """
+    # Verify the MAC
+    hmac = HMAC.new(key=secret, msg=message, digestmod=SHA256)
+
+    try:
+        hmac.verify(mac)
+        return True
+    except ValueError:
+        return False

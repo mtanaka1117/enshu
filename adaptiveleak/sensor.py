@@ -6,7 +6,7 @@ from argparse import ArgumentParser
 from typing import Optional
 
 from adaptiveleak.policies import make_policy, run_policy, Policy
-from adaptiveleak.utils.encryption import encrypt, EncryptionMode
+from adaptiveleak.utils.encryption import encrypt, EncryptionMode, add_hmac
 from adaptiveleak.utils.message import encode_byte_measurements
 from adaptiveleak.utils.loading import load_data
 from adaptiveleak.utils.file_utils import read_json, read_pickle_gz, save_pickle_gz
@@ -23,6 +23,7 @@ class Sensor:
         # These encryption keys are kept secret from the attacker program
         self._aes_key = bytes.fromhex('349fdc00b44d1aaacaa3a2670fd44244')
         self._chacha_key = bytes.fromhex('6166867d13e4d3c1686a57b21a453755d38a78943de17d76cb43a72bd5965b00')
+        self._hmac_secret = bytes.fromhex('97de481ffae5701de4f927573772b667')
 
     @property
     def host(self) -> str:
@@ -72,20 +73,15 @@ class Sensor:
                 key = self._aes_key if encryption_mode == EncryptionMode.BLOCK else self._chacha_key
                 encrypted_message = encrypt(message=message, key=key, mode=encryption_mode)
 
-                #if len(encrypted_message) != 150:
-                #    sample = {
-                #        'measurements': measurements,
-                #        'indices': indices
-                #    }
-                #    save_pickle_gz(sample, 'chlorine_sample.pkl.gz')
-                #    break
-
                 # Pre-pend the message length to the front (4 bytes)
                 length = len(encrypted_message).to_bytes(4, byteorder='little')
 
                 encrypted_message = length + encrypted_message
 
-                sock.sendall(encrypted_message)
+                # Add the HMAC authentication
+                tagged_message = add_hmac(encrypted_message, secret=self._hmac_secret)
+
+                sock.sendall(tagged_message)
 
                 # Wait for a very small amount of time to rate limit a bit.
                 # The server take precautions to separate messages, but we 

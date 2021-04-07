@@ -7,7 +7,7 @@ from sklearn.metrics import mean_squared_error
 from typing import Optional, List
 
 from adaptiveleak.policies import make_policy, Policy
-from adaptiveleak.utils.encryption import decrypt, EncryptionMode
+from adaptiveleak.utils.encryption import decrypt, EncryptionMode, verify_hmac, SHA256_LEN
 from adaptiveleak.utils.message import decode_byte_measurements
 from adaptiveleak.utils.loading import load_data
 from adaptiveleak.utils.file_utils import read_json, save_json_gz, read_pickle_gz
@@ -52,6 +52,7 @@ class Server:
         # These encryption keys are kept secret from the attacker program
         self._aes_key = bytes.fromhex('349fdc00b44d1aaacaa3a2670fd44244')
         self._chacha_key = bytes.fromhex('6166867d13e4d3c1686a57b21a453755d38a78943de17d76cb43a72bd5965b00')
+        self._hmac_secret = bytes.fromhex('97de481ffae5701de4f927573772b667')
 
     @property
     def host(self) -> str:
@@ -108,12 +109,20 @@ class Server:
                     recv = conn.recv(2048)
                     message_buffer.extend(recv)
 
+                    # Extract the HMAC
+                    mac = message_buffer[:SHA256_LEN]
+
                     # Get the information for the current sample
-                    length = int.from_bytes(message_buffer[0:4], byteorder='little')
-                    recv_sample = bytes(message_buffer[4:4+length])
+                    length = int.from_bytes(message_buffer[SHA256_LEN:SHA256_LEN+4], byteorder='little')
+                    recv_sample = bytes(message_buffer[SHA256_LEN+4:SHA256_LEN+length+4])
 
                     # Move the message buffer
-                    message_buffer = message_buffer[4+length:]
+                    message_buffer = message_buffer[4+length+SHA256_LEN:]
+
+                    # Verify the MAC
+                    if not verify_hmac(mac=mac, message=recv_sample, secret=self._hmac_secret):
+                        print('Could not verify MAC for sample {0}. Skipping.'.format(idx))
+                        continue
 
                     # Decrypt the message
                     key = self._aes_key if encryption_mode == EncryptionMode.BLOCK else self._chacha_key
