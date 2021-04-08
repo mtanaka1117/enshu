@@ -1,15 +1,21 @@
 import numpy as np
 import math
+import os.path
+from collections import deque
 from enum import Enum, auto
 from typing import Tuple, List, Dict, Any
 
 from adaptiveleak.controllers import PIDController
 from adaptiveleak.utils.constants import BIT_WIDTH, MIN_WIDTH
 from adaptiveleak.utils.data_utils import get_group_widths, get_num_groups, calculate_bytes, pad_to_length
-from adaptiveleak.utils.data_utils import prune_sequence, get_max_collected, calculate_grouped_bytes
+from adaptiveleak.utils.data_utils import prune_sequence, get_max_collected, calculate_grouped_bytes, linear_extrapolate
 from adaptiveleak.utils.message import encode_byte_measurements, decode_byte_measurements
 from adaptiveleak.utils.message import encode_grouped_measurements, decode_grouped_measurements
 from adaptiveleak.utils.encryption import AES_BLOCK_SIZE, EncryptionMode, CHACHA_NONCE_LEN
+from adaptiveleak.utils.file_utils import read_json, read_pickle_gz
+
+
+MARGIN = 0.005
 
 
 class EncodingMode(Enum):
@@ -110,7 +116,6 @@ class AdaptivePolicy(Policy):
                  width: int,
                  seq_length: int,
                  num_features: int,
-                 window: int,
                  encryption_mode: EncryptionMode,
                  encoding_mode: EncodingMode):
         super().__init__(precision=precision,
@@ -125,17 +130,15 @@ class AdaptivePolicy(Policy):
 
         # Variables used to track the adaptive sampling policy
         self._max_skip = int(1.0 / target) + 1
-        self._current_skip = 0.0
-        self._sample_skip = 0.0
+        self._current_skip = 0
+        self._sample_skip = 0
 
         # Controller automatically set the threshold
-        self._pid = PIDController(kp=(1.0 / 16.0),
-                                  ki=(1.0 / 32.0),
-                                  kd=(1.0 / 128.0))
+        #self._pid = PIDController(kp=(1.0 / 16.0),
+        #                          ki=(1.0 / 32.0),
+        #                          kd=(1.0 / 128.0))
 
-        self._start_threshold = threshold
         self._threshold = threshold
-        self._window = window
 
     @property
     def encoding_mode(self) -> EncodingMode:
@@ -145,38 +148,19 @@ class AdaptivePolicy(Policy):
     def group_size(self) -> int:
         return max(int(math.ceil((BIT_WIDTH * AES_BLOCK_SIZE) / self.num_features)), 1)
 
-    def should_collect(self, seq_idx: int) -> bool:
-        if self._sample_skip > 0:
-            self._sample_skip -= 1
-            return False
-
-        return True
-
-    def collect(self, measurement: np.ndarray):
-        diff = np.sum(np.abs(self._estimate - measurement))
-        self._estimate = measurement
-
-        if diff > self._threshold:
-            self._current_skip = 0
-        else:
-            self._current_skip = min(self._current_skip + 1, self._max_skip)
-
-        self._sample_skip = self._current_skip
-
     def reset(self):
         super().reset()
         self._current_skip = 0
         self._sample_skip = 0
-        self._confidence = 0
 
-    def step(self, count: int, seq_idx: int):
-        super().step(count=count, seq_idx=seq_idx)
+    #def step(self, count: int, seq_idx: int):
+    #    super().step(count=count, seq_idx=seq_idx)
 
-        avg = self._measurement_count / (self._seq_count * self._seq_length)
-        signal = self._pid.step(estimate=avg, target=self._target)
+    #    avg = self._measurement_count / (self._seq_count * self._seq_length)
+    #    signal = self._pid.step(estimate=avg, target=self._target)
 
-        if ((seq_idx + 1) % self._window) == 0:
-            self._threshold = self._start_threshold - signal
+    #    #if ((seq_idx + 1) % self._window) == 0:
+    #    #    self._threshold = max(self._start_threshold - signal, 0.0)
 
     def encode(self, measurements: np.ndarray, collected_indices: List[int]) -> bytes:
         if self.encoding_mode == EncodingMode.STANDARD:
@@ -260,6 +244,134 @@ class AdaptivePolicy(Policy):
         return policy_dict
 
 
+class AdaptiveHeuristic(AdaptivePolicy):
+
+    def should_collect(self, seq_idx: int) -> bool:
+        if self._sample_skip > 0:
+            self._sample_skip -= 1
+            return False
+
+        return True
+
+    def collect(self, measurement: np.ndarray):
+        diff = np.sum(np.abs(self._estimate - measurement))
+        self._estimate = measurement
+
+        if diff > self._threshold:
+            self._current_skip = 0
+        else:
+            self._current_skip = min(self._current_skip + 1, self._max_skip)
+
+        self._sample_skip = self._current_skip
+
+    def __str__(self) -> str:
+        return 'adaptive_heuristic_{0}'.format(self._encoding_mode.name.lower())
+
+
+class AdaptiveLiteSense(AdaptivePolicy):
+
+    def __init__(self,
+                 target: float,
+                 threshold: float,
+                 precision: int,
+                 width: int,
+                 seq_length: int,
+                 num_features: int,
+                 encryption_mode: EncryptionMode,
+                 encoding_mode: EncodingMode):
+        super().__init__(target=target,
+                         threshold=threshold,
+                         precision=precision,
+                         width=width,
+                         seq_length=seq_length,
+                         num_features=num_features,
+                         encryption_mode=encryption_mode,
+                         encoding_mode=encoding_mode)
+        self._alpha = 0.7
+        self._beta = 0.7
+
+        self._mean = np.zeros(shape=(num_features, 1))  # [D, 1]
+        self._dev = np.zeros(shape=(num_features, 1))
+
+    def should_collect(self, seq_idx: int) -> bool:
+        if (seq_idx == 0) or (self._sample_skip >= self._current_skip):
+            return True
+
+        self._sample_skip += 1
+        return False
+
+    def collect(self, measurement: np.ndarray):
+        updated_mean = (1.0 - self._alpha) * self._mean + self._alpha * measurement
+        updated_dev = (1.0 - self._beta) * self._dev + self._beta * np.abs(updated_mean - measurement)
+
+        diff = np.sum(updated_dev - self._dev)
+
+        if diff > self._threshold:
+            self._current_skip = max(self._current_skip - 1 if diff < 1.0 else 0, 0)
+        else:
+            self._current_skip = min(self._current_skip + 1, self._max_skip)
+
+        self._estimate = measurement
+
+        self._mean = updated_mean
+        self._dev = updated_dev
+
+        self._sample_skip = 0
+
+    def reset(self):
+        super().reset()
+        self._mean = np.zeros(shape=(self.num_features, 1))  # [D, 1]
+        self._dev = np.zeros(shape=(self.num_features, 1))
+
+    def __str__(self) -> str:
+        return 'adaptive_litesense_{0}'.format(self._encoding_mode.name.lower())
+
+
+class AdaptiveJitter(AdaptivePolicy):
+
+    def __init__(self,
+                 target: float,
+                 threshold: float,
+                 precision: int,
+                 width: int,
+                 seq_length: int,
+                 num_features: int,
+                 encryption_mode: EncryptionMode,
+                 encoding_mode: EncodingMode):
+        super().__init__(target=target,
+                         threshold=threshold,
+                         precision=precision,
+                         width=width,
+                         seq_length=seq_length,
+                         num_features=num_features,
+                         encryption_mode=encryption_mode,
+                         encoding_mode=encoding_mode)
+        self._prev = np.zeros(shape=(num_features, 1))  # [D, 1]
+
+    def should_collect(self, seq_idx: int) -> bool:
+        if (seq_idx > 0) and (self._sample_skip < self._current_skip):
+            self._sample_skip += 1
+            return False
+
+        return True
+
+    def collect(self, measurement: np.ndarray):
+        self._prev = self._estimate
+        self._estimate = measurement
+
+        slope = (self._estimate - self._prev) / (self._current_skip + 1)
+        slope_norm = np.sum(np.abs(slope))
+        num_steps = self._threshold / (slope_norm + 1e-5)
+
+        self._current_skip = min(int(num_steps), self._max_skip)
+
+        self._sample_skip = 0
+
+    def reset(self):
+        super().reset()
+        self._prev = np.zeros(shape=(self.num_features, 1))
+
+
 class RandomPolicy(Policy):
 
     def should_collect(self, seq_idx: int) -> bool:
@@ -323,6 +435,7 @@ class UniformPolicy(Policy):
         return 'uniform'
 
     def reset(self):
+        super().reset()
         self._skip_idx = 0
 
 
@@ -357,32 +470,60 @@ def run_policy(policy: Policy, sequence: np.ndarray) -> Tuple[np.ndarray, List[i
     return np.vstack(collected_list), collected_indices
 
 
-def make_policy(name: str, seq_length: int, num_features: int, precision: int, encryption_mode: EncryptionMode, target: float, **kwargs: Dict[str, Any]) -> Policy:
+def make_policy(name: str, seq_length: int, num_features: int, encryption_mode: EncryptionMode, target: float, dataset: str, **kwargs: Dict[str, Any]) -> Policy:
     name = name.lower()
 
+    # Look up the data-specific precision
+    precision_path = os.path.join('datasets', dataset, 'quantize.json')
+    precision_dict = read_json(precision_path)
+    precision = precision_dict['precision']
+
     if name == 'random':
-        return RandomPolicy(target=target,
+        return RandomPolicy(target=target + MARGIN,
                             precision=precision,
                             width=BIT_WIDTH,
                             num_features=num_features,
                             seq_length=seq_length,
                             encryption_mode=encryption_mode)
-    elif name == 'adaptive':
-        return AdaptivePolicy(target=target,
-                              threshold=float(kwargs.get('threshold', 0.0)),
-                              precision=precision,
-                              width=BIT_WIDTH,
-                              seq_length=seq_length,
-                              num_features=num_features,
-                              encryption_mode=encryption_mode,
-                              encoding_mode=EncodingMode[str(kwargs['encoding']).upper()],
-                              window=50)
     elif name == 'uniform':
-        return UniformPolicy(target=target,
+        return UniformPolicy(target=target + MARGIN,
                              precision=precision,
                              width=BIT_WIDTH,
                              num_features=num_features,
                              seq_length=seq_length,
                              encryption_mode=encryption_mode)
+    elif name.startswith('adaptive'):
+        # Look up the threshold path
+        threshold_path = os.path.join('saved_models', dataset, 'thresholds.pkl.gz')
+
+        if not os.path.exists(threshold_path):
+            print('WARNING: No threshold path exists. Defaulting to 0.0')
+            threshold = 0.0
+        else:
+            thresholds = read_pickle_gz(threshold_path)
+
+            if (name not in thresholds) or (target not in thresholds[name]):
+                print('WARNING: No threshold path exists. Defaulting to 0.0')
+                threshold = 0.0
+            else:
+                threshold = thresholds[name][target]
+
+        if name == 'adaptive_heuristic':
+            cls = AdaptiveHeuristic
+        elif name == 'adaptive_litesense':
+            cls = AdaptiveLiteSense
+        elif name == 'adaptive_jitter':
+            cls = AdaptiveJitter
+        else:
+            raise ValueError('Unknown adaptive policy with name: {0}'.format(name))
+
+        return cls(target=target,
+                   threshold=threshold,
+                   precision=precision,
+                   width=BIT_WIDTH,
+                   seq_length=seq_length,
+                   num_features=num_features,
+                   encryption_mode=encryption_mode,
+                   encoding_mode=EncodingMode[str(kwargs['encoding']).upper()])
     else:
         raise ValueError('Unknown policy with name: {0}'.format(name))

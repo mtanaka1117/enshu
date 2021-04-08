@@ -3,14 +3,43 @@ import os.path
 import h5py
 import socket
 from argparse import ArgumentParser
+from collections import namedtuple
 from sklearn.metrics import mean_squared_error
-from typing import Optional, List
+from typing import Optional, List, Tuple
 
 from adaptiveleak.policies import make_policy, Policy
+from adaptiveleak.utils.constants import LENGTH_BYTES, LENGTH_ORDER
 from adaptiveleak.utils.encryption import decrypt, EncryptionMode, verify_hmac, SHA256_LEN
 from adaptiveleak.utils.message import decode_byte_measurements
 from adaptiveleak.utils.loading import load_data
 from adaptiveleak.utils.file_utils import read_json, save_json_gz, read_pickle_gz
+
+
+Message = namedtuple('Message', ['mac', 'length', 'data', 'full'])
+
+
+def parse_message(message_buffer: bytes) -> Tuple[Message, int]:
+    """
+    Splits the message buffer into fields.
+
+    Args:
+        message_buffer: The current message buffer
+    Returns:
+        A tuple of two elements:
+            (1) The parsed message
+            (2) The number of consumed bytes. The buffer
+                should be advanced by this amount.
+    """
+    length_start = SHA256_LEN
+    data_start = SHA256_LEN + LENGTH_BYTES
+
+    mac = message_buffer[:length_start]
+    length = int.from_bytes(message_buffer[length_start:data_start], byteorder=LENGTH_ORDER)
+    data = message_buffer[data_start:data_start + length]
+    full = message_buffer[length_start:data_start + length]
+
+    message = Message(mac=mac, length=length, data=data, full=full)
+    return message, length + data_start
 
 
 def reconstruct_sequence(measurements: np.ndarray, collected_indices: List[int], seq_length: int) -> np.ndarray:
@@ -109,24 +138,23 @@ class Server:
                     recv = conn.recv(2048)
                     message_buffer.extend(recv)
 
-                    # Extract the HMAC
-                    mac = message_buffer[:SHA256_LEN]
-
-                    # Get the information for the current sample
-                    length = int.from_bytes(message_buffer[SHA256_LEN:SHA256_LEN+4], byteorder='little')
-                    recv_sample = bytes(message_buffer[SHA256_LEN+4:SHA256_LEN+length+4])
+                    # Parse the message
+                    parsed, consumed_bytes = parse_message(message_buffer)
 
                     # Move the message buffer
-                    message_buffer = message_buffer[4+length+SHA256_LEN:]
+                    message_buffer = message_buffer[consumed_bytes:]
 
                     # Verify the MAC
-                    if not verify_hmac(mac=mac, message=recv_sample, secret=self._hmac_secret):
-                        print('Could not verify MAC for sample {0}. Skipping.'.format(idx))
-                        continue
+                    verification = verify_hmac(mac=parsed.mac,
+                                               message=parsed.full,
+                                               secret=self._hmac_secret)
+                    if not verification:
+                        print('Could not verify MAC for sample {0}. Quitting.'.format(idx))
+                        break
 
                     # Decrypt the message
                     key = self._aes_key if encryption_mode == EncryptionMode.BLOCK else self._chacha_key
-                    message = decrypt(ciphertext=recv_sample, key=key, mode=encryption_mode)
+                    message = decrypt(ciphertext=parsed.data, key=key, mode=encryption_mode)
 
                     # Decode the measurements
                     measurements, collected_indices = policy.decode(message=message)
@@ -141,7 +169,7 @@ class Server:
                                                y_pred=reconstructed)
 
                     # Log the results of this sequence
-                    num_bytes.append(len(recv_sample))
+                    num_bytes.append(len(parsed.data))
                     num_measurements.append(len(measurements))
                     errors.append(error)
                     label_list.append(int(labels[idx]))
@@ -188,19 +216,14 @@ if __name__ == '__main__':
     # Extract the parameters
     params = read_json(args.params)
 
-    # Get preset threshold (if present)
-    threshold_path = os.path.join('saved_models', args.dataset, 'thresholds.pkl.gz')
-    thresholds = read_pickle_gz(threshold_path) if os.path.exists(threshold_path) else dict()
-
     # Make the policy
     policy = make_policy(name=params['name'],
                          target=params['target'],
-                         precision=params['precision'],
                          num_features=inputs.shape[2],
                          seq_length=inputs.shape[1],
+                         dataset=args.dataset,
                          encryption_mode=encryption_mode,
-                         encoding=params.get('encoding', 'unknown'),
-                         threshold=thresholds.get(params['target'], 0.0))
+                         encoding=params.get('encoding', 'unknown'))
 
     # Run the experiment
     server.run(inputs=inputs,

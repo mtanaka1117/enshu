@@ -12,50 +12,11 @@ from adaptiveleak.utils.encryption import EncryptionMode
 from adaptiveleak.utils.file_utils import read_pickle_gz
 
 
-def execute_policy(policy: Policy, sequence: np.ndarray) -> Tuple[np.ndarray, List[int]]:
-    
-    estimate_list: List[np.ndarray] = []
-    collected_list: List[np.ndarray] = []
-    collected: List[int] = []
-    
-    policy.reset()
-
-    for idx in range(len(sequence)):
-        # policy.transition()
-
-        measurement = np.expand_dims(sequence[idx], axis=-1)
-        did_send = policy.should_collect(measurement=measurement, seq_idx=idx)
-
-        estimate = policy.get_estimate().reshape(1, -1)  # [1, D]
-
-        if did_send:
-            policy.collect()
-
-            collected.append(idx)
-            collected_list.append(estimate)
-
-    transmitted_seq, total_bytes = quantize(measurements=np.vstack(collected_list),
-                                            num_transmitted=len(collected_list),
-                                            policy=policy,
-                                            should_pad=False)
-
-    estimate = np.zeros_like(collected_list[0])
-    collected_idx = 0
-
-    for idx in range(len(sequence)):
-        if (collected_idx < len(collected)) and (idx == collected[collected_idx]):
-            estimate = transmitted_seq[collected_idx].reshape(1, -1)
-            collected_idx += 1
-
-        estimate_list.append(estimate)
-
-    return np.vstack(estimate_list), collected
-
-
 if __name__ == '__main__':
     parser = ArgumentParser()
     parser.add_argument('--dataset', type=str, required=True)
     parser.add_argument('--policy', type=str, required=True)
+    parser.add_argument('--target', type=float, required=True)
     parser.add_argument('--feature', type=int, default=0)
     args = parser.parse_args()
 
@@ -70,19 +31,14 @@ if __name__ == '__main__':
     # Unpack the shape
     num_seq, seq_length, num_features = inputs.shape
 
-    # Get any existing thresholds
-    thresholds_path = os.path.join('saved_models', args.dataset, 'thresholds.pkl.gz')
-    thresholds = read_pickle_gz(thresholds_path)
-
     # Make the policy
-    target = 0.5
+    target = args.target
+
     policy = make_policy(name=args.policy,
                          seq_length=seq_length,
                          num_features=num_features,
+                         dataset=args.dataset,
                          target=target,
-                         threshold=thresholds.get(target, 0.0),
-                         width=8,
-                         precision=6,
                          encryption_mode=EncryptionMode.STREAM,
                          encoding='standard')
 
@@ -90,7 +46,8 @@ if __name__ == '__main__':
     estimate_list: List[np.ndarray] = []
     collected: List[List[int]] = []
 
-    collected_seq = min(num_seq, 500)
+    # collected_seq = min(num_seq, 400)
+    collected_seq = num_seq
 
     for idx, sequence in enumerate(inputs):
         if idx >= collected_seq:

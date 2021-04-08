@@ -6,6 +6,7 @@ from argparse import ArgumentParser
 from typing import Optional
 
 from adaptiveleak.policies import make_policy, run_policy, Policy
+from adaptiveleak.utils.constants import LENGTH_BYTES, LENGTH_ORDER
 from adaptiveleak.utils.encryption import encrypt, EncryptionMode, add_hmac
 from adaptiveleak.utils.message import encode_byte_measurements
 from adaptiveleak.utils.loading import load_data
@@ -64,8 +65,6 @@ class Sensor:
                 measurements, indices = run_policy(policy=policy,
                                                    sequence=inputs[idx])
 
-                policy.step(seq_idx=idx, count=len(indices))
-
                 # Encode the measurements into one message
                 message = policy.encode(measurements=measurements, collected_indices=indices)
 
@@ -74,7 +73,7 @@ class Sensor:
                 encrypted_message = encrypt(message=message, key=key, mode=encryption_mode)
 
                 # Pre-pend the message length to the front (4 bytes)
-                length = len(encrypted_message).to_bytes(4, byteorder='little')
+                length = len(encrypted_message).to_bytes(LENGTH_BYTES, byteorder=LENGTH_ORDER)
 
                 encrypted_message = length + encrypted_message
 
@@ -107,19 +106,14 @@ if __name__ == '__main__':
     # Extract the encryption mode
     encryption_mode = EncryptionMode[args.encryption.upper()]
 
-    # Check for any fitted (initial) thresholds
-    threshold_path = os.path.join('saved_models', args.dataset, 'thresholds.pkl.gz')
-    thresholds = read_pickle_gz(threshold_path) if os.path.exists(threshold_path) else dict()
-
     # Make the policy
     policy = make_policy(name=params['name'],
                          target=params['target'],
-                         precision=params['precision'],
                          num_features=inputs.shape[2],
                          seq_length=inputs.shape[1],
+                         dataset=args.dataset,
                          encryption_mode=encryption_mode,
-                         encoding=params.get('encoding', 'unknown'),
-                         threshold=thresholds.get(params['target'], 0.0))
+                         encoding=params.get('encoding', 'unknown'))
 
     # Run the sensor
     sensor = Sensor(server_host='localhost', server_port=args.port)

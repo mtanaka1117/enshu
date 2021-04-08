@@ -2,7 +2,7 @@ import numpy as np
 import math
 from functools import partial
 from Cryptodome.Random import get_random_bytes
-from typing import List, Union, Tuple
+from typing import List, Union, Tuple, Iterable
 
 from adaptiveleak.utils.constants import BIT_WIDTH, BIG_NUMBER, MIN_WIDTH
 from adaptiveleak.utils.encryption import AES_BLOCK_SIZE, EncryptionMode, CHACHA_NONCE_LEN
@@ -99,7 +99,7 @@ def select_range_shift(measurements: np.ndarray, width: int, precision: int, num
     return best_shift
 
 
-def linear_extrapolate(prev: np.ndarray, curr: np.ndarray, delta: float) -> np.ndarray:
+def linear_extrapolate(prev: np.ndarray, curr: np.ndarray, delta: float, num_steps: int) -> np.ndarray:
     """
     This function uses a linear approximation over the given readings to project
     the next value 'delta' units ahead.
@@ -108,11 +108,12 @@ def linear_extrapolate(prev: np.ndarray, curr: np.ndarray, delta: float) -> np.n
         prev: A [D] array containing the previous value
         curr: A [D] array containing the current value
         delta: The time between consecutive readings
+        num_steps: The number of steps to extrapolate ahead
     Returns:
-        A [D] array containing the projected reading (`delta` steps ahead).
+        A [D] array containing the projected reading (`num_steps * delta` steps ahead).
     """
     slope = (curr - prev) / delta
-    return slope * (2 * delta) + prev
+    return slope * delta * num_steps + curr
 
 
 def pad_to_length(message: bytes, length: int) -> bytes:

@@ -155,6 +155,26 @@ class TestQuantization(unittest.TestCase):
         expected = np.array([-0.25, 0.2861328125, 0.951171875, -0.6298828125])
         self.assertTrue(np.all(np.isclose(expected, result)))
 
+    def test_unsigned(self):
+        array = np.array([10, 255, 12, 17, 0, 256])
+        
+        quantized = data_utils.array_to_fp(array, width=8, precision=0)
+        recovered = data_utils.array_to_float(array, precision=0)
+
+        self.assertTrue(np.all(np.isclose(array, recovered)))
+
+    def test_neg_end_to_end(self):
+        array = np.array([16, 32, 33, 48, 1024, 2047])
+
+        quantized = data_utils.array_to_fp(array, width=8, precision=-4)
+        recovered = data_utils.array_to_float(quantized, precision=-4)
+
+        expected_quantized = np.array([1, 2, 2, 3, 64, 127])
+        self.assertTrue(np.all(np.isclose(quantized, expected_quantized)))
+
+        expected = np.array([16, 32, 32, 48, 1024, 2032])
+        self.assertTrue(np.all(np.isclose(recovered, expected)))
+
 
 class TestRangeShift(unittest.TestCase):
 
