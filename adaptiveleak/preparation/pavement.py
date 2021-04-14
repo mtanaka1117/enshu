@@ -8,7 +8,6 @@ from collections import Counter
 from typing import Iterable, Dict, Any
 
 
-FEATURE_SIZE = 6
 SEQ_LENGTH = 120
 STRIDE = 36
 
@@ -49,7 +48,7 @@ def iterate_dataset(path: str) -> Iterable[Any]:
                         continue
 
                     features = np.array(features_list)  # [120]
-                    features = features.reshape(-1, FEATURE_SIZE)  # [20, 6]
+                    features = np.expand_dims(features, axis=-1)  # [120, 1]
 
                     yield features, label
 

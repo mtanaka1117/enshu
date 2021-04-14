@@ -6,53 +6,19 @@ from scipy import stats
 from collections import namedtuple, OrderedDict
 from typing import Any, Dict, List, Optional
 
+from adaptiveleak.utils.constants import POLICIES
 from adaptiveleak.utils.file_utils import read_json_gz
+from adaptiveleak.plotting.plot_utils import COLORS, to_label, geometric_mean, MARKER, MARKER_SIZE, LINE_WIDTH, PLOT_STYLE
+from adaptiveleak.plotting.plot_utils import PLOT_SIZE, AXIS_FONT, LEGEND_FONT, TITLE_FONT
 
-
-SimResult = namedtuple('SimResult', ['inference', 'targets', 'reconstruct', 'name'])
-MODEL_ORDER = ['random', 'uniform', 'adaptive_standard', 'adaptive_group']
-
-COLORS = {
-    'random': '#d73027',
-    'uniform': '#fc8d59',
-    'adaptive_standard': '#9ecae1',
-    'adaptive_group': '#08519c'
-}
-
-
-def get_name(policy: OrderedDict, is_padded: bool) -> str:
-    name = policy['name'].capitalize()
-
-    if name == 'Adaptive':
-        compression = policy['compression_name'].capitalize()
-
-        if compression == 'Fixed':
-            return 'Adaptive'
-
-        if not is_padded:
-            if compression == 'Block':
-                return '{0} Stream'.format(name)
-
-        return '{0} {1}'.format(name, compression)
-
-    return name
-
-
-def to_label(label: str) -> str:
-    return ' '.join(t.capitalize() for t in label.split('_'))
-
-
-def geometric_mean(x: List[float]) -> float:
-    x_prod = np.prod(x)
-    return np.power(x_prod, 1.0 / len(x))
 
 
 def plot(sim_results: Dict[str, Dict[float, float]], dataset_name: str, output_file: Optional[str]):
 
-    with plt.style.context('seaborn-ticks'):
-        fig, ax = plt.subplots(figsize=(10, 8))
+    with plt.style.context(PLOT_STYLE):
+        fig, ax = plt.subplots(figsize=PLOT_SIZE)
 
-        for name in MODEL_ORDER:
+        for name in POLICIES:
             if name not in sim_results:
                 continue
 
@@ -60,15 +26,15 @@ def plot(sim_results: Dict[str, Dict[float, float]], dataset_name: str, output_f
             targets = list(sorted(model_results.keys()))
             errors = [model_results[t] for t in targets]
 
-            ax.plot(targets, errors, marker='o', linewidth=4, markersize=8, label=to_label(name), color=COLORS[name])
+            ax.plot(targets, errors, marker=MARKER, linewidth=LINE_WIDTH, markersize=MARKER_SIZE, label=to_label(name), color=COLORS[name])
 
             print('{0} & {1:.4f}'.format(name, np.average(errors)))
 
-        ax.set_xlabel('Fraction of Measurements')
-        ax.set_ylabel('Average Reconstruction Error')
-        ax.set_title('Average Reconstruction Error on the {0} Dataset'.format(dataset_name.capitalize()))
+        ax.set_xlabel('Fraction of Measurements', fontsize=AXIS_FONT)
+        ax.set_ylabel('Reconstruction Error (MAE)', fontsize=AXIS_FONT)
+        ax.set_title('Average Reconstruction Error on the {0} Dataset'.format(dataset_name.capitalize()), fontsize=TITLE_FONT)
 
-        ax.legend()
+        ax.legend(fontsize=LEGEND_FONT)
 
         if output_file is None:
             plt.show()

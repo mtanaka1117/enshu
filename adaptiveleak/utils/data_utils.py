@@ -4,7 +4,7 @@ from functools import partial
 from Cryptodome.Random import get_random_bytes
 from typing import List, Union, Tuple, Iterable
 
-from adaptiveleak.utils.constants import BIT_WIDTH, BIG_NUMBER, MIN_WIDTH
+from adaptiveleak.utils.constants import BITS_PER_BYTE, BIG_NUMBER, MIN_WIDTH
 from adaptiveleak.utils.encryption import AES_BLOCK_SIZE, EncryptionMode, CHACHA_NONCE_LEN
 
 
@@ -35,7 +35,7 @@ def to_fixed_point(x: float, precision: int, width: int) -> int:
     assert width >= 1, 'Must have a non-negative width'
 
     multiplier = 1 << abs(precision)
-    fp = int(x * multiplier) if precision > 0 else int(x / multiplier)
+    fp = int(round(x * multiplier)) if precision > 0 else int(round(x / multiplier))
 
     max_val = (1 << (width - 1)) - 1
     min_val = -max_val
@@ -157,7 +157,7 @@ def get_max_collected(seq_length: int,
     Args:
         seq_length: The length of a full sequence
         num_features: The number of features in a single measurement
-        group_size: The size of each group except (possibly) the last
+        group_size: The number of features in each group except (possibly) the last
         min_width: The minimum bit width of a single feature
         target_size: The target number of bytes
         encryption_mode: The type of encryption algorithm (block or stream)
@@ -165,10 +165,10 @@ def get_max_collected(seq_length: int,
         The maximum number of measurements
     """
     # Get the number of bytes per group (in the worst case)
-    size_per_group = int(math.ceil((num_features * group_size * min_width) / BIT_WIDTH))
+    size_per_group = int(math.ceil((group_size * min_width) / BITS_PER_BYTE))
 
     # Get the number of meta-data bytes
-    meta_size = int(math.ceil(seq_length / BIT_WIDTH)) + 2
+    meta_size = int(math.ceil(seq_length / BITS_PER_BYTE)) + 2
     if encryption_mode == EncryptionMode.BLOCK:
         meta_size += AES_BLOCK_SIZE
     elif encryption_mode == EncryptionMode.STREAM:
@@ -184,11 +184,14 @@ def get_max_collected(seq_length: int,
 
     # Get the maximum number of measurements based on
     # even-sized groups
-    max_measurements = max_groups * group_size
+    max_features = max_groups * group_size
 
     # Add in extra measurements to the final group (may be smaller than other groups)
-    extra_measurements = int(math.floor((BIT_WIDTH * ((target_size - current_size) - 1)) / (num_features * min_width)))
-    max_measurements += extra_measurements
+    extra_features = int(math.floor((BITS_PER_BYTE * ((target_size - current_size) - 1)) / min_width))
+    max_features += extra_features
+
+    # Calculate the maximum number of full measurements
+    max_measurements = int(math.floor(max_features / num_features))
 
     # Cap the number of measurements at the sequence length
     return min(max_measurements, seq_length)
@@ -283,6 +286,7 @@ def get_group_widths(group_size: int,
                      num_features: int,
                      seq_length: int,
                      target_frac: float,
+                     standard_width: int,
                      encryption_mode: EncryptionMode) -> List[int]:
     """
     Calculates the bit-width of each group such that the final encrypted message
@@ -294,21 +298,24 @@ def get_group_widths(group_size: int,
         num_features: The number of features per measurement
         seq_length: The number of elements in a full sequence
         target_frac: The target collection / sending fraction (on average)
+        standard_width: The standard bit-width for each feature
         encryption_mode: The type of encryption algorithm (block or stream)
     Returns:
         A list of bit-widths for each group.
     """
     # Get the target values
-    target_data_bits = BIT_WIDTH * num_collected * num_features
+    target_collected = int(target_frac * seq_length)
+    target_data_bits = standard_width * target_collected * num_features
 
-    target_bytes = calculate_bytes(width=BIT_WIDTH,
-                                   num_collected=int(target_frac * seq_length),
+    target_bytes = calculate_bytes(width=standard_width,
+                                   num_collected=target_collected,
                                    num_features=num_features,
                                    seq_length=seq_length,
                                    encryption_mode=encryption_mode)
 
     # Get the number of groups
     num_groups = get_num_groups(num_collected=num_collected,
+                                num_features=num_features,
                                 group_size=group_size)
 
     # Pick the larger initial widths (add a fudge constant to ensure we over-estimate)
@@ -327,7 +334,6 @@ def get_group_widths(group_size: int,
     i = 0
     group_idx = 0
 
-    # if encryption_mode == EncryptionMode.BLOCK:
     while (i < MAX_ITER):
         # Adjust the group width
         widths[group_idx] += 1 if data_bytes <= target_bytes else -1
@@ -340,7 +346,7 @@ def get_group_widths(group_size: int,
                                                 group_size=group_size,
                                                 seq_length=seq_length,
                                                 encryption_mode=encryption_mode)
-
+    
         # Exit the loop when we find the inflection point
         if (data_bytes <= target_bytes and updated_bytes > target_bytes):
             widths[group_idx] = max(widths[group_idx] - 1, MIN_WIDTH)
@@ -360,7 +366,7 @@ def calculate_bytes(width: int, num_collected: int, num_features: int, seq_lengt
     number of features and measurements of the provided width.
 
     Args:
-        width: The bit-width of each features
+        width: The bit-width of each feature
         num_collected: The number of collected measurements
         num_features: The number of features per measurement
         seq_length: The length of a full sequence
@@ -369,10 +375,10 @@ def calculate_bytes(width: int, num_collected: int, num_features: int, seq_lengt
         The total number of bytes in the encrypted message.
     """
     data_bits = width * num_collected * num_features
-    data_bytes = int(math.ceil(data_bits / 8))
+    data_bytes = int(math.ceil(data_bits / BITS_PER_BYTE))
 
-    # Include the meta-data (precision) and the sequence bit mask
-    message_bytes = data_bytes + 1 + int(math.ceil(seq_length / 8))
+    # Include the meta-data (the sequence bit mask)
+    message_bytes = data_bytes + int(math.ceil(seq_length / BITS_PER_BYTE))
 
     if encryption_mode == EncryptionMode.BLOCK:
         # Account for the IV
@@ -384,8 +390,29 @@ def calculate_bytes(width: int, num_collected: int, num_features: int, seq_lengt
         raise ValueError('Unknown encryption mode: {0}'.format(encryption_mode.name))
 
 
-def get_num_groups(num_collected: int, group_size: int) -> int:
-    return int(math.ceil(num_collected / group_size))
+def get_num_groups(num_collected: int, num_features: int, group_size: int) -> int:
+    return int(math.ceil((num_collected * num_features) / group_size))
+
+
+def balance_group_size(num_collected: int, num_features: int, max_group_size: int) -> int:
+    """
+    Balances groups by evenly spreading the features across each grouping.
+
+    Args:
+        num_collected: The number of collected measurements (K)
+        num_features: The number of features per measurement (D)
+        max_group_size: The maximum number of features per group (G)
+    Returns:
+        The selected (balanced) group size in [1, G]
+    """
+    num_groups = get_num_groups(num_collected=num_collected,
+                               num_features=num_features,
+                               group_size=max_group_size)
+
+    total_features = num_collected * num_features
+    even_group_size = int(math.ceil(total_features / num_groups))
+
+    return min(max(even_group_size, 1), max_group_size)
 
 
 def calculate_grouped_bytes(widths: List[int],
@@ -401,24 +428,27 @@ def calculate_grouped_bytes(widths: List[int],
         widths: A list of the bit-widths for each group
         num_collected: The number of collected measurements
         num_features: The number of features per measurement
-        group_size: The number of measurements per group
+        group_size: The number of features per group
         encryption_mode: The type of encryption algorithm (block or stream)
         seq_length: The length of a full sequence
     Returns:
         The number of bytes in the encoded message.
     """
     # Validate arguments
-    num_groups = get_num_groups(num_collected=num_collected, group_size=group_size)
+    num_groups = get_num_groups(num_collected=num_collected,
+                                group_size=group_size,
+                                num_features=num_features)
     assert len(widths) == num_groups, 'Must provide {0} widths. Got: {1}'.format(num_groups, len(widths))
 
     total_bytes = 0
     so_far = 0
+    total_features = num_collected * num_features
 
     # Calculate the number of data bytes in the encoded message
     for idx, width in enumerate(widths):
-        group_elements = min(group_size, num_collected - so_far)
+        group_elements = min(group_size, total_features - so_far)
 
-        data_bits = width * group_elements * num_features
+        data_bits = width * group_elements
         data_bytes = int(math.ceil(data_bits / 8))
 
         total_bytes += data_bytes
@@ -469,7 +499,7 @@ def prune_sequence(measurements: np.ndarray, collected_indices: List[int], max_c
     partitioned = np.argpartition(total_errors, kth=num_to_remove) + 1
 
     # Keep the measurements with the highest induced error
-    highest_error_indices = partitioned[num_to_remove:]
+    highest_error_indices = np.sort(partitioned[num_to_remove:])
     kept_measurements = measurements[highest_error_indices]
 
     # Always include the first and last measurements

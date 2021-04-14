@@ -1,0 +1,5 @@
+{
+    "name": "adaptive_heuristic",
+    "target": 0.3,
+    "encoding": "standard"
+}

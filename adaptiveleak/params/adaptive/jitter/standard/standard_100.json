@@ -1,0 +1,5 @@
+{
+    "name": "adaptive_jitter",
+    "target": 1.0,
+    "encoding": "standard"
+}

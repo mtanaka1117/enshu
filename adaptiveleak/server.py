@@ -4,13 +4,12 @@ import h5py
 import socket
 from argparse import ArgumentParser
 from collections import namedtuple
-from sklearn.metrics import mean_squared_error
+from sklearn.metrics import mean_absolute_error, r2_score
 from typing import Optional, List, Tuple
 
 from adaptiveleak.policies import make_policy, Policy
 from adaptiveleak.utils.constants import LENGTH_BYTES, LENGTH_ORDER
 from adaptiveleak.utils.encryption import decrypt, EncryptionMode, verify_hmac, SHA256_LEN
-from adaptiveleak.utils.message import decode_byte_measurements
 from adaptiveleak.utils.loading import load_data
 from adaptiveleak.utils.file_utils import read_json, save_json_gz, read_pickle_gz
 
@@ -110,6 +109,7 @@ class Server:
         num_measurements: List[int] = []
         errors: List[float] = []
         label_list: List[int] = []
+        reconstructed_list: List[np.ndarray] = []
 
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock: 
             # Bind the sensor to the selected host and port
@@ -165,21 +165,30 @@ class Server:
                                                          seq_length=seq_length)
 
                     # Compute the reconstruction error in the measurements
-                    error = mean_squared_error(y_true=inputs[idx],
-                                               y_pred=reconstructed)
+                    error = mean_absolute_error(y_true=inputs[idx],
+                                                y_pred=reconstructed)
 
                     # Log the results of this sequence
                     num_bytes.append(len(parsed.data))
                     num_measurements.append(len(measurements))
                     errors.append(error)
                     label_list.append(int(labels[idx]))
+                    reconstructed_list.append(np.expand_dims(reconstructed, axis=0))
 
                     if ((idx + 1) % 100) == 0:
                         print('Completed {0} sequences.'.format(idx + 1))
 
+                # Compute the R^2 score across all samples
+                true = inputs[0:limit]  # [N, T, D]
+                reconstructed = np.vstack(reconstructed_list)  # [N, T, D]
+                r2 = r2_score(y_true=true.reshape(-1, num_features),
+                              y_pred=reconstructed.reshape(-1, num_features),
+                              multioutput='variance_weighted')
+
         # Save the results
         result_dict = {
             'avg_error': np.average(errors),
+            'r2_score': r2,
             'avg_bytes': np.average(num_bytes),
             'avg_measurements': np.average(num_measurements),
             'errors': errors,
@@ -205,7 +214,7 @@ if __name__ == '__main__':
     args = parser.parse_args()
 
     # Load the test data
-    inputs, labels = load_data(dataset_name=args.dataset, fold='test')
+    inputs, labels = load_data(dataset_name=args.dataset, fold='all')
 
     # Set the encryption mode
     encryption_mode = EncryptionMode[args.encryption.upper()]

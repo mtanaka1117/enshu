@@ -8,7 +8,6 @@ from typing import Optional
 from adaptiveleak.policies import make_policy, run_policy, Policy
 from adaptiveleak.utils.constants import LENGTH_BYTES, LENGTH_ORDER
 from adaptiveleak.utils.encryption import encrypt, EncryptionMode, add_hmac
-from adaptiveleak.utils.message import encode_byte_measurements
 from adaptiveleak.utils.loading import load_data
 from adaptiveleak.utils.file_utils import read_json, read_pickle_gz, save_pickle_gz
 
@@ -98,7 +97,7 @@ if __name__ == '__main__':
     args = parser.parse_args()
 
     # Load the data
-    inputs, _ = load_data(dataset_name=args.dataset, fold='test')
+    inputs, _ = load_data(dataset_name=args.dataset, fold='all')
 
     # Read the parameters
     params = read_json(args.params)

@@ -6,10 +6,11 @@ from enum import Enum, auto
 from typing import Tuple, List, Dict, Any
 
 from adaptiveleak.controllers import PIDController
-from adaptiveleak.utils.constants import BIT_WIDTH, MIN_WIDTH
+from adaptiveleak.utils.constants import BITS_PER_BYTE, MIN_WIDTH, SMALL_NUMBER
 from adaptiveleak.utils.data_utils import get_group_widths, get_num_groups, calculate_bytes, pad_to_length
 from adaptiveleak.utils.data_utils import prune_sequence, get_max_collected, calculate_grouped_bytes, linear_extrapolate
-from adaptiveleak.utils.message import encode_byte_measurements, decode_byte_measurements
+from adaptiveleak.utils.data_utils import balance_group_size
+from adaptiveleak.utils.message import encode_standard_measurements, decode_standard_measurements
 from adaptiveleak.utils.message import encode_grouped_measurements, decode_grouped_measurements
 from adaptiveleak.utils.encryption import AES_BLOCK_SIZE, EncryptionMode, CHACHA_NONCE_LEN
 from adaptiveleak.utils.file_utils import read_json, read_pickle_gz
@@ -77,15 +78,18 @@ class Policy:
         self._estimate = np.zeros((self._num_features, 1))  # [D, 1]
 
     def encode(self, measurements: np.ndarray, collected_indices: List[int]) -> bytes:
-        return encode_byte_measurements(measurements=measurements,
-                                        collected_indices=collected_indices,
-                                        seq_length=self.seq_length,
-                                        precision=self.precision)
+        return encode_standard_measurements(measurements=measurements,
+                                            collected_indices=collected_indices,
+                                            seq_length=self.seq_length,
+                                            precision=self.precision,
+                                            width=self.width)
 
     def decode(self, message: bytes) -> Tuple[np.ndarray, List[int]]:
-        return decode_byte_measurements(byte_str=message,
-                                        seq_length=self.seq_length,
-                                        num_features=self.num_features)
+        return decode_standard_measurements(byte_str=message,
+                                            seq_length=self.seq_length,
+                                            num_features=self.num_features,
+                                            precision=self.precision,
+                                            width=self.width)
 
     def step(self, count: int, seq_idx: int):
         self._measurement_count += count
@@ -133,54 +137,26 @@ class AdaptivePolicy(Policy):
         self._current_skip = 0
         self._sample_skip = 0
 
-        # Controller automatically set the threshold
-        #self._pid = PIDController(kp=(1.0 / 16.0),
-        #                          ki=(1.0 / 32.0),
-        #                          kd=(1.0 / 128.0))
-
         self._threshold = threshold
 
     @property
     def encoding_mode(self) -> EncodingMode:
         return self._encoding_mode
 
-    @property
-    def group_size(self) -> int:
-        return max(int(math.ceil((BIT_WIDTH * AES_BLOCK_SIZE) / self.num_features)), 1)
-
     def reset(self):
         super().reset()
         self._current_skip = 0
         self._sample_skip = 0
 
-    #def step(self, count: int, seq_idx: int):
-    #    super().step(count=count, seq_idx=seq_idx)
-
-    #    avg = self._measurement_count / (self._seq_count * self._seq_length)
-    #    signal = self._pid.step(estimate=avg, target=self._target)
-
-    #    #if ((seq_idx + 1) % self._window) == 0:
-    #    #    self._threshold = max(self._start_threshold - signal, 0.0)
-
     def encode(self, measurements: np.ndarray, collected_indices: List[int]) -> bytes:
         if self.encoding_mode == EncodingMode.STANDARD:
             return super().encode(measurements, collected_indices)
         elif self.encoding_mode == EncodingMode.GROUP:
-            num_collected = len(measurements)
+            max_group_size = max(int(BITS_PER_BYTE * AES_BLOCK_SIZE), 1)
 
-            # Get the group widths
-            num_groups = get_num_groups(num_collected=num_collected,
-                                        group_size=self.group_size)
-
-            widths = get_group_widths(group_size=self.group_size,
-                                      num_collected=num_collected,
-                                      num_features=self.num_features,
-                                      seq_length=self.seq_length,
-                                      target_frac=self.target,
-                                      encryption_mode=self.encryption_mode)
-
-            # Get the maximum possible number of collected measurements
-            target_bytes = calculate_bytes(width=BIT_WIDTH,
+            # Get the maximum number of collected measurements to still
+            # meet the target size
+            target_bytes = calculate_bytes(width=self.width,
                                            num_collected=int(self.target * self.seq_length),
                                            num_features=self.num_features,
                                            seq_length=self.seq_length,
@@ -188,15 +164,38 @@ class AdaptivePolicy(Policy):
 
             max_collected = get_max_collected(seq_length=self.seq_length,
                                               num_features=self.num_features,
-                                              group_size=self.group_size,
+                                              group_size=max_group_size,
                                               min_width=MIN_WIDTH,
                                               target_size=target_bytes,
                                               encryption_mode=self.encryption_mode)
+
+            # Subtract 1 to be safe due to later-changing widths
+            max_collected -= 1
 
             # Prune away any excess measurements
             measurements, collected_indices = prune_sequence(measurements=measurements,
                                                              collected_indices=collected_indices,
                                                              max_collected=max_collected)
+
+            num_collected = len(measurements)
+
+            # Set the group parameters
+            num_groups = get_num_groups(num_collected=num_collected,
+                                        group_size=max_group_size,
+                                        num_features=self.num_features)
+
+            group_size = balance_group_size(num_collected=num_collected,
+                                            max_group_size=max_group_size,
+                                            num_features=self.num_features)
+
+            # Get the group widths
+            widths = get_group_widths(group_size=group_size,
+                                      num_collected=num_collected,
+                                      num_features=self.num_features,
+                                      seq_length=self.seq_length,
+                                      target_frac=self.target,
+                                      standard_width=self.width,
+                                      encryption_mode=self.encryption_mode)
 
             # Encode the measurement values
             non_fractional = self.width - self.precision
@@ -205,14 +204,7 @@ class AdaptivePolicy(Policy):
                                                   seq_length=self.seq_length,
                                                   widths=widths,
                                                   non_fractional=non_fractional,
-                                                  group_size=self.group_size)
-
-            expected_bytes = calculate_grouped_bytes(widths=widths,
-                                                     num_collected=num_collected,
-                                                     num_features=self.num_features,
-                                                     group_size=self.group_size,
-                                                     seq_length=self.seq_length,
-                                                     encryption_mode=self.encryption_mode)
+                                                  group_size=group_size)
 
             if self.encryption_mode == EncryptionMode.STREAM:
                 return pad_to_length(encoded, length=target_bytes - CHACHA_NONCE_LEN)
@@ -230,8 +222,7 @@ class AdaptivePolicy(Policy):
             return decode_grouped_measurements(encoded=message,
                                                seq_length=self.seq_length,
                                                num_features=self.num_features,
-                                               non_fractional=non_fractional,
-                                               group_size=self.group_size)
+                                               non_fractional=non_fractional)
         else:
             raise ValueError('Unknown encoding type {0}'.format(self.encoding_mode.name))
 
@@ -257,7 +248,7 @@ class AdaptiveHeuristic(AdaptivePolicy):
         diff = np.sum(np.abs(self._estimate - measurement))
         self._estimate = measurement
 
-        if diff > self._threshold:
+        if diff >= self._threshold:
             self._current_skip = 0
         else:
             self._current_skip = min(self._current_skip + 1, self._max_skip)
@@ -306,8 +297,8 @@ class AdaptiveLiteSense(AdaptivePolicy):
 
         diff = np.sum(updated_dev - self._dev)
 
-        if diff > self._threshold:
-            self._current_skip = max(self._current_skip - 1 if diff < 1.0 else 0, 0)
+        if diff >= self._threshold:
+            self._current_skip = max(self._current_skip - 1, 0)
         else:
             self._current_skip = min(self._current_skip + 1, self._max_skip)
 
@@ -325,6 +316,26 @@ class AdaptiveLiteSense(AdaptivePolicy):
 
     def __str__(self) -> str:
         return 'adaptive_litesense_{0}'.format(self._encoding_mode.name.lower())
+
+
+class AdaptiveDeviation(AdaptiveLiteSense):
+    
+    def collect(self, measurement: np.ndarray):
+        self._mean = (1.0 - self._alpha) * self._mean + self._alpha * measurement
+        self._dev = (1.0 - self._beta) * self._dev + self._beta * np.abs(self._mean - measurement)
+
+        norm = np.sum(self._dev)
+
+        if norm > self._threshold:
+            self._current_skip = max(int(self._current_skip / 2), 0) 
+        else:
+            self._current_skip = min(self._current_skip + 1, self._max_skip)
+
+        self._estimate = measurement
+        self._sample_skip = 0
+
+    def __str__(self) -> str:
+        return 'adaptive_deviation_{0}'.format(self._encoding_mode.name.lower())
 
 
 class AdaptiveJitter(AdaptivePolicy):
@@ -346,30 +357,85 @@ class AdaptiveJitter(AdaptivePolicy):
                          num_features=num_features,
                          encryption_mode=encryption_mode,
                          encoding_mode=encoding_mode)
-        self._prev = np.zeros(shape=(num_features, 1))  # [D, 1]
+
+        # Queue of captured measurements over time
+        self._captured: deque = deque()
+
+        # Queue of the indices of the captured measurements
+        self._captured_idx: deque = deque()
+
+        self._window = 3
+        self._seq_idx = 0 
+
+        self._measurement_sum = np.zeros(shape=(num_features,))
+        self._time_sum = 0
 
     def should_collect(self, seq_idx: int) -> bool:
-        if (seq_idx > 0) and (self._sample_skip < self._current_skip):
+        self._seq_idx = seq_idx
+
+        if (seq_idx >= self._window) and (self._sample_skip < self._current_skip):
             self._sample_skip += 1
             return False
 
         return True
 
     def collect(self, measurement: np.ndarray):
-        self._prev = self._estimate
-        self._estimate = measurement
+        # Add measurement and index to the queue
+        self._captured.append(measurement)
+        self._captured_idx.append(self._seq_idx)
 
-        slope = (self._estimate - self._prev) / (self._current_skip + 1)
-        slope_norm = np.sum(np.abs(slope))
-        num_steps = self._threshold / (slope_norm + 1e-5)
+        # Update the sum values
+        self._measurement_sum += measurement
+        self._time_sum += self._seq_idx
 
-        self._current_skip = min(int(num_steps), self._max_skip)
+        while len(self._captured) > self._window:
+            removed_measurement = self._captured.popleft()
+            self._measurement_sum -= removed_measurement
+
+            removed_time = self._captured_idx.popleft()
+            self._time_sum -= removed_time
+
+        # Update the mean values
+        mean_idx = self._time_sum / len(self._captured_idx)
+        mean_element = self._measurement_sum / len(self._captured)
+
+        # Calculate the differences
+        idx_diff = sum(np.square(idx - mean_idx) for idx in self._captured_idx)
+        measurement_diff = np.zeros_like(measurement)
+
+        for element, idx in zip(self._captured, self._captured_idx):
+            measurement_diff += (idx - mean_idx) * (element - mean_element)
+
+        # Form the best-fit parameters
+        slope = measurement_diff / (idx_diff + SMALL_NUMBER)
+        intercept = mean_element - slope * mean_idx
+
+        # Calculate the jitter metric
+        jitter = 0.0
+        median_idx = (max(self._captured_idx) + min(self._captured_idx)) / 2
+        median_element = intercept + slope * median_idx
+
+        for element in self._captured:
+            jitter += np.sum(np.abs(median_element - element))
+
+        # Update the skipping window
+        if jitter > self._threshold:
+            self._current_skip = max(int(self._current_skip / 2), 0)
+        else:
+            self._current_skip = min(self._current_skip + 1, self._max_skip)
 
         self._sample_skip = 0
 
     def reset(self):
         super().reset()
-        self._prev = np.zeros(shape=(self.num_features, 1))
+        self._captured = deque()
+        self._captured_idx = deque()
+        self._seq_idx = 0
+        self._time_sum = 0
+        self._measurement_sum = np.zeros(shape=(self.num_features,))
+
+    def __str__(self) -> str:
+        return 'adaptive_jitter_{0}'.format(self._encoding_mode.name.lower())
 
 
 class RandomPolicy(Policy):
@@ -473,22 +539,23 @@ def run_policy(policy: Policy, sequence: np.ndarray) -> Tuple[np.ndarray, List[i
 def make_policy(name: str, seq_length: int, num_features: int, encryption_mode: EncryptionMode, target: float, dataset: str, **kwargs: Dict[str, Any]) -> Policy:
     name = name.lower()
 
-    # Look up the data-specific precision
-    precision_path = os.path.join('datasets', dataset, 'quantize.json')
-    precision_dict = read_json(precision_path)
-    precision = precision_dict['precision']
+    # Look up the data-specific precision and width
+    quantize_path = os.path.join('datasets', dataset, 'quantize.json')
+    quantize_dict = read_json(quantize_path)
+    precision = quantize_dict['precision']
+    width = quantize_dict['width']
 
     if name == 'random':
         return RandomPolicy(target=target + MARGIN,
                             precision=precision,
-                            width=BIT_WIDTH,
+                            width=width,
                             num_features=num_features,
                             seq_length=seq_length,
                             encryption_mode=encryption_mode)
     elif name == 'uniform':
         return UniformPolicy(target=target + MARGIN,
                              precision=precision,
-                             width=BIT_WIDTH,
+                             width=width,
                              num_features=num_features,
                              seq_length=seq_length,
                              encryption_mode=encryption_mode)
@@ -512,6 +579,8 @@ def make_policy(name: str, seq_length: int, num_features: int, encryption_mode: 
             cls = AdaptiveHeuristic
         elif name == 'adaptive_litesense':
             cls = AdaptiveLiteSense
+        elif name == 'adaptive_deviation':
+            cls = AdaptiveDeviation
         elif name == 'adaptive_jitter':
             cls = AdaptiveJitter
         else:
@@ -520,7 +589,7 @@ def make_policy(name: str, seq_length: int, num_features: int, encryption_mode: 
         return cls(target=target,
                    threshold=threshold,
                    precision=precision,
-                   width=BIT_WIDTH,
+                   width=width,
                    seq_length=seq_length,
                    num_features=num_features,
                    encryption_mode=encryption_mode,

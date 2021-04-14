@@ -6,6 +6,7 @@ from argparse import ArgumentParser
 from datetime import datetime
 from typing import List
 
+from adaptiveleak.utils.constants import POLICIES
 from adaptiveleak.utils.file_utils import make_dir
 
 
@@ -19,7 +20,7 @@ SENSOR_CMD_SAMPLES = 'python sensor.py --dataset {0} --encryption {1} --params {
 if __name__ == '__main__':
     parser = ArgumentParser()
     parser.add_argument('--dataset', type=str, required=True)
-    parser.add_argument('--policy', type=str, required=True, choices=['random', 'uniform', 'adaptive_standard', 'adaptive_encoded'])
+    parser.add_argument('--policy', type=str, required=True, choices=POLICIES)
     parser.add_argument('--policy-params', type=str, required=True, nargs='+')
     parser.add_argument('--encryption', type=str, required=True, choices=['block', 'stream'])
     parser.add_argument('--max-num-samples', type=int)

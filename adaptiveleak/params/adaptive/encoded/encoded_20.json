@@ -1,0 +1,6 @@
+{
+    "name": "adaptive",
+    "target": 0.2,
+    "precision": 6,
+    "encoding": "group"
+}
