@@ -93,8 +93,6 @@ class NeuralNetwork(BaseClassifier):
 
         self._model = model
 
-        # TODO: Save the training results
-
     def predict_probs(self, inputs: np.ndarray) -> np.ndarray:
         """
         Predicts the probabilities on the given inputs.

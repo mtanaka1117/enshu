@@ -125,7 +125,10 @@ def fit_attack_model(message_sizes: List[int], labels: List[int], window_size: i
             val_inputs=val_inputs,
             val_labels=val_outputs,
             num_epochs=10,
-            save_folder='saved_models')
+            save_folder='attack_models')
+
+    # Load the best model
+    clf.restore('attack_models')
 
     train_accuracy = clf.accuracy(train_inputs, train_outputs)
     val_accuracy = clf.accuracy(val_inputs, val_outputs)
