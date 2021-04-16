@@ -1,10 +1,11 @@
 import numpy as np
 import math
+import time
 from functools import partial
 from Cryptodome.Random import get_random_bytes
 from typing import List, Union, Tuple, Iterable
 
-from adaptiveleak.utils.constants import BITS_PER_BYTE, BIG_NUMBER, MIN_WIDTH
+from adaptiveleak.utils.constants import BITS_PER_BYTE, BIG_NUMBER, MIN_WIDTH, SMALL_NUMBER
 from adaptiveleak.utils.encryption import AES_BLOCK_SIZE, EncryptionMode, CHACHA_NONCE_LEN
 
 
@@ -53,16 +54,31 @@ def to_float(fp: int, precision: int) -> float:
 
 
 def array_to_fp(arr: np.ndarray, precision: int, width: int) -> np.ndarray:
-    convert_fn = partial(to_fixed_point, precision=precision, width=width)
-    map_fn = np.vectorize(convert_fn)
-    return map_fn(arr)
+    multiplier = 1 << abs(precision)
+    
+    if precision > 0:
+        quantized = arr * multiplier
+    else:
+        quantized = arr / multiplier
+
+    quantized = np.round(quantized).astype(int)
+
+    max_val = (1 << (width - 1)) - 1
+    min_val = -max_val
+
+    return np.clip(quantized, a_min=min_val, a_max=max_val)
 
 
-def array_to_float(fp_arr: np.ndarray, precision: int) -> np.ndarray:
-    convert_fn = partial(to_float, precision=precision)
-    map_fn = np.vectorize(convert_fn)
+def array_to_float(fp_arr: Union[np.ndarray, List[float]], precision: int) -> np.ndarray:
+    multiplier = float(1 << abs(precision))
 
-    return map_fn(fp_arr)
+    if isinstance(fp_arr, list):
+        fp_arr = np.array(fp_arr)
+
+    if precision > 0:
+        return fp_arr.astype(float) / multiplier
+    else:
+        return fp_arr.astype(float) * multiplier
 
 
 def select_range_shift(measurements: np.ndarray, width: int, precision: int, num_range_bits: int) -> int:
@@ -80,21 +96,39 @@ def select_range_shift(measurements: np.ndarray, width: int, precision: int, num
     assert num_range_bits >= 1, 'Number of range bits must be non-negative'
     assert width >= 1, 'Number of width bits must be non-negative'
 
+    # Try a shift of zero first
+    fixed_point = array_to_fp(measurements, width=width, precision=precision)
+    quantized = array_to_float(fixed_point, precision=precision)
+
     best_shift = 0
-    best_error = BIG_NUMBER
+    best_error = np.sum(np.abs(quantized - measurements))
+    prev_error = BIG_NUMBER
+    initial_error = best_error
 
     offset = 1 << (num_range_bits - 1)
     for x in range(pow(2, num_range_bits)):
+        if abs(best_error) < SMALL_NUMBER:
+            break
+
         shift = x - offset
 
-        quantized_fixed_point = array_to_fp(measurements, width=width, precision=precision + shift)
-        quantized = array_to_float(quantized_fixed_point, precision=precision + shift)
+        if shift == 0:
+            error = initial_error
+        else:
+            fixed_point = array_to_fp(measurements, width=width, precision=precision + shift)
+            quantized = array_to_float(fixed_point, precision=precision + shift)
 
-        error = np.sum(np.abs(quantized - measurements))
+            error = np.sum(np.abs(quantized - measurements))
 
-        if error < best_error:
+        if error <= best_error:
             best_error = error
             best_shift = shift
+
+
+        if error > prev_error:
+            break
+
+        prev_error = error
 
     return best_shift
 

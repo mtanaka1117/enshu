@@ -10,6 +10,7 @@ from .base import BaseClassifier
 class NeuralNetwork(BaseClassifier):
 
     def __init__(self, batch_size: int):
+        super().__init__()
         self._batch_size = batch_size
         self._optimizer = keras.optimizers.Adam()
 
@@ -48,21 +49,21 @@ class NeuralNetwork(BaseClassifier):
         Fits the given classifier
 
         Args:
-            train_inputs: A [N, T, D] array of training input features
+            train_inputs: A [N, D] array of training input features
             train_labels: A [N] array of training labels
-            val_inputs: A [M, T, D] array of validation input features
+            val_inputs: A [M, D] array of validation input features
             val_labels: A [M] array of validation labels
             num_epochs: The number of training epochs
             save_folder: The folder in which to place the results
         """
-        assert len(train_inputs.shape) == 3, 'Must provide a 3d training input'
-        assert len(val_inputs.shape) == 3, 'Must provide a 3d validation input'
+        assert len(train_inputs.shape) == 2, 'Must provide a 2d training input'
+        assert len(val_inputs.shape) == 2, 'Must provide a 2d validation input'
 
         # Build the model
-        input_shape = train_inputs.shape[1:]
+        num_features = train_inputs.shape[-1]
         num_classes = np.max(train_labels) + 1
 
-        model = self.build(input_shape=input_shape, num_classes=num_classes)
+        model = self.build(num_features=num_features, num_classes=num_classes)
 
         # Compile the model
         model.compile(loss='sparse_categorical_crossentropy',
@@ -99,7 +100,7 @@ class NeuralNetwork(BaseClassifier):
         Predicts the probabilities on the given inputs.
 
         Args:
-            inputs: A [N, T, D] array of input features
+            inputs: A [N, D] array of input features
         Returns:
             A [N, K] array of class probabilities for each sample
         """

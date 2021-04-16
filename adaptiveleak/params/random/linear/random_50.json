@@ -1,7 +1,0 @@
-{
-    "name": "random",
-    "model_type": "linear",
-    "target": 0.5,
-    "precision": 6,
-    "width": 8
-}

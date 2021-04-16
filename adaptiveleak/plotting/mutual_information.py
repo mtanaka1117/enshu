@@ -78,7 +78,7 @@ def mutual_information(byte_dist: Dict[int, List[int]]) -> float:
     return label_entropy - cond_entropy
 
 
-def plot(information_results: DefaultDict[str, Dict[float, float]], output_file: Optional[str]):
+def plot(information_results: DefaultDict[str, Dict[float, float]], dataset: str, output_file: Optional[str]):
     with plt.style.context('seaborn-ticks'):
         fig, ax = plt.subplots(figsize=PLOT_SIZE)
 
@@ -97,7 +97,7 @@ def plot(information_results: DefaultDict[str, Dict[float, float]], output_file:
 
         ax.legend(fontsize=LEGEND_FONT)
 
-        ax.set_title('Empirical Mutual Information between Message Size and Prediction', fontsize=TITLE_FONT)
+        ax.set_title('Empirical Mutual Information between Message Size and Label on the {0} Dataset'.format(args.dataset.capitalize()), fontsize=TITLE_FONT)
         ax.set_xlabel('Target Fraction', fontsize=AXIS_FONT)
         ax.set_ylabel('Empirical Mutual Information (nits)', fontsize=AXIS_FONT)
 
@@ -110,6 +110,7 @@ def plot(information_results: DefaultDict[str, Dict[float, float]], output_file:
 if __name__ == '__main__':
     parser = ArgumentParser()
     parser.add_argument('--policy-folders', type=str, required=True, nargs='+')
+    parser.add_argument('--dataset', type=str, required=True)
     parser.add_argument('--output-file', type=str)
     args = parser.parse_args()
 
@@ -131,4 +132,4 @@ if __name__ == '__main__':
 
             information_results[name][target] = mutual_information(byte_dist)
 
-    plot(information_results, output_file=args.output_file)
+    plot(information_results, dataset=args.dataset, output_file=args.output_file)

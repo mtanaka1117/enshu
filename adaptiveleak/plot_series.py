@@ -28,6 +28,8 @@ if __name__ == '__main__':
         inputs = fin['inputs'][:]
         labels = fin['output'][:]
 
+    print(inputs.shape)
+
     labels = labels.reshape(-1)
 
     if len(inputs.shape) == 2:

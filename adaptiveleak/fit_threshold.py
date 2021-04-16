@@ -6,7 +6,7 @@ from collections import defaultdict
 from argparse import ArgumentParser
 
 from adaptiveleak.policies import AdaptivePolicy, EncodingMode, run_policy, make_policy
-from adaptiveleak.utils.constants import BIT_WIDTH, SMALL_NUMBER, BIG_NUMBER
+from adaptiveleak.utils.constants import SMALL_NUMBER, BIG_NUMBER
 from adaptiveleak.utils.encryption import EncryptionMode
 from adaptiveleak.utils.loading import load_data
 from adaptiveleak.utils.file_utils import iterate_dir, read_json, save_pickle_gz, read_pickle_gz
@@ -24,6 +24,8 @@ def execute(policy: AdaptivePolicy, inputs: np.ndarray, batch_size: int, upper: 
     observed = BIG_NUMBER
     lower = -upper
     current = 0.0
+    best_threshold = 0.0
+    best_diff = BIG_NUMBER
     batch_size = min(len(sample_idx), batch_size)
 
     while abs(observed - policy._target) > EPSILON:
@@ -49,6 +51,10 @@ def execute(policy: AdaptivePolicy, inputs: np.ndarray, batch_size: int, upper: 
         observed = sample_count / (seq_count * seq_length)
         print('Observed Average: {0:.5f}, Current: {1:.5f}'.format(observed, current))
 
+        diff = abs(target - observed)
+        if (diff < best_diff) and (observed < target):
+            best_threshold = current
+
         if (observed < policy._target):
             upper = current
         else:
@@ -56,15 +62,8 @@ def execute(policy: AdaptivePolicy, inputs: np.ndarray, batch_size: int, upper: 
 
         if (upper - lower) < SMALL_NUMBER:
             break
-            
 
-
-    # Get the final threshold
-    # threshold = policy._threshold
-
-    # print('Observed Average: {0:.5f}'.format(sample_count / (seq_count * seq_length)))
-
-    return current
+    return best_threshold
 
 
 if __name__ == '__main__':

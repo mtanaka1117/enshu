@@ -1,5 +1,6 @@
 import numpy as np
 import math
+import time
 from functools import reduce
 from typing import List, Tuple
 
@@ -162,14 +163,22 @@ def encode_grouped_measurements(measurements: np.ndarray, collected_indices: Lis
         # Encode the features using a dynamic number of fractional bits
         precision = width - non_fractional
 
+        t0 = time.time()
+
         shift = select_range_shift(measurements=group_features,
                                    width=width,
                                    precision=precision,
                                    num_range_bits=SHIFT_BITS)
 
+        t1 = time.time()
+        # print('Time to select range shift: {0}'.format(t1 - t0))
+
         group_encoded = array_to_fp(group_features,
                                     precision=precision + shift,
                                     width=width)
+
+        t2 = time.time()
+        # print('Time to convert to fixed point: {0}'.format(t2 - t1))
 
         # Add offset to ensure positive values
         offset = 1 << (width - 1)
@@ -177,6 +186,9 @@ def encode_grouped_measurements(measurements: np.ndarray, collected_indices: Lis
 
         # Pack the features into a single bit-string
         group_packed = pack(group_encoded, width=width)
+
+        t3 = time.time()
+        # print('Time to pack measurements: {0}'.format(t3 - t2))
 
         encoded_groups.append(group_packed)
         shifts.append(shift)

@@ -86,6 +86,26 @@ class TestAdaptiveEncode(unittest.TestCase):
 
         self.assertEqual(len(decoded_measurements), 117)
 
+    def test_tiselac_stream(self):
+         # Read the data
+        sample = read_pickle_gz('tiselac_sample.pkl.gz')
+
+        policy = AdaptiveHeuristic(target=0.9,
+                                   threshold=0.0,
+                                   precision=0,
+                                   width=13,
+                                   seq_length=23,
+                                   num_features=10,
+                                   encryption_mode=EncryptionMode.STREAM,
+                                   encoding_mode=EncodingMode.GROUP)
+
+        encoded = policy.encode(measurements=sample['measurements'],
+                                collected_indices=sample['indices'])
+
+        decoded_measurements, decoded_collected = policy.decode(encoded)
+
+        self.assertTrue(np.all(np.isclose(sample['measurements'], decoded_measurements)))
+
 
 if __name__ == '__main__':
     unittest.main()

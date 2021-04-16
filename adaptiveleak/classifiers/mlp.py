@@ -23,16 +23,15 @@ class MLP(NeuralNetwork):
     def hidden_units(self) -> int:
         return self._hidden_units
 
-    def build(self, input_shape: Tuple[int, int], num_classes: int) -> keras.models.Model:
+    def build(self, num_features: int, num_classes: int) -> keras.models.Model:
         # Create the input layer
-        input_layer = keras.layers.Input(input_shape)
+        inputs = keras.layers.Input(shape=(num_features, ))
 
-        # Stack all features into a single vector and apply dropout
-        flattened_input = keras.layers.Flatten()(input_layer)
-        flattened_input = keras.layers.Dropout(0.1)(flattened_input)
+        # Apply dropout to inputs
+        inputs_with_dropout = keras.layers.Dropout(0.1)(inputs)
 
         # Apply the hidden layers
-        hidden_1 = keras.layers.Dense(self.hidden_units, activation='relu')(flattened_input)
+        hidden_1 = keras.layers.Dense(self.hidden_units, activation='relu')(inputs_with_dropout)
         hidden_1 = keras.layers.Dropout(0.2)(hidden_1)
 
         hidden_2 = keras.layers.Dense(self.hidden_units, activation='relu')(hidden_1)
@@ -45,6 +44,6 @@ class MLP(NeuralNetwork):
         probs = keras.layers.Dense(num_classes, activation='softmax')(hidden_3)
 
         # Create and Return the model
-        model = keras.models.Model(inputs=input_layer, outputs=probs)
+        model = keras.models.Model(inputs=inputs, outputs=probs)
 
         return model

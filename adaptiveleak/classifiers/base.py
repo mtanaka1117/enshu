@@ -22,9 +22,9 @@ class BaseClassifier:
         Fits the given classifier
 
         Args:
-            train_inputs: A [N, T, D] array of input features
+            train_inputs: A [N, D] array of input features
             train_labels: A [N] array of labels
-            val_inputs: A [M, T, D] array of validation input features
+            val_inputs: A [M, D] array of validation input features
             val_labels: A [M] array of validation labels
             save_folder: The folder in which to place the results
             num_epochs: The number of training epochs
@@ -36,7 +36,7 @@ class BaseClassifier:
         Predicts the probabilities on the given inputs.
 
         Args:
-            inputs: A [N, T, D] array of input features
+            inputs: A [N, D] array of input features
         Returns:
             A [N, K] array of class probabilities for each sample
         """
@@ -55,7 +55,7 @@ class BaseClassifier:
         Computes the accuracy of the given model on the provided data.
 
         Args:
-            inputs: A [N, T, D] array of input features
+            inputs: A [N, D] array of input features
             labels: A [N] array of output features
         Returns:
             The accuracy on the given dataset

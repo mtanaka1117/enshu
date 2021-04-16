@@ -1,12 +1,13 @@
 import numpy as np
 import math
 import os.path
+import time
 from collections import deque
 from enum import Enum, auto
 from typing import Tuple, List, Dict, Any
 
 from adaptiveleak.controllers import PIDController
-from adaptiveleak.utils.constants import BITS_PER_BYTE, MIN_WIDTH, SMALL_NUMBER
+from adaptiveleak.utils.constants import BITS_PER_BYTE, MIN_WIDTH, SMALL_NUMBER, MAX_WIDTH
 from adaptiveleak.utils.data_utils import get_group_widths, get_num_groups, calculate_bytes, pad_to_length
 from adaptiveleak.utils.data_utils import prune_sequence, get_max_collected, calculate_grouped_bytes, linear_extrapolate
 from adaptiveleak.utils.data_utils import balance_group_size
@@ -196,6 +197,8 @@ class AdaptivePolicy(Policy):
                                       target_frac=self.target,
                                       standard_width=self.width,
                                       encryption_mode=self.encryption_mode)
+
+            widths = [min(w, MAX_WIDTH) for w in widths]
 
             # Encode the measurement values
             non_fractional = self.width - self.precision
@@ -401,7 +404,7 @@ class AdaptiveJitter(AdaptivePolicy):
 
         # Calculate the differences
         idx_diff = sum(np.square(idx - mean_idx) for idx in self._captured_idx)
-        measurement_diff = np.zeros_like(measurement)
+        measurement_diff = np.zeros_like(measurement, dtype=float)
 
         for element, idx in zip(self._captured, self._captured_idx):
             measurement_diff += (idx - mean_idx) * (element - mean_element)
@@ -436,6 +439,100 @@ class AdaptiveJitter(AdaptivePolicy):
 
     def __str__(self) -> str:
         return 'adaptive_jitter_{0}'.format(self._encoding_mode.name.lower())
+
+
+class AdaptiveSlope(AdaptiveJitter):
+
+    def collect(self, measurement: np.ndarray):
+        # Add measurement and index to the queue
+        self._captured.append(measurement)
+        self._captured_idx.append(self._seq_idx)
+
+        # Update the sum values
+        self._measurement_sum += measurement
+        self._time_sum += self._seq_idx
+
+        while len(self._captured) > self._window:
+            removed_measurement = self._captured.popleft()
+            self._measurement_sum -= removed_measurement
+
+            removed_time = self._captured_idx.popleft()
+            self._time_sum -= removed_time
+
+        # Update the mean values
+        mean_idx = self._time_sum / len(self._captured_idx)
+        mean_element = self._measurement_sum / len(self._captured)
+
+        # Calculate the differences
+        idx_diff = sum(np.square(idx - mean_idx) for idx in self._captured_idx)
+        measurement_diff = np.zeros_like(measurement)
+
+        for element, idx in zip(self._captured, self._captured_idx):
+            measurement_diff += (idx - mean_idx) * (element - mean_element)
+
+        # Form the best-fit parameters
+        slope = measurement_diff / (idx_diff + SMALL_NUMBER)
+        slope_norm = np.sum(np.abs(slope))
+
+        # Update the skipping window
+        if slope_norm > self._threshold:
+            self._current_skip = max(int(self._current_skip / 2), 0)
+        else:
+            self._current_skip = min(self._current_skip + 1, self._max_skip)
+
+        self._sample_skip = 0
+
+    def __str__(self):
+        return 'adaptive_slope_{0}'.format(self._encoding_mode.name.lower())
+
+
+class AdaptiveLinear(AdaptiveJitter):
+
+    def collect(self, measurement: np.ndarray):
+        # Add measurement and index to the queue
+        self._captured.append(measurement)
+        self._captured_idx.append(self._seq_idx)
+
+        # Update the sum values
+        self._measurement_sum += measurement
+        self._time_sum += self._seq_idx
+
+        while len(self._captured) > self._window:
+            removed_measurement = self._captured.popleft()
+            self._measurement_sum -= removed_measurement
+
+            removed_time = self._captured_idx.popleft()
+            self._time_sum -= removed_time
+
+        # Update the mean values
+        mean_idx = self._time_sum / len(self._captured_idx)
+        mean_element = self._measurement_sum / len(self._captured)
+
+        # Calculate the differences
+        idx_diff = sum(np.square(idx - mean_idx) for idx in self._captured_idx)
+        measurement_diff = np.zeros_like(measurement)
+
+        for element, idx in zip(self._captured, self._captured_idx):
+            measurement_diff += (idx - mean_idx) * (element - mean_element)
+
+        # Form the best-fit parameters
+        slope = measurement_diff / (idx_diff + SMALL_NUMBER)
+        intercept = mean_element - slope * mean_idx
+
+        delta = 1
+        projected = slope * (self._seq_idx + delta) + intercept
+        norm = np.sum(np.abs(projected - measurement))
+
+        while (norm < self._threshold) and (delta <= self._max_skip):
+            delta += 1
+            projected = slope * (self._seq_idx + delta) + intercept
+            norm = np.sum(np.abs(projected - measurement))
+
+        self._current_skip = delta - 1
+        self._sample_skip = 0
+
+    def __str__(self):
+        return 'adaptive_linear'.format(self._encoding_mode.name.lower())
 
 
 class RandomPolicy(Policy):
@@ -583,6 +680,8 @@ def make_policy(name: str, seq_length: int, num_features: int, encryption_mode: 
             cls = AdaptiveDeviation
         elif name == 'adaptive_jitter':
             cls = AdaptiveJitter
+        elif name == 'adaptive_linear':
+            cls = AdaptiveLinear
         else:
             raise ValueError('Unknown adaptive policy with name: {0}'.format(name))
 

@@ -1,5 +1,9 @@
 import numpy as np
-from typing import List
+import os.path
+from itertools import chain
+from typing import List, Tuple, Iterable, Dict
+
+from adaptiveleak.utils.file_utils import iterate_dir, read_json_gz
 
 
 PLOT_STYLE = 'seaborn-ticks'
@@ -31,3 +35,33 @@ def to_label(label: str) -> str:
 def geometric_mean(x: List[float]) -> float:
     x_prod = np.prod(x)
     return np.power(x_prod, 1.0 / len(x))
+
+
+def extract_results(folder: str, field: str, aggregate_mode: str) -> Tuple[str, Dict[float, float]]:
+
+    result: Dict[float, float] = dict()
+
+    for file_name in sorted(os.listdir(folder)):
+        path = os.path.join(folder, file_name)
+        serialized = read_json_gz(path)
+
+        target = serialized['policy']['target']
+        name = serialized['policy']['name']
+
+        if aggregate_mode == 'avg':
+            value = np.average(serialized[field])
+        elif aggregate_mode == 'median':
+            value = np.median(serialized[field])
+        elif aggregate_mode == 'max':
+            value = np.max(serialized[field])
+        else:
+            raise ValueError('Unknown aggregation mode: {0}'.format(aggregate_mode))
+
+        result[target] = value
+
+    return name, result
+
+
+def iterate_policy_folders(date_folders: List[str], dataset: str) -> Iterable[str]:
+    dataset = dataset.lower()
+    return chain(*(iterate_dir(os.path.join('..', 'saved_models', dataset, folder)) for folder in sorted(date_folders)))
