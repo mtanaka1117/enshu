@@ -176,7 +176,8 @@ class AdaptivePolicy(Policy):
             # Prune away any excess measurements
             measurements, collected_indices = prune_sequence(measurements=measurements,
                                                              collected_indices=collected_indices,
-                                                             max_collected=max_collected)
+                                                             max_collected=max_collected,
+                                                             seq_length=self.seq_length)
 
             num_collected = len(measurements)
 

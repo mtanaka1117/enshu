@@ -501,7 +501,7 @@ def calculate_grouped_bytes(widths: List[int],
         raise ValueError('Unknown encryption mode: {0}'.format(encryption_mode.name))
 
 
-def prune_sequence(measurements: np.ndarray, collected_indices: List[int], max_collected: int) -> Tuple[np.ndarray, List[int]]:
+def prune_sequence(measurements: np.ndarray, collected_indices: List[int], max_collected: int, seq_length: int) -> Tuple[np.ndarray, List[int]]:
     """
     Prunes the given sequence to use at most the maximum number
     of measurements. We remove measurements that induce the approximate lowest
@@ -511,6 +511,7 @@ def prune_sequence(measurements: np.ndarray, collected_indices: List[int], max_c
         measurements: A [K, D] array of collected measurement vectors
         collected_indices: A list of [K] indices of the collected measurements
         max_collected: The maximum number of allowed measurements
+        seq_length: The full sequence length
     Returns:
         A tuple of two elements:
             (1) A [K', D] array of the pruned measurements
@@ -524,26 +525,83 @@ def prune_sequence(measurements: np.ndarray, collected_indices: List[int], max_c
     if num_collected <= max_collected:
         return measurements, collected_indices
 
-    # Calculate the local measurement error (assuming removal)
-    ahead_errors = np.sum(np.abs(measurements[1:] - measurements[:-1]), axis=-1)  # [K - 1]
-    total_errors = ahead_errors[1:] + ahead_errors[:-1]  # [K - 2]
+    # Make a list of the current indices in the measurements array
+    idx_list = list(range(len(measurements)))
 
-    # Partition the indices based on error
-    num_to_remove = num_collected - max_collected
-    partitioned = np.argpartition(total_errors, kth=num_to_remove) + 1
+    # Compute the consecutive differences
+    first = measurements[:-1]  # [L - 1, D]
+    last = measurements[1:]  # [L - 1, D]
+    diffs_array = np.sum(np.abs(last - first), axis=-1)  # [L - 1] array of consecutive differences
+    diffs = diffs_array.tolist()
 
-    # Keep the measurements with the highest induced error
-    highest_error_indices = np.sort(partitioned[num_to_remove:])
-    kept_measurements = measurements[highest_error_indices]
+    # Compute the differences between consecutive indices
+    idx_diffs = [(collected_indices[i+1] - collected_indices[i]) for i in range(1, len(collected_indices) - 1)]  # [L - 2]
+    idx_diffs.append(seq_length - collected_indices[-1])  # Append 'distance' to the end of the sequence
 
-    # Always include the first and last measurements
-    first = np.expand_dims(measurements[0], axis=0)
-    last = np.expand_dims(measurements[-1], axis=0)
+    while len(idx_list) > max_collected:
+        # first = measurements[idx_list[:-1]]  # [L - 1, D] array of the first L - 1 measurements
+        # last = measurements[idx_list[1:]]  # [L - 1, D] array of the last L - 1 measurements
 
-    # Collect the pruned measurements and indices
-    pruned = np.vstack([first, kept_measurements, last])
+        # Calculate the consecutive differences between elements
+        # diffs = np.sum(np.abs(last - first), axis=-1)  # [L - 1] array of consecutive absolute differences
 
-    first_idx, last_idx = collected_indices[0], collected_indices[-1]
-    kept_indices = [first_idx] + [collected_indices[i] for i in highest_error_indices] + [last_idx]
+        # Calculate the consecutive differences between indices (shifted over by one)
+        # idx_diffs = [(collected_indices[idx_list[i + 1]] - collected_indices[idx_list[i]]) for i in range(1, len(idx_list) - 1)]  # [L - 2]
+        # idx_diffs.append(seq_length - collected_indices[idx_list[-1]])  # Append 'distance' to the end of the sequence
 
-    return pruned, kept_indices
+        # Scale the differences by the index differences. Conceptually, these values
+        # measure the additional error caused by replacing one measurement by the previous
+        # for the next X steps.
+        scaled_diffs = [error * idx for error, idx in zip(diffs, idx_diffs)]
+        
+        # Remove the index with the smallest scaled difference
+        min_error_idx = np.argmin(scaled_diffs)
+
+        idx_list.pop(min_error_idx + 1)
+
+        # Remove index from the error lists
+        diffs.pop(min_error_idx)
+        idx_diffs.pop(min_error_idx)
+
+        # Update the measurement differences
+        if min_error_idx < len(idx_list) - 1:
+            curr_idx = idx_list[min_error_idx + 1]
+            curr = measurements[curr_idx]  # [D]
+
+            prev_idx = idx_list[min_error_idx]
+            prev = measurements[prev_idx]  # [D]
+
+            diffs[min_error_idx] = np.sum(np.abs(curr - prev))
+
+            # Update the index difference
+            next_idx = collected_indices[idx_list[min_error_idx + 2]] if min_error_idx < (len(idx_list) - 2) else seq_length
+            idx_diffs[min_error_idx] = next_idx - collected_indices[curr_idx]
+
+    updated_indices = [collected_indices[i] for i in idx_list]
+    updated_measurements = measurements[idx_list]
+
+    return updated_measurements, updated_indices
+
+    ## Calculate the local measurement error (assuming removal)
+    #ahead_errors = np.sum(np.abs(measurements[1:] - measurements[:-1]), axis=-1)  # [K - 1]
+    #total_errors = ahead_errors[1:] + ahead_errors[:-1]  # [K - 2]
+
+    ## Partition the indices based on error
+    #num_to_remove = num_collected - max_collected
+    #partitioned = np.argpartition(total_errors, kth=num_to_remove) + 1
+
+    ## Keep the measurements with the highest induced error
+    #highest_error_indices = np.sort(partitioned[num_to_remove:])
+    #kept_measurements = measurements[highest_error_indices]
+
+    ## Always include the first and last measurements
+    #first = np.expand_dims(measurements[0], axis=0)
+    #last = np.expand_dims(measurements[-1], axis=0)
+
+    ## Collect the pruned measurements and indices
+    #pruned = np.vstack([first, kept_measurements, last])
+
+    #first_idx, last_idx = collected_indices[0], collected_indices[-1]
+    #kept_indices = [first_idx] + [collected_indices[i] for i in highest_error_indices] + [last_idx]
+
+    #return pruned, kept_indices

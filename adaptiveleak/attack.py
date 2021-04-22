@@ -183,5 +183,5 @@ if __name__ == '__main__':
                                         num_samples=args.num_samples)
 
         # Save the attack result
-        # policy_result['attack'] = attack_result._asdict()
-        # save_json_gz(policy_result, policy_file)
+        policy_result['attack'] = attack_result._asdict()
+        save_json_gz(policy_result, policy_file)

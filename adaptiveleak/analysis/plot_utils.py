@@ -1,7 +1,7 @@
 import numpy as np
 import os.path
 from itertools import chain
-from typing import List, Tuple, Iterable, Dict
+from typing import List, Tuple, Iterable, Dict, Optional, Any
 
 from adaptiveleak.utils.file_utils import iterate_dir, read_json_gz
 
@@ -27,9 +27,20 @@ COLORS = {
     'adaptive_jitter_group': '#a6611a'
 }
 
+DATASET_NAMES = {
+    'strawberry': 'Strawberry',
+    'epilepsy': 'Epilepsy',
+    'uci_har': 'Activity',
+    'tiselac': 'Tiselac'
+}
+
 
 def to_label(label: str) -> str:
     return ' '.join(t.capitalize() for t in label.split('_'))
+
+
+def dataset_label(dataset: str) -> str:
+    return DATASET_NAMES[dataset.lower()]
 
 
 def geometric_mean(x: List[float]) -> float:
@@ -37,7 +48,7 @@ def geometric_mean(x: List[float]) -> float:
     return np.power(x_prod, 1.0 / len(x))
 
 
-def extract_results(folder: str, field: str, aggregate_mode: str) -> Tuple[str, Dict[float, float]]:
+def extract_results(folder: str, field: str, aggregate_mode: Optional[str]) -> Tuple[str, Dict[float, Any]]:
 
     result: Dict[float, float] = dict()
 
@@ -48,7 +59,9 @@ def extract_results(folder: str, field: str, aggregate_mode: str) -> Tuple[str, 
         target = serialized['policy']['target']
         name = serialized['policy']['name']
 
-        if aggregate_mode == 'avg':
+        if aggregate_mode is None:
+            value = serialized[field]
+        elif aggregate_mode == 'avg':
             value = np.average(serialized[field])
         elif aggregate_mode == 'median':
             value = np.median(serialized[field])

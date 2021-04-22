@@ -835,16 +835,63 @@ class TestPruning(unittest.TestCase):
         measurements = np.array([[1.0, 1.0], [1.0, 1.0], [2.0, 2.0], [2.5, 4.0], [3.5, 3.0]])
         max_collected = 3
         collected_indices = [1, 3, 5, 9, 10]
+        seq_length = 12
+
+        # Iter 0 -> Expected Diffs: [0, 2, 2.5, 2.0], Expected Diff Idx: [2, 4, 1, 2]  -> Prune 1
+        # iter 1 -> Expected Diffs: [2, 2.5, 2.0], Expected Diff Idx: [4, 1, 2] -> Prune 3
 
         pruned_features, pruned_indices = data_utils.prune_sequence(measurements=measurements,
                                                                     max_collected=max_collected,
-                                                                    collected_indices=collected_indices)
+                                                                    collected_indices=collected_indices,
+                                                                    seq_length=seq_length)
 
-        expected_features = np.array([[1.0, 1.0], [2.5, 4.0], [3.5, 3.0]])
-        expected_indices = [1, 9, 10]
+        expected_features = np.array([[1.0, 1.0], [2.0, 2.0], [3.5, 3.0]])
+        expected_indices = [1, 5, 10]
 
         self.assertTrue(np.all(np.isclose(pruned_features, expected_features)))
         self.assertEqual(pruned_indices, expected_indices)
+
+    def test_prune_final(self):
+        measurements = np.array([[1.0, 1.0], [1.0, 1.0], [2.0, 2.0], [2.5, 4.0], [3.5, 3.0]])
+        max_collected = 3
+        collected_indices = [1, 3, 5, 7, 10]
+        seq_length = 11
+
+        # Iter 0 -> Expected Diffs: [0, 2, 2.5, 2.0], Expected Diff Idx: [2, 2, 3, 1]  -> Prune 1
+        # iter 1 -> Expected Diffs: [2, 2.5, 2.0], Expected Diff Idx: [4, 3, 1] -> Prune 4
+
+        pruned_features, pruned_indices = data_utils.prune_sequence(measurements=measurements,
+                                                                    max_collected=max_collected,
+                                                                    collected_indices=collected_indices,
+                                                                    seq_length=seq_length)
+
+        expected_features = np.array([[1.0, 1.0], [2.0, 2.0], [2.5, 4.0]])
+        expected_indices = [1, 5, 7]
+
+        self.assertTrue(np.all(np.isclose(pruned_features, expected_features)))
+        self.assertEqual(pruned_indices, expected_indices)
+
+    def test_prune_final_first(self):
+        measurements = np.array([[1.0, 1.0], [2.0, 2.0], [3.0, 3.0], [4.0, 4.0]])
+        max_collected = 2
+        collected_indices = [1, 5, 10, 15]
+        seq_length = 16
+
+        # Iter 0 -> Expected Diffs: [2, 2, 2], Expected Diff Idx: [5, 5, 1]  -> Prune 3
+        # iter 1 -> Expected Diffs: [2, 2], Expected Diff Idx: [5, 5] -> Prune 1 (break ties first)
+
+        pruned_features, pruned_indices = data_utils.prune_sequence(measurements=measurements,
+                                                                    max_collected=max_collected,
+                                                                    collected_indices=collected_indices,
+                                                                    seq_length=seq_length)
+
+        expected_features = np.array([[1.0, 1.0], [3.0, 3.0]])
+        expected_indices = [1, 10]
+
+        self.assertTrue(np.all(np.isclose(pruned_features, expected_features)))
+        self.assertEqual(pruned_indices, expected_indices)
+
+
 
 
 if __name__ == '__main__':

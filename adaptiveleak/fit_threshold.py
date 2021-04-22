@@ -23,12 +23,16 @@ def execute(policy: AdaptivePolicy, inputs: np.ndarray, batch_size: int, upper: 
 
     observed = BIG_NUMBER
     lower = -upper
+    
     current = 0.0
     best_threshold = 0.0
+    best_observed = 1.0
+
     best_diff = BIG_NUMBER
     batch_size = min(len(sample_idx), batch_size)
+    target = policy._target
 
-    while abs(observed - policy._target) > EPSILON:
+    while (abs(observed - target) > EPSILON) or (best_observed > target):
 
         current = (upper + lower) / 2
         
@@ -52,8 +56,10 @@ def execute(policy: AdaptivePolicy, inputs: np.ndarray, batch_size: int, upper: 
         print('Observed Average: {0:.5f}, Current: {1:.5f}'.format(observed, current))
 
         diff = abs(target - observed)
-        if (diff < best_diff) and (observed < target):
+        if (diff < best_diff) and (observed <= target):
             best_threshold = current
+            best_observed = observed
+            best_diff = diff
 
         if (observed < policy._target):
             upper = current

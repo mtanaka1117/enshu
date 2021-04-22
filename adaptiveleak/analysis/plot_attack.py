@@ -9,9 +9,9 @@ from typing import Any, Dict, List, Optional
 
 from adaptiveleak.utils.constants import POLICIES
 from adaptiveleak.utils.file_utils import read_json_gz
-from adaptiveleak.plotting.plot_utils import COLORS, to_label, geometric_mean, MARKER, MARKER_SIZE, LINE_WIDTH, PLOT_STYLE
-from adaptiveleak.plotting.plot_utils import PLOT_SIZE, AXIS_FONT, LEGEND_FONT, TITLE_FONT
-from adaptiveleak.plotting.plot_utils import extract_results, iterate_policy_folders
+from adaptiveleak.analysis.plot_utils import COLORS, to_label, geometric_mean, MARKER, MARKER_SIZE, LINE_WIDTH, PLOT_STYLE
+from adaptiveleak.analysis.plot_utils import PLOT_SIZE, AXIS_FONT, LEGEND_FONT, TITLE_FONT
+from adaptiveleak.analysis.plot_utils import extract_results, iterate_policy_folders
 
 
 
@@ -26,15 +26,15 @@ def plot(sim_results: Dict[str, Dict[float, float]], dataset_name: str, output_f
 
             model_results = sim_results[name]
             targets = list(sorted(model_results.keys()))
-            errors = [model_results[t] for t in targets]
+            accuracy = [model_results[t]['test_accuracy'] * 100.0 for t in targets]
 
-            ax.plot(targets, errors, marker=MARKER, linewidth=LINE_WIDTH, markersize=MARKER_SIZE, label=to_label(name), color=COLORS[name])
+            ax.plot(targets, accuracy, marker=MARKER, linewidth=LINE_WIDTH, markersize=MARKER_SIZE, label=to_label(name), color=COLORS[name])
 
-            print('{0} & {1:.4f}'.format(name, np.average(errors)))
+            print('{0} & {1:.2f}\\% ({2:.2f}\\%)'.format(name, geometric_mean(accuracy), np.max(accuracy)))
 
         ax.set_xlabel('Fraction of Measurements', fontsize=AXIS_FONT)
-        ax.set_ylabel('Reconstruction Error (MAE)', fontsize=AXIS_FONT)
-        ax.set_title('Average Reconstruction Error on the {0} Dataset'.format(dataset_name.capitalize()), fontsize=TITLE_FONT)
+        ax.set_ylabel('Accuracy', fontsize=AXIS_FONT)
+        ax.set_title('Attacker Accuracy on the {0} Dataset'.format(dataset_name.capitalize()), fontsize=TITLE_FONT)
 
         ax.legend(fontsize=LEGEND_FONT)
 
@@ -51,7 +51,7 @@ if __name__ == '__main__':
     parser.add_argument('--output-file', type=str)
     args = parser.parse_args()
 
-    extract_fn = partial(extract_results, field='errors', aggregate_mode='avg')
+    extract_fn = partial(extract_results, field='attack', aggregate_mode=None)
     policy_folders = iterate_policy_folders(args.dates, dataset=args.dataset)
 
     sim_results = {name: res for name, res in map(extract_fn, policy_folders)}

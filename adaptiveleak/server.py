@@ -156,6 +156,8 @@ class Server:
                     key = self._aes_key if encryption_mode == EncryptionMode.BLOCK else self._chacha_key
                     message = decrypt(ciphertext=parsed.data, key=key, mode=encryption_mode)
 
+                    # print('Idx: {0}'.format(idx))
+
                     # Decode the measurements
                     measurements, collected_indices = policy.decode(message=message)
 
@@ -167,6 +169,11 @@ class Server:
                     # Compute the reconstruction error in the measurements
                     error = mean_absolute_error(y_true=inputs[idx],
                                                 y_pred=reconstructed)
+
+                    if idx == 394:
+                        print('Collected: {0}'.format(measurements))
+                        print('True: {0}'.format(inputs[idx][collected_indices]))
+                        print('Error: {0}'.format(error))
 
                     # Log the results of this sequence
                     num_bytes.append(len(parsed.data))
