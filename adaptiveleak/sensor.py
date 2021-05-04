@@ -94,6 +94,7 @@ if __name__ == '__main__':
     parser.add_argument('--params', type=str, required=True)
     parser.add_argument('--port', type=int, default=50000)
     parser.add_argument('--max-num-samples', type=int)
+    parser.add_argument('--should-compress', action='store_true')
     args = parser.parse_args()
 
     # Load the data
@@ -112,7 +113,8 @@ if __name__ == '__main__':
                          seq_length=inputs.shape[1],
                          dataset=args.dataset,
                          encryption_mode=encryption_mode,
-                         encoding=params.get('encoding', 'unknown'))
+                         encoding=params.get('encoding', 'unknown'),
+                         should_compress=args.should_compress)
 
     # Run the sensor
     sensor = Sensor(server_host='localhost', server_port=args.port)

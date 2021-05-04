@@ -157,8 +157,6 @@ class Server:
                     key = self._aes_key if encryption_mode == EncryptionMode.BLOCK else self._chacha_key
                     message = decrypt(ciphertext=parsed.data, key=key, mode=encryption_mode)
 
-                    # print('Idx: {0}'.format(idx))
-
                     # Decode the measurements
                     measurements, collected_indices, widths = policy.decode(message=message)
 
@@ -219,6 +217,7 @@ if __name__ == '__main__':
     parser.add_argument('--output-folder', type=str, required=True)
     parser.add_argument('--port', type=int, default=50000)
     parser.add_argument('--max-num-samples', type=int)
+    parser.add_argument('--should-compress', action='store_true')
     args = parser.parse_args()
 
     # Load the test data
@@ -240,7 +239,8 @@ if __name__ == '__main__':
                          seq_length=inputs.shape[1],
                          dataset=args.dataset,
                          encryption_mode=encryption_mode,
-                         encoding=params.get('encoding', 'unknown'))
+                         encoding=params.get('encoding', 'unknown'),
+                         should_compress=args.should_compress)
 
     # Run the experiment
     server.run(inputs=inputs,

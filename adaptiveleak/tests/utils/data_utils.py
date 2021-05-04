@@ -190,7 +190,7 @@ class TestRangeShift(unittest.TestCase):
                                               precision=precision,
                                               num_range_bits=num_range_bits,
                                               is_unsigned=False)
-        self.assertEqual(shift, 3)
+        self.assertEqual(shift, 2)
 
     def test_range_mixed_one(self):
         measurements = np.array([[1.5, 2.0, -3.5], [4.75, -1.0, 3.0]])
@@ -217,6 +217,19 @@ class TestRangeShift(unittest.TestCase):
                                               num_range_bits=num_range_bits,
                                               is_unsigned=False)
         self.assertEqual(shift, 2)
+
+    def test_range_border(self):
+        measurements = np.array([[1.869, 1.0]])
+        width = 4
+        precision = 2
+        num_range_bits = 2
+
+        shift = data_utils.select_range_shift(measurements=measurements,
+                                              width=width,
+                                              precision=precision,
+                                              num_range_bits=num_range_bits,
+                                              is_unsigned=False)
+        self.assertEqual(shift, 0)
 
 
 class TestExtrapolation(unittest.TestCase):
@@ -425,7 +438,8 @@ class TestCalculateBytes(unittest.TestCase):
                                               collected_indices=collected_indices,
                                               seq_length=seq_length,
                                               precision=precision,
-                                              width=width)
+                                              width=width,
+                                              should_compress=False)
 
         key = get_random_bytes(32)
         encrypted = encrypt(message=encoded, key=key, mode=EncryptionMode.STREAM)
@@ -450,7 +464,8 @@ class TestCalculateBytes(unittest.TestCase):
                                                collected_indices=collected_indices,
                                                seq_length=seq_length,
                                                precision=precision,
-                                               width=width)
+                                               width=width,
+                                               should_compress=False)
 
         key = get_random_bytes(32)
         encrypted = encrypt(message=encoded, key=key, mode=EncryptionMode.STREAM)
@@ -475,7 +490,8 @@ class TestCalculateBytes(unittest.TestCase):
                                                collected_indices=collected_indices,
                                                seq_length=seq_length,
                                                precision=precision,
-                                               width=width)
+                                               width=width,
+                                               should_compress=False)
 
         key = get_random_bytes(AES_BLOCK_SIZE)
         encrypted = encrypt(message=encoded, key=key, mode=EncryptionMode.BLOCK)
@@ -500,7 +516,8 @@ class TestCalculateBytes(unittest.TestCase):
                                                collected_indices=collected_indices,
                                                seq_length=seq_length,
                                                precision=precision,
-                                               width=width)
+                                               width=width,
+                                               should_compress=False)
 
         key = get_random_bytes(AES_BLOCK_SIZE)
         encrypted = encrypt(message=encoded, key=key, mode=EncryptionMode.BLOCK)
@@ -904,6 +921,16 @@ class TestRLE(unittest.TestCase):
 
         encoded = data_utils.run_length_encode(values, signs)
 
+        decoded_vals, decoded_signs = data_utils.run_length_decode(encoded)
+
+        self.assertEqual(decoded_vals, values)
+        self.assertEqual(decoded_signs, signs)
+
+    def test_rle_small_two(self):
+        values = [0, 0, 0, 0, 0, 0]
+        signs = [1, 0, 0, 1, 1, 0]
+
+        encoded = data_utils.run_length_encode(values, signs)
         decoded_vals, decoded_signs = data_utils.run_length_decode(encoded)
 
         self.assertEqual(decoded_vals, values)

@@ -1,12 +1,13 @@
 import numpy as np
 import math
 import time
+import bz2
 from functools import reduce
 from typing import List, Tuple
 
 from adaptiveleak.utils.constants import SHIFT_BITS, BITS_PER_BYTE, BOUND_BITS, BOUND_ORDER, SMALL_NUMBER
-from adaptiveleak.utils.data_utils import array_to_fp, array_to_float, pack, unpack, select_range_shift, to_fixed_point, to_float
-from adaptiveleak.utils.data_utils import array_to_fp_unsigned
+from adaptiveleak.utils.data_utils import array_to_fp, array_to_float, pack, unpack, select_range_shift, to_fixed_point, to_float, get_signs
+from adaptiveleak.utils.data_utils import array_to_fp_unsigned, run_length_encode, run_length_decode, integer_part, fractional_part, apply_signs
 
 
 def encode_collected_mask(collected_indices: List[int], seq_length: int) -> bytes:
@@ -54,7 +55,7 @@ def decode_collected_mask(bitmask: bytes, seq_length: int) -> List[int]:
     return indices
 
 
-def encode_standard_measurements(measurements: np.ndarray, collected_indices: List[int], seq_length: int, width: int, precision: int) -> bytes:
+def encode_standard_measurements(measurements: np.ndarray, collected_indices: List[int], seq_length: int, width: int, precision: int, should_compress: bool) -> bytes:
     """
     Encodes the measurements into single-byte features.
 
@@ -65,20 +66,53 @@ def encode_standard_measurements(measurements: np.ndarray, collected_indices: Li
         seq_length: The length of the full sequence (T)
         width: The bit-width of each feature
         precision: The fixed point precision of each feature
+        should_compress: Whether the function should compress the measurements after encoding
     Returns:
         A hex string that represents the encoded measurements.
     """
     assert len(measurements.shape) == 2, 'Must provide a 2d array of measurements.'
 
-    # Encode the measurements
-    encoded = array_to_fp(measurements, precision=precision, width=width)
+    # Flatten the measurements into a 1d array
+    flattened = measurements.T.reshape(-1)
 
-    # Add the offset value to ensure all positive values
-    encoded = encoded + (1 << (width - 1))
+    if should_compress:
+        # Delta encode the features
+        # flattened = delta_encode(flattened)
 
-    # Flatten measurements array and pack into a single bit-string
-    flattened = encoded.reshape(-1).astype(int).tolist()  # [K * D]
-    encoded_measurements = pack(flattened, width=width)  # [K * D]
+        # Split the features into integer and fractional parts
+        integer_parts = list(map(integer_part, flattened))
+
+        frac_fn = np.vectorize(fractional_part)
+        fractional_parts = np.abs(frac_fn(flattened))
+
+        # Encode the integer part using RLE
+        integer_values = np.abs(integer_parts)
+        integer_signs = get_signs(flattened)
+
+        encoded_integers = run_length_encode(integer_values, integer_signs)
+
+        # Encode the fractional parts in fixed-point representation
+        fixed_point_fracs = array_to_fp_unsigned(fractional_parts,
+                                                 precision=precision,
+                                                 width=precision)
+
+        encoded_fracs = pack(fixed_point_fracs.astype(int).tolist(), width=precision)
+
+        int_part_length = len(encoded_integers).to_bytes(2, 'little')
+        encoded_measurements = int_part_length + encoded_integers + encoded_fracs
+
+        encoded_measurements = bz2.compress(encoded_measurements)
+    else:
+        # Encode the measurements
+        encoded = array_to_fp(flattened, precision=precision, width=width)
+
+        # Add the offset value to ensure all positive values
+        encoded = encoded + (1 << (width - 1))
+
+        # Flatten measurements array and pack into a single bit-string
+        encoded_list = encoded.astype(int).tolist()  # [K * D]
+
+        encoded_measurements = pack(encoded_list, width=width)  # [K * D]
 
     # Convert the collected indices into a byte array
     collected_mask = encode_collected_mask(collected_indices, seq_length=seq_length)
@@ -87,7 +121,7 @@ def encode_standard_measurements(measurements: np.ndarray, collected_indices: Li
     return collected_mask + encoded_measurements
 
 
-def decode_standard_measurements(byte_str: bytes, seq_length: int, num_features: int, width: int, precision: int) -> Tuple[np.ndarray, List[int], List[int]]:
+def decode_standard_measurements(byte_str: bytes, seq_length: int, num_features: int, width: int, precision: int, should_compress: bool) -> Tuple[np.ndarray, List[int], List[int]]:
     """
     Decodes the given byte string into an array of measurements.
 
@@ -97,6 +131,7 @@ def decode_standard_measurements(byte_str: bytes, seq_length: int, num_features:
         num_features: The number of features in each measurement (D)
         width: The bit-width of each feature
         precision: The fixed-point precision of each feature
+        should_compress: Whether the measurements were compressed during encoding
     Returns:
         A [K, D] array of recovered measurements
     """
@@ -108,21 +143,46 @@ def decode_standard_measurements(byte_str: bytes, seq_length: int, num_features:
                                               seq_length=seq_length)
 
     # Unpack the rest of the message
-    int_array = [int(b) for b in bytearray(byte_str[num_mask_bytes:])]
+    if should_compress:
+        decompressed = bz2.decompress(byte_str[num_mask_bytes:])
 
-    decoded_values = unpack(encoded=byte_str[num_mask_bytes:],
-                            width=width,
-                            num_values=len(collected_indices) * num_features)
+        # Extract the length of the integer part
+        int_part_length = int.from_bytes(decompressed[0:2], 'little')
 
-    # Subtract the offset value (2^{w-1})
-    offset = 1 << (width - 1)
-    raw_values = np.array([x - offset for x in decoded_values])
+        # Unpack the two numerical components
+        encoded_integers = decompressed[2:2+int_part_length]
+        encoded_fracs = decompressed[2+int_part_length:]
 
-    # Decode the measurement values
-    decoded = array_to_float(raw_values, precision=precision)
+        decoded_integers, decoded_signs = run_length_decode(encoded_integers)
+
+        decoded_fracs = unpack(encoded=encoded_fracs,
+                               width=precision,
+                               num_values=(len(collected_indices) * num_features))
+
+        # Convert the fractional parts to floats
+        decoded_fracs = array_to_float(decoded_fracs, precision=precision)
+        
+        # Combine the numerical parts
+        combined = [v + frac for v, frac in zip(decoded_integers, decoded_fracs)]
+        combined = apply_signs(combined, decoded_signs)
+
+        # Decode the delta-encoded measurements
+        # decoded = delta_decode(np.array(combined))
+        decoded = np.array(combined)
+    else:
+        decoded_values = unpack(encoded=byte_str[num_mask_bytes:],
+                                width=width,
+                                num_values=len(collected_indices) * num_features)
+
+        # Subtract the offset value (2^{w-1})
+        offset = 1 << (width - 1)
+        raw_values = np.array([x - offset for x in decoded_values])
+
+        # Decode the measurement values
+        decoded = array_to_float(raw_values, precision=precision)
 
     # Reshape to the proper size
-    return decoded.reshape(-1, num_features), collected_indices, [width]
+    return decoded.reshape(num_features, -1).T, collected_indices, [width]
 
 
 def encode_grouped_measurements(measurements: np.ndarray, collected_indices: List[int], widths: List[int], seq_length: int, non_fractional: int, group_size: int) -> bytes:
@@ -368,18 +428,22 @@ def delta_encode(measurements: np.ndarray) -> np.ndarray:
     between consecutive features.
 
     Args:
-        measurements: A [K, D] array of collected features
+        measurements: A [K, D] (or [D]) array of collected features
     Returns:
-        A [K, D] array of delta encoded measurements. The first
+        A [K, D] (or [D]) array of delta encoded measurements. The first
         value is a true feature vector, and the remaining values
         are the consecutive differences.
     """
-    assert len(measurements.shape) == 2, 'Must provide a 2d array'
+    assert len(measurements.shape) in (1, 2), 'Must provide a 1d or 2d array'
 
-    initial = np.expand_dims(measurements[0], axis=0)  # [1, D]
-    diffs = measurements[1:] - measurements[:-1]  # [K - 1, D]
-
-    return np.vstack([initial, diffs])
+    if len(measurements.shape) == 1:
+        initial = measurements[0]
+        diffs = measurements[1:] - measurements[:-1]
+        return np.concatenate([[initial], diffs])
+    else:
+        initial = np.expand_dims(measurements[0], axis=0)  # [1, D]
+        diffs = measurements[1:] - measurements[:-1]  # [K - 1, D]
+        return np.vstack([initial, diffs])
 
 
 def delta_decode(measurements: np.ndarray) -> np.ndarray:
@@ -391,9 +455,13 @@ def delta_decode(measurements: np.ndarray) -> np.ndarray:
     Returns:
         The raw feature vectors
     """
-    assert len(measurements.shape) == 2, 'Must provide a 2d array'
+    assert len(measurements.shape) in (1, 2), 'Must provide a 1d or 2d array'
 
-    initial = np.expand_dims(measurements[0], axis=0)  # [1, D]
-    deltas = np.cumsum(measurements[1:], axis=0)  # [K - 1, D]
-
-    return np.vstack([initial, initial + deltas])
+    if len(measurements.shape) == 1:
+        initial = measurements[0]
+        deltas = np.cumsum(measurements[1:])
+        return np.concatenate([[initial], initial + deltas])
+    else:
+        initial = np.expand_dims(measurements[0], axis=0)  # [1, D]
+        deltas = np.cumsum(measurements[1:], axis=0)  # [K - 1, D]
+        return np.vstack([initial, initial + deltas])

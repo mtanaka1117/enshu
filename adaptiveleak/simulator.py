@@ -23,6 +23,7 @@ if __name__ == '__main__':
     parser.add_argument('--policy', type=str, required=True, choices=POLICIES)
     parser.add_argument('--policy-params', type=str, required=True, nargs='+')
     parser.add_argument('--encryption', type=str, required=True, choices=['block', 'stream'])
+    parser.add_argument('--should-compress', action='store_true')
     parser.add_argument('--max-num-samples', type=int)
     args = parser.parse_args()
 
@@ -58,6 +59,12 @@ if __name__ == '__main__':
         else:
             server_cmd = SERVER_CMD_SAMPLES.format(args.dataset, args.encryption, params_path, output_folder, port, args.max_num_samples)
             sensor_cmd = SENSOR_CMD_SAMPLES.format(args.dataset, args.encryption, params_path, port, args.max_num_samples)
+
+        if args.should_compress:
+            server_cmd += ' --should-compress'
+            sensor_cmd += ' --should-compress'
+
+        print(server_cmd)
 
         server, sensor = None, None
 

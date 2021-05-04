@@ -120,15 +120,20 @@ def select_range_shift(measurements: np.ndarray, width: int, precision: int, num
     best_error = BIG_NUMBER
     best_shift = (1 << num_range_bits) - 1
 
+
     offset = (1 << (num_range_bits - 1))
     for idx in range(pow(2, num_range_bits)):
         shift = idx - offset
 
         shifted_max = to_float(max_representable_fp, precision=precision - shift)
 
-        error = np.abs(max_value - shifted_max)
+        # Construct error to favor going over
+        if shifted_max > max_value:
+            error = (shifted_max - max_value) * 0.25
+        else:
+            error = max_value - shifted_max
 
-        if (error < best_error) and (shifted_max > max_value):
+        if (error < best_error):
             best_shift = shift
             best_error = error
 
@@ -723,14 +728,14 @@ def fractional_part(x: float) -> float:
     return math.modf(x)[0]
 
 
-def get_signs(array: np.ndarray) -> np.ndarray:
+def get_signs(array: List[int]) -> List[int]:
     """
     Returns a binary array of the signs of each value.
     """
-    return np.where(array >= 0, 1, 0)
+    return [1 if a >= 0 else 0 for a in array]
 
 
-def apply_signs(array: List[int], signs: List[int]) -> np.ndarray:
+def apply_signs(array: List[int], signs: List[int]) -> List[int]:
     """
     Applies the signs to the given (absolute value) array.
     """
@@ -748,7 +753,7 @@ def num_bits_for_value(x: int) -> int:
         x = x >> 1
         num_bits += 1
 
-    return num_bits
+    return max(num_bits, 1)
 
 
 def run_length_encode(values: List[int], signs: List[int]) -> str:
@@ -766,14 +771,7 @@ def run_length_encode(values: List[int], signs: List[int]) -> str:
     for i in range(1, len(values)):
         val = abs(values[i])
 
-        if (val == current) and (signs[i] == current_sign):
-            current_count += 1
-
-            if (i == len(values) - 1):
-                encoded.append(current)
-                reps.append(current_count)
-                compressed_signs.append(current_sign)
-        else:
+        if (val != current) or (signs[i] != current_sign):
             encoded.append(current)
             reps.append(current_count)
             compressed_signs.append(current_sign)
@@ -781,6 +779,13 @@ def run_length_encode(values: List[int], signs: List[int]) -> str:
             current = val
             current_count = 1
             current_sign = signs[i]
+        else:
+            current_count += 1
+
+    # Always include the final element
+    encoded.append(current)
+    reps.append(current_count)
+    compressed_signs.append(current_sign)
 
     # Calculate the maximum number of bits needed to encode the values and repetitions
     max_encoded = np.max(np.abs(encoded))
@@ -794,7 +799,7 @@ def run_length_encode(values: List[int], signs: List[int]) -> str:
     encoded_signs = pack(compressed_signs, width=1)
 
     metadata = ((encoded_bits << 4) | (reps_bits & 0xF)) & 0xFF
-    metadata = (len(encoded) << 8) | metadata
+    metadata = ((len(encoded) << 8) | metadata) & 0xFFFFFF
 
     metadata_bytes = metadata.to_bytes(3, 'little')
 

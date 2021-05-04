@@ -4,9 +4,9 @@ from argparse import ArgumentParser
 from collections import Counter, defaultdict, OrderedDict
 from typing import Dict, List, DefaultDict, Optional, Tuple
 
-from adaptiveleak.plotting.plot_utils import COLORS, PLOT_STYLE, LINE_WIDTH, MARKER, MARKER_SIZE, to_label
-from adaptiveleak.plotting.plot_utils import LEGEND_FONT, AXIS_FONT, PLOT_SIZE, TITLE_FONT
-from adaptiveleak.plotting.plot_utils import iterate_policy_folders, dataset_label
+from adaptiveleak.analysis.plot_utils import COLORS, PLOT_STYLE, LINE_WIDTH, MARKER, MARKER_SIZE, to_label
+from adaptiveleak.analysis.plot_utils import LEGEND_FONT, AXIS_FONT, PLOT_SIZE, TITLE_FONT
+from adaptiveleak.analysis.plot_utils import iterate_policy_folders, dataset_label
 from adaptiveleak.utils.constants import POLICIES, SMALL_NUMBER
 from adaptiveleak.utils.file_utils import read_json_gz, iterate_dir
 

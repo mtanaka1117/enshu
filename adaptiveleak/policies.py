@@ -33,7 +33,8 @@ class Policy:
                  width: int,
                  num_features: int,
                  seq_length: int,
-                 encryption_mode: EncryptionMode):
+                 encryption_mode: EncryptionMode,
+                 should_compress: bool):
         self._estimate = np.zeros((num_features, 1))  # [D, 1]
         self._precision = precision
         self._width = width
@@ -41,6 +42,7 @@ class Policy:
         self._seq_length = seq_length
         self._target = target
         self._encryption_mode = encryption_mode
+        self._should_compress = should_compress
 
         self._rand = np.random.RandomState(seed=78362)
 
@@ -72,6 +74,10 @@ class Policy:
     def encryption_mode(self) -> EncryptionMode:
         return self._encryption_mode
 
+    @property
+    def should_compress(self) -> bool:
+        return self._should_compress
+    
     def collect(self, measurement: np.ndarray):
         self._estimate = np.copy(measurement.reshape(-1, 1))
     
@@ -83,14 +89,16 @@ class Policy:
                                             collected_indices=collected_indices,
                                             seq_length=self.seq_length,
                                             precision=self.precision,
-                                            width=self.width)
+                                            width=self.width,
+                                            should_compress=self.should_compress)
 
     def decode(self, message: bytes) -> Tuple[np.ndarray, List[int]]:
         return decode_standard_measurements(byte_str=message,
                                             seq_length=self.seq_length,
                                             num_features=self.num_features,
                                             precision=self.precision,
-                                            width=self.width)
+                                            width=self.width,
+                                            should_compress=self.should_compress)
 
     def step(self, count: int, seq_idx: int):
         self._measurement_count += count
@@ -105,7 +113,8 @@ class Policy:
             'target': self.target,
             'width': self.width,
             'precision': self.precision,
-            'encryption_mode': self._encryption_mode.name
+            'encryption_mode': self._encryption_mode.name,
+            'should_compress': self.should_compress
         }
 
     def should_collect(self, seq_idx: int) -> bool:
@@ -122,13 +131,15 @@ class AdaptivePolicy(Policy):
                  seq_length: int,
                  num_features: int,
                  encryption_mode: EncryptionMode,
-                 encoding_mode: EncodingMode):
+                 encoding_mode: EncodingMode,
+                 should_compress: bool):
         super().__init__(precision=precision,
                          width=width,
                          target=target,
                          num_features=num_features,
                          seq_length=seq_length,
-                         encryption_mode=encryption_mode)
+                         encryption_mode=encryption_mode,
+                         should_compress=should_compress)
 
         # Name of the encoding algorithm
         self._encoding_mode = encoding_mode
@@ -273,7 +284,8 @@ class AdaptiveLiteSense(AdaptivePolicy):
                  seq_length: int,
                  num_features: int,
                  encryption_mode: EncryptionMode,
-                 encoding_mode: EncodingMode):
+                 encoding_mode: EncodingMode,
+                 should_compress: bool):
         super().__init__(target=target,
                          threshold=threshold,
                          precision=precision,
@@ -281,7 +293,8 @@ class AdaptiveLiteSense(AdaptivePolicy):
                          seq_length=seq_length,
                          num_features=num_features,
                          encryption_mode=encryption_mode,
-                         encoding_mode=encoding_mode)
+                         encoding_mode=encoding_mode,
+                         should_compress=should_compress)
         self._alpha = 0.7
         self._beta = 0.7
 
@@ -352,7 +365,8 @@ class AdaptiveJitter(AdaptivePolicy):
                  seq_length: int,
                  num_features: int,
                  encryption_mode: EncryptionMode,
-                 encoding_mode: EncodingMode):
+                 encoding_mode: EncodingMode,
+                 should_compress: bool):
         super().__init__(target=target,
                          threshold=threshold,
                          precision=precision,
@@ -360,7 +374,8 @@ class AdaptiveJitter(AdaptivePolicy):
                          seq_length=seq_length,
                          num_features=num_features,
                          encryption_mode=encryption_mode,
-                         encoding_mode=encoding_mode)
+                         encoding_mode=encoding_mode,
+                         should_compress=should_compress)
 
         # Queue of captured measurements over time
         self._captured: deque = deque()
@@ -558,13 +573,15 @@ class UniformPolicy(Policy):
                  width: int,
                  seq_length: int,
                  num_features: int,
-                 encryption_mode: EncryptionMode):
+                 encryption_mode: EncryptionMode,
+                 should_compress: bool):
         super().__init__(precision=precision,
                          width=width,
                          target=target,
                          num_features=num_features,
                          seq_length=seq_length,
-                         encryption_mode=encryption_mode)
+                         encryption_mode=encryption_mode,
+                         should_compress=should_compress)
         target_samples = int(math.ceil(target * seq_length))
 
         skip = max(1.0 / target, 1)
@@ -634,7 +651,14 @@ def run_policy(policy: Policy, sequence: np.ndarray) -> Tuple[np.ndarray, List[i
     return np.vstack(collected_list), collected_indices
 
 
-def make_policy(name: str, seq_length: int, num_features: int, encryption_mode: EncryptionMode, target: float, dataset: str, **kwargs: Dict[str, Any]) -> Policy:
+def make_policy(name: str,
+                seq_length: int,
+                num_features: int,
+                encryption_mode: EncryptionMode,
+                target: float,
+                dataset: str,
+                should_compress: bool,
+                **kwargs: Dict[str, Any]) -> Policy:
     name = name.lower()
 
     # Look up the data-specific precision and width
@@ -649,14 +673,16 @@ def make_policy(name: str, seq_length: int, num_features: int, encryption_mode: 
                             width=width,
                             num_features=num_features,
                             seq_length=seq_length,
-                            encryption_mode=encryption_mode)
+                            encryption_mode=encryption_mode,
+                            should_compress=should_compress)
     elif name == 'uniform':
         return UniformPolicy(target=target + MARGIN,
                              precision=precision,
                              width=width,
                              num_features=num_features,
                              seq_length=seq_length,
-                             encryption_mode=encryption_mode)
+                             encryption_mode=encryption_mode,
+                             should_compress=should_compress)
     elif name.startswith('adaptive'):
         # Look up the threshold path
         threshold_path = os.path.join('saved_models', dataset, 'thresholds.pkl.gz')
@@ -693,6 +719,7 @@ def make_policy(name: str, seq_length: int, num_features: int, encryption_mode: 
                    seq_length=seq_length,
                    num_features=num_features,
                    encryption_mode=encryption_mode,
-                   encoding_mode=EncodingMode[str(kwargs['encoding']).upper()])
+                   encoding_mode=EncodingMode[str(kwargs['encoding']).upper()],
+                   should_compress=should_compress)
     else:
         raise ValueError('Unknown policy with name: {0}'.format(name))

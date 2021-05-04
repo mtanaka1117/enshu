@@ -20,13 +20,15 @@ class TestByte(unittest.TestCase):
                                                        precision=precision,
                                                        width=width,
                                                        collected_indices=collected_indices,
-                                                       seq_length=seq_length)
+                                                       seq_length=seq_length,
+                                                       should_compress=False)
 
         recovered, indices, _ = message.decode_standard_measurements(byte_str=encoded,
                                                                      num_features=measurements.shape[1],
                                                                      seq_length=seq_length,
                                                                      width=width,
-                                                                     precision=precision)
+                                                                     precision=precision,
+                                                                     should_compress=False)
 
         # Check recovered values
         self.assertTrue(np.all(np.isclose(measurements, recovered)))
@@ -47,13 +49,15 @@ class TestByte(unittest.TestCase):
                                                        precision=precision,
                                                        width=width,
                                                        collected_indices=collected_indices,
-                                                       seq_length=seq_length)
+                                                       seq_length=seq_length,
+                                                       should_compress=False)
 
         recovered, indices, _ = message.decode_standard_measurements(byte_str=encoded,
                                                                      num_features=measurements.shape[1],
                                                                      seq_length=seq_length,
                                                                      width=width,
-                                                                     precision=precision)
+                                                                     precision=precision,
+                                                                     should_compress=False)
 
         expected = np.array([[0.25, 0.0, 0.75], [0.0, 0.5, -0.5]])
 
@@ -76,13 +80,76 @@ class TestByte(unittest.TestCase):
                                                        precision=precision,
                                                        width=width,
                                                        collected_indices=collected_indices,
-                                                       seq_length=seq_length)
+                                                       seq_length=seq_length,
+                                                       should_compress=False)
 
         recovered, indices, _ = message.decode_standard_measurements(byte_str=encoded,
                                                                      num_features=measurements.shape[1],
                                                                      seq_length=seq_length,
                                                                      width=width,
-                                                                     precision=precision)
+                                                                     precision=precision,
+                                                                     should_compress=False)
+
+        # Check recovered values
+        self.assertTrue(np.all(np.isclose(measurements, recovered)))
+
+        # Check indices
+        self.assertEqual(len(indices), 2)
+        self.assertEqual(indices[0], collected_indices[0])
+        self.assertEqual(indices[1], collected_indices[1])
+
+    def test_encode_decode_two_compressed(self):
+        measurements = np.array([[0.25, -0.125, 0.75], [-0.125, 0.625, -0.5]])
+        precision = 2
+        width = 4
+        seq_length = 8
+        collected_indices = [0, 4]
+
+        encoded = message.encode_standard_measurements(measurements=measurements,
+                                                       precision=precision,
+                                                       width=width,
+                                                       collected_indices=collected_indices,
+                                                       seq_length=seq_length,
+                                                       should_compress=True)
+
+        recovered, indices, _ = message.decode_standard_measurements(byte_str=encoded,
+                                                                     num_features=measurements.shape[1],
+                                                                     seq_length=seq_length,
+                                                                     width=width,
+                                                                     precision=precision,
+                                                                     should_compress=True)
+
+        # expected = np.array([[0.25, -0.25, 0.5], [-0.25, 0.5, -0.75]])
+        expected = np.array([[0.25, 0.0, 0.75], [0.0, 0.5, -0.5]])
+
+        # Check recovered values
+        self.assertTrue(np.all(np.isclose(expected, recovered)))
+
+        # Check indices
+        self.assertEqual(len(indices), 2)
+        self.assertEqual(indices[0], collected_indices[0])
+        self.assertEqual(indices[1], collected_indices[1])
+
+    def test_encode_decode_six_compressed(self):
+        measurements = np.array([[1.25, -0.125, -0.75], [1.125, -0.625, -0.5]])
+        precision = 4
+        width = 6
+        seq_length = 8
+        collected_indices = [0, 4]
+
+        encoded = message.encode_standard_measurements(measurements=measurements,
+                                                       precision=precision,
+                                                       width=width,
+                                                       collected_indices=collected_indices,
+                                                       seq_length=seq_length,
+                                                       should_compress=True)
+
+        recovered, indices, _ = message.decode_standard_measurements(byte_str=encoded,
+                                                                     num_features=measurements.shape[1],
+                                                                     seq_length=seq_length,
+                                                                     width=width,
+                                                                     precision=precision,
+                                                                     should_compress=True)
 
         # Check recovered values
         self.assertTrue(np.all(np.isclose(measurements, recovered)))
@@ -177,7 +244,7 @@ class TestGroups(unittest.TestCase):
 
         # Check recovered values
         error = mean_absolute_error(y_true=measurements, y_pred=decoded)
-        self.assertLess(error, 0.001)
+        self.assertLess(error, 0.002)
 
         # Check indices
         self.assertEqual(len(indices), 2)
@@ -334,7 +401,6 @@ class TestGroups(unittest.TestCase):
         group_size = 200
 
         groups = create_groups(inputs, max_num_groups=10, max_group_size=200)
-        print(groups)
 
         encoded = message.encode_grouped_measurements(measurements=inputs,
                                                       collected_indices=collected_indices,
@@ -350,9 +416,6 @@ class TestGroups(unittest.TestCase):
 
 
         error = mean_absolute_error(y_true=inputs, y_pred=decoded)
-
-        print(error)
-
 
         self.assertLessEqual(error, 0.1)
 
