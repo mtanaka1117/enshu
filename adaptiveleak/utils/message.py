@@ -145,7 +145,7 @@ def encode_grouped_measurements(measurements: np.ndarray, collected_indices: Lis
     # Collect the group meta-data
     num_groups = len(widths)
     num_measurements, num_features = measurements.shape
-    signs: List[int] = []  # 0 for both, 1 for only pos, 2 for only neg
+    shifts: List[int] = []  # 0 for both, 1 for only pos, 2 for only neg
 
     # Divide features into groups and encode separately
     flattened = measurements.T.reshape(-1)  # [K * D]
@@ -163,38 +163,18 @@ def encode_grouped_measurements(measurements: np.ndarray, collected_indices: Lis
 
         precision = width - non_fractional
 
-        half = int(len(group_features) / 2)
-
         # Encode the features using a dynamic number of
         # fractional bits (starting at the range amount)
-        # precision = width - non_frac
 
-       # shift = select_range_shift(measurements=group_features,
-       #                            width=width,
-       #                            precision=precision,
-       #                            num_range_bits=SHIFT_BITS,
-       #                            is_unsigned=False)
+        shift = select_range_shift(measurements=group_features,
+                                   width=width,
+                                   precision=precision,
+                                   num_range_bits=SHIFT_BITS,
+                                   is_unsigned=False)
 
-        first_half = group_features[:half]
-        second_half = group_features[half:]
-
-        print('First Half: {0}, Second Half: {1}'.format(first_half, second_half))
-
-        if np.all(group_features > 0):
-            group_encoded = array_to_fp_unsigned(group_features,
-                                                 precision=precision + 1,
-                                                 width=width)
-            sign = 1
-        elif np.all(group_features < 0):
-            group_encoded = array_to_fp_unsigned(-1 * group_features,
-                                                 precision=precision + 1,
-                                                 width=width)
-            sign = 2
-        else:
-            group_encoded = array_to_fp(group_features,
-                                        precision=precision,
-                                        width=width)
-            sign = 0
+        group_encoded = array_to_fp(group_features,
+                                    precision=precision - shift,
+                                    width=width)
 
         # Add offset to ensure positive values
         offset = 1 << (width - 1)
@@ -205,13 +185,13 @@ def encode_grouped_measurements(measurements: np.ndarray, collected_indices: Lis
 
         encoded_groups.append(group_packed)
         
-        signs.append(sign)
+        shifts.append(shift)
 
     # Aggregate the encoded groups into a single bit-string
     encoded = reduce(lambda x, y: x + y, encoded_groups)
 
     # Encode the group meta-data
-    group_widths = encode_group_widths(widths=widths, shifts=signs)
+    group_widths = encode_group_widths(widths=widths, shifts=shifts)
     group_metadata = bytes([group_size, num_groups]) + group_widths
 
     # Encode the max and min values
@@ -258,7 +238,7 @@ def decode_grouped_measurements(encoded: bytes, seq_length: int, num_features: i
     total_elements = num_features * num_measurements
 
     encoded_widths = encoded[2:num_groups+2]
-    widths, signs = decode_group_widths(encoded=encoded_widths)
+    widths, shifts = decode_group_widths(encoded=encoded_widths)
 
     encoded = encoded[num_groups+2:]
 
@@ -267,7 +247,7 @@ def decode_grouped_measurements(encoded: bytes, seq_length: int, num_features: i
 
     features: List[float] = []
 
-    for group_idx, (width, sign) in enumerate(zip(widths, signs)):
+    for group_idx, (width, shift) in enumerate(zip(widths, shifts)):
         # Get the number of elements in the current group
         num_elements = (total_elements - count) if (num_groups - 1) == group_idx else group_size
 
@@ -281,15 +261,7 @@ def decode_grouped_measurements(encoded: bytes, seq_length: int, num_features: i
 
         # Remove the offset value
         group_features = [x - offset for x in group_features]
-
-        if (sign == 1 or sign == 2):
-            precision += 1
-            print(group_features)
-        
-        raw_features = array_to_float(group_features, precision=precision)
-
-        if (sign == 2):
-            raw_features *= -1
+        raw_features = array_to_float(group_features, precision=precision - shift)
 
         features.extend(raw_features)
         start += num_bytes

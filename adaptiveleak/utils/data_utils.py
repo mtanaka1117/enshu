@@ -5,7 +5,7 @@ from functools import partial
 from Cryptodome.Random import get_random_bytes
 from typing import List, Union, Tuple, Iterable
 
-from adaptiveleak.utils.constants import BITS_PER_BYTE, BIG_NUMBER, MIN_WIDTH, SMALL_NUMBER
+from adaptiveleak.utils.constants import BITS_PER_BYTE, BIG_NUMBER, MIN_WIDTH, SMALL_NUMBER, BOUND_BITS
 from adaptiveleak.utils.encryption import AES_BLOCK_SIZE, EncryptionMode, CHACHA_NONCE_LEN
 
 
@@ -69,6 +69,22 @@ def array_to_fp(arr: np.ndarray, precision: int, width: int) -> np.ndarray:
     return np.clip(quantized, a_min=min_val, a_max=max_val)
 
 
+def array_to_fp_unsigned(arr: np.ndarray, precision: int, width: int) -> np.ndarray:
+    multiplier = 1 << abs(precision)
+
+    if (precision > 0):
+        quantized = arr * multiplier
+    else:
+        quantized = arr / multiplier
+
+    quantized = np.round(quantized).astype(int)
+
+    max_val = (1 << width) - 1
+    min_val = 0
+
+    return np.clip(quantized, a_min=min_val, a_max=max_val)
+
+
 def array_to_float(fp_arr: Union[np.ndarray, List[float]], precision: int) -> np.ndarray:
     multiplier = float(1 << abs(precision))
 
@@ -81,7 +97,7 @@ def array_to_float(fp_arr: Union[np.ndarray, List[float]], precision: int) -> np
         return fp_arr.astype(float) * multiplier
 
 
-def select_range_shift(measurements: np.ndarray, width: int, precision: int, num_range_bits: int) -> int:
+def select_range_shift(measurements: np.ndarray, width: int, precision: int, num_range_bits: int, is_unsigned: bool) -> int:
     """
     Selects the lowest-error range multiplier.
 
@@ -90,47 +106,93 @@ def select_range_shift(measurements: np.ndarray, width: int, precision: int, num
         width: The width of each feature
         precision: The precision of each feature
         num_range_bits: The number of bits for the range exponent
+        is_unsigned: Whether to encode signed or unsigned values
     Returns:
         The range exponent in [-2^{range_bits - 1}, 2^{range_bits - 1}]
     """
     assert num_range_bits >= 1, 'Number of range bits must be non-negative'
     assert width >= 1, 'Number of width bits must be non-negative'
 
-    # Try a shift of zero first
-    fixed_point = array_to_fp(measurements, width=width, precision=precision)
-    quantized = array_to_float(fixed_point, precision=precision)
+    max_value = np.max(np.abs(measurements))
+    max_representable_fp = (1 << width) - 1 if is_unsigned else (1 << (width - 1)) - 1
+    non_fractional = width - precision
 
-    best_shift = 0
-    best_error = np.sum(np.abs(quantized - measurements))
-    prev_error = BIG_NUMBER
-    initial_error = best_error
+    best_error = BIG_NUMBER
+    best_shift = (1 << num_range_bits) - 1
 
-    offset = 1 << (num_range_bits - 1)
-    for x in range(pow(2, num_range_bits)):
-        if abs(best_error) < SMALL_NUMBER:
-            break
+    offset = (1 << (num_range_bits - 1))
+    for idx in range(pow(2, num_range_bits)):
+        shift = idx - offset
 
-        shift = x - offset
+        shifted_max = to_float(max_representable_fp, precision=precision - shift)
 
-        if shift == 0:
-            error = initial_error
-        else:
-            fixed_point = array_to_fp(measurements, width=width, precision=precision + shift)
-            quantized = array_to_float(fixed_point, precision=precision + shift)
+        error = np.abs(max_value - shifted_max)
 
-            error = np.sum(np.abs(quantized - measurements))
-
-        if error <= best_error:
-            best_error = error
+        if (error < best_error) and (shifted_max > max_value):
             best_shift = shift
-
-
-        if error > prev_error:
-            break
-
-        prev_error = error
+            best_error = error
 
     return best_shift
+
+
+    #if (max_value >= 1):
+    #    shift = 1
+
+    #    shifted_max = max_value >> precision
+    #    while (shifted_max & 1 == 0 and shifted_max > 0):
+    #        shift -= 1
+    #        shifted_max = shifted_max >> 1
+    #else:
+    #    shift = 0
+
+    #    mask = (1 << precision) - 1
+    #    masked_max = max_value & mask
+    #
+    #    test_bit = (1 << precision)
+
+    #    while (masked_max & test_bit == 0 and shifted_max > 0):
+    #        shift += 1
+    #        masked_max = masked_mask << 1
+
+    #return shift
+    
+
+    # Try a shift of zero first
+    #fixed_point_fn = array_to_fp_unsigned if is_unsigned else array_to_fp
+
+    #fixed_point = fixed_point_fn(measurements, width=width, precision=precision)
+    #quantized = array_to_float(fixed_point, precision=precision)
+
+    #best_shift = 0
+    #best_error = np.sum(np.abs(quantized - measurements))
+    #prev_error = BIG_NUMBER
+    #initial_error = best_error
+
+    #offset = 1 << (num_range_bits - 1)
+    #for x in range(pow(2, num_range_bits)):
+    #    if abs(best_error) < SMALL_NUMBER:
+    #        break
+
+    #    shift = x - offset
+
+    #    if shift == 0:
+    #        error = initial_error
+    #    else:
+    #        fixed_point = fixed_point_fn(measurements, width=width, precision=precision + shift)
+    #        quantized = array_to_float(fixed_point, precision=precision + shift)
+
+    #        error = np.sum(np.abs(quantized - measurements))
+
+    #    if error <= best_error:
+    #        best_error = error
+    #        best_shift = shift
+
+    #    if error > prev_error:
+    #        break
+
+    #    prev_error = error
+
+    #return best_shift
 
 
 def linear_extrapolate(prev: np.ndarray, curr: np.ndarray, delta: float, num_steps: int) -> np.ndarray:
@@ -489,7 +551,7 @@ def calculate_grouped_bytes(widths: List[int],
         so_far += group_elements
 
     # Include the meta-data (group widths) and the sequence mask
-    total_bytes += len(widths) + 2 + int(math.ceil(seq_length / 8))
+    total_bytes += num_groups + int(math.ceil(seq_length / 8)) + 2
 
     if encryption_mode == EncryptionMode.BLOCK:
         # Include the IV
@@ -582,26 +644,191 @@ def prune_sequence(measurements: np.ndarray, collected_indices: List[int], max_c
 
     return updated_measurements, updated_indices
 
-    ## Calculate the local measurement error (assuming removal)
-    #ahead_errors = np.sum(np.abs(measurements[1:] - measurements[:-1]), axis=-1)  # [K - 1]
-    #total_errors = ahead_errors[1:] + ahead_errors[:-1]  # [K - 2]
 
-    ## Partition the indices based on error
-    #num_to_remove = num_collected - max_collected
-    #partitioned = np.argpartition(total_errors, kth=num_to_remove) + 1
+def create_groups(measurements: np.ndarray, max_num_groups: int, max_group_size: int) -> List[np.ndarray]:
+    """
+    Creates measurement groups using a greedy algorithm based on similar signs.
 
-    ## Keep the measurements with the highest induced error
-    #highest_error_indices = np.sort(partitioned[num_to_remove:])
-    #kept_measurements = measurements[highest_error_indices]
+    Args:
+        measurements: A [K, D] array of measurements
+        max_num_groups: The maximum number of groups (L)
+        max_group_size: The maximum number of features in a group
+    Returns:
+        A list of 1d arrays of flattened measurements
+    """
+    assert len(measurements.shape) == 2, 'Must provide a 2d measurements array'
 
-    ## Always include the first and last measurements
-    #first = np.expand_dims(measurements[0], axis=0)
-    #last = np.expand_dims(measurements[-1], axis=0)
+    # Flatten the features into a 1d array (feature-wise)
+    flattened = measurements.T.reshape(-1)
 
-    ## Collect the pruned measurements and indices
-    #pruned = np.vstack([first, kept_measurements, last])
+    min_group_size = int(math.ceil(len(flattened) / max_num_groups))
 
-    #first_idx, last_idx = collected_indices[0], collected_indices[-1]
-    #kept_indices = [first_idx] + [collected_indices[i] for i in highest_error_indices] + [last_idx]
+    groups: List[np.ndarray] = []
+    current_idx = 0
+    current_size = min_group_size
 
-    #return pruned, kept_indices
+    indices = np.arange(len(flattened))
+    signs = (np.greater_equal(flattened, 0)).astype(float)
+
+    while (current_idx < len(flattened)):
+        end_idx = current_idx + current_size
+
+        if (end_idx > len(flattened)):
+            groups.append(flattened[current_idx:])
+            break
+
+        is_positive = np.all(flattened[current_idx:end_idx] > 0)
+        is_negative = np.all(flattened[current_idx:end_idx] < 0)
+
+        if (is_positive or is_negative):
+            end_idx += 1
+
+            while (end_idx < len(flattened)) and ((is_positive and flattened[end_idx] >= 0) or (is_negative and flattened[end_idx] <= 0)):
+                end_idx += 1
+
+        groups.append(flattened[current_idx:end_idx])
+
+        current_size = end_idx - current_idx
+        current_idx += current_size
+        current_size = min_group_size
+
+    return groups
+
+
+def combine_groups(groups: List[np.ndarray], num_features: int) -> np.ndarray:
+    """
+    Combines the given groups back into a 2d measurement matrix.
+
+    Args:
+        groups: A list of 1d, flattened groups
+        num_features: The number of features in each measurement (D)
+    Returns:
+        A [K, D] array containing the recovered measurements.
+    """
+    flattened = np.concatenate(groups)  # [K * D]
+    return flattened.reshape(num_features, -1).T
+
+
+def integer_part(x: float) -> int:
+    """
+    Returns the integer part of the given number.
+    """
+    return int(math.modf(x)[1])
+
+
+def fractional_part(x: float) -> float:
+    """
+    Returns the fractional part of the given number
+    """
+    return math.modf(x)[0]
+
+
+def get_signs(array: np.ndarray) -> np.ndarray:
+    """
+    Returns a binary array of the signs of each value.
+    """
+    return np.where(array >= 0, 1, 0)
+
+
+def apply_signs(array: List[int], signs: List[int]) -> np.ndarray:
+    """
+    Applies the signs to the given (absolute value) array.
+    """
+    assert len(array) == len(signs), 'Misaligned inputs ({0} vs {1})'.format(len(array), len(signs))
+    return [x * (2 * s - 1) for x, s in zip(array, signs)]
+
+
+def num_bits_for_value(x: int) -> int:
+    """
+    Calculates the number if bits required to
+    represent the given integer.
+    """
+    num_bits = 0
+    while (x != 0):
+        x = x >> 1
+        num_bits += 1
+
+    return num_bits
+
+
+def run_length_encode(values: List[int], signs: List[int]) -> str:
+    if len(values) <= 0:
+        return ''
+
+    current = abs(values[0])
+    current_count = 1
+    current_sign = signs[0]
+
+    encoded: List[int] = []
+    compressed_signs: List[int] = []
+    reps: List[int] = []
+
+    for i in range(1, len(values)):
+        val = abs(values[i])
+
+        if (val == current) and (signs[i] == current_sign):
+            current_count += 1
+
+            if (i == len(values) - 1):
+                encoded.append(current)
+                reps.append(current_count)
+                compressed_signs.append(current_sign)
+        else:
+            encoded.append(current)
+            reps.append(current_count)
+            compressed_signs.append(current_sign)
+
+            current = val
+            current_count = 1
+            current_sign = signs[i]
+
+    # Calculate the maximum number of bits needed to encode the values and repetitions
+    max_encoded = np.max(np.abs(encoded))
+    max_reps = np.max(np.abs(reps))
+
+    encoded_bits = num_bits_for_value(max_encoded)
+    reps_bits = num_bits_for_value(max_reps)
+
+    encoded_values = pack(encoded, width=encoded_bits)
+    encoded_reps = pack(reps, width=reps_bits)
+    encoded_signs = pack(compressed_signs, width=1)
+
+    metadata = ((encoded_bits << 4) | (reps_bits & 0xF)) & 0xFF
+    metadata = (len(encoded) << 8) | metadata
+
+    metadata_bytes = metadata.to_bytes(3, 'little')
+
+    return metadata_bytes + encoded_values + encoded_reps + encoded_signs
+
+def run_length_decode(encoded: bytes) -> List[int]:
+    """
+    Decodes the given RLE values.
+    """
+    metadata = int.from_bytes(encoded[0:3], 'little')
+    encoded = encoded[3:]
+
+    num_values = (metadata >> 8) & 0xFFF
+    value_bits = (metadata >> 4) & 0xF
+    rep_bits = metadata & 0xF
+
+    value_bytes = int(math.ceil((num_values * value_bits) / BITS_PER_BYTE))
+    rep_bytes = int(math.ceil((num_values * rep_bits) / BITS_PER_BYTE))
+    sign_bytes = int(math.ceil(num_values / BITS_PER_BYTE))
+
+    decoded_values = unpack(encoded[0:value_bytes], width=value_bits, num_values=num_values)
+    encoded = encoded[value_bytes:]
+
+    decoded_reps = unpack(encoded[0:rep_bytes], width=rep_bits, num_values=num_values)
+    encoded = encoded[rep_bytes:]
+
+    decoded_signs = unpack(encoded[0:sign_bytes], width=1, num_values=num_values)
+
+    values: List[int] = []
+    signs: List[int] = []
+
+    for i in range(num_values):
+        for j in range(decoded_reps[i]):
+            values.append(decoded_values[i])
+            signs.append(decoded_signs[i])
+
+    return values, signs

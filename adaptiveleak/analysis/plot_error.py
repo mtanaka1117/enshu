@@ -9,9 +9,9 @@ from typing import Any, Dict, List, Optional
 
 from adaptiveleak.utils.constants import POLICIES
 from adaptiveleak.utils.file_utils import read_json_gz
-from adaptiveleak.plotting.plot_utils import COLORS, to_label, geometric_mean, MARKER, MARKER_SIZE, LINE_WIDTH, PLOT_STYLE
-from adaptiveleak.plotting.plot_utils import PLOT_SIZE, AXIS_FONT, LEGEND_FONT, TITLE_FONT
-from adaptiveleak.plotting.plot_utils import extract_results, iterate_policy_folders, dataset_label
+from adaptiveleak.analysis.plot_utils import COLORS, to_label, geometric_mean, MARKER, MARKER_SIZE, LINE_WIDTH, PLOT_STYLE
+from adaptiveleak.analysis.plot_utils import PLOT_SIZE, AXIS_FONT, LEGEND_FONT, TITLE_FONT
+from adaptiveleak.analysis.plot_utils import extract_results, iterate_policy_folders, dataset_label
 
 
 def plot(sim_results: Dict[str, Dict[float, float]], dataset_name: str, output_file: Optional[str]):

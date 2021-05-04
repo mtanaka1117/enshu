@@ -25,8 +25,8 @@ def execute(policy: AdaptivePolicy, inputs: np.ndarray, batch_size: int, upper: 
     lower = -upper
     
     current = 0.0
-    best_threshold = 0.0
-    best_observed = 1.0
+    best_threshold = upper
+    best_observed = 0.0
 
     best_diff = BIG_NUMBER
     batch_size = min(len(sample_idx), batch_size)

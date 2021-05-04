@@ -3,7 +3,7 @@ import os.path
 import h5py
 import socket
 from argparse import ArgumentParser
-from collections import namedtuple
+from collections import namedtuple, Counter
 from sklearn.metrics import mean_absolute_error, r2_score
 from typing import Optional, List, Tuple
 
@@ -110,6 +110,7 @@ class Server:
         errors: List[float] = []
         label_list: List[int] = []
         reconstructed_list: List[np.ndarray] = []
+        width_counts: Counter = Counter()
 
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock: 
             # Bind the sensor to the selected host and port
@@ -159,7 +160,7 @@ class Server:
                     # print('Idx: {0}'.format(idx))
 
                     # Decode the measurements
-                    measurements, collected_indices = policy.decode(message=message)
+                    measurements, collected_indices, widths = policy.decode(message=message)
 
                     # Reconstruct the sequence by inferring the missing elements, [T, D]
                     reconstructed = reconstruct_sequence(measurements=measurements,
@@ -170,17 +171,15 @@ class Server:
                     error = mean_absolute_error(y_true=inputs[idx],
                                                 y_pred=reconstructed)
 
-                    if idx == 394:
-                        print('Collected: {0}'.format(measurements))
-                        print('True: {0}'.format(inputs[idx][collected_indices]))
-                        print('Error: {0}'.format(error))
-
                     # Log the results of this sequence
                     num_bytes.append(len(parsed.data))
                     num_measurements.append(len(measurements))
                     errors.append(error)
                     label_list.append(int(labels[idx]))
                     reconstructed_list.append(np.expand_dims(reconstructed, axis=0))
+
+                    for width in widths:
+                        width_counts[width] += 1
 
                     if ((idx + 1) % 100) == 0:
                         print('Completed {0} sequences.'.format(idx + 1))
@@ -198,6 +197,8 @@ class Server:
             'r2_score': r2,
             'avg_bytes': np.average(num_bytes),
             'avg_measurements': np.average(num_measurements),
+            'count': len(errors),
+            'widths': width_counts,
             'errors': errors,
             'num_bytes': num_bytes,
             'num_measurements': num_measurements,

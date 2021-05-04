@@ -1,5 +1,6 @@
 import unittest
 import numpy as np
+import h5py
 from Cryptodome.Random import get_random_bytes
 
 from adaptiveleak.utils import data_utils
@@ -187,8 +188,9 @@ class TestRangeShift(unittest.TestCase):
         shift = data_utils.select_range_shift(measurements=measurements,
                                               width=width,
                                               precision=precision,
-                                              num_range_bits=num_range_bits)
-        self.assertEqual(shift, -4)
+                                              num_range_bits=num_range_bits,
+                                              is_unsigned=False)
+        self.assertEqual(shift, 3)
 
     def test_range_mixed_one(self):
         measurements = np.array([[1.5, 2.0, -3.5], [4.75, -1.0, 3.0]])
@@ -199,8 +201,9 @@ class TestRangeShift(unittest.TestCase):
         shift = data_utils.select_range_shift(measurements=measurements,
                                               width=width,
                                               precision=precision,
-                                              num_range_bits=num_range_bits)
-        self.assertEqual(shift, -3)
+                                              num_range_bits=num_range_bits,
+                                              is_unsigned=False)
+        self.assertEqual(shift, 3)
 
     def test_range_mixed_two(self):
         measurements = np.array([[1.5, 2.0, -3.5], [4.75, -1.0, 3.0]])
@@ -211,8 +214,9 @@ class TestRangeShift(unittest.TestCase):
         shift = data_utils.select_range_shift(measurements=measurements,
                                               width=width,
                                               precision=precision,
-                                              num_range_bits=num_range_bits)
-        self.assertEqual(shift, -2)
+                                              num_range_bits=num_range_bits,
+                                              is_unsigned=False)
+        self.assertEqual(shift, 2)
 
 
 class TestExtrapolation(unittest.TestCase):
@@ -892,6 +896,33 @@ class TestPruning(unittest.TestCase):
         self.assertEqual(pruned_indices, expected_indices)
 
 
+class TestRLE(unittest.TestCase):
+
+    def test_rle_small(self):
+        values = [1, 1, 1, 1, 1, 0, 0, 3, 3]
+        signs = [1, 1, 0, 0, 0, 1, 0, 1, 1]
+
+        encoded = data_utils.run_length_encode(values, signs)
+
+        decoded_vals, decoded_signs = data_utils.run_length_decode(encoded)
+
+        self.assertEqual(decoded_vals, values)
+        self.assertEqual(decoded_signs, signs)
+
+    def test_rle_long(self):
+        with h5py.File('../../datasets/uci_har/train/data.h5', 'r') as fin:
+            inputs = fin['inputs'][0]
+
+        flattened = inputs.reshape(-1)
+        integer_parts = list(map(data_utils.integer_part, np.abs(flattened)))
+        signs = data_utils.get_signs(flattened)
+
+        encoded = data_utils.run_length_encode(integer_parts, signs)
+        decoded_vals, decoded_signs = data_utils.run_length_decode(encoded)
+
+        decoded = data_utils.apply_signs(decoded_vals, decoded_signs)
+
+        self.assertTrue(decoded, flattened.tolist())
 
 
 if __name__ == '__main__':

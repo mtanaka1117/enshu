@@ -120,11 +120,17 @@ def fit_attack_model(message_sizes: List[int], labels: List[int], window_size: i
     clf = MLP(batch_size=16, hidden_units=64)
     # clf = MLPClassifier(hidden_layer_sizes=[32], alpha=0.1, max_iter=10000, random_state=rand)
     
+    most_freq_label = np.bincount(train_outputs, minlength=np.amax(train_outputs)).argmax()
+    most_freq_labels = [most_freq_label for _ in test_outputs]
+    most_freq_acc = metrics.accuracy_score(y_true=test_outputs, y_pred=most_freq_labels)
+
+    print('Most Freq Accuracy: {0:.5f}'.format(most_freq_acc))
+
     clf.fit(train_inputs=train_inputs,
             train_labels=train_outputs,
             val_inputs=val_inputs,
             val_labels=val_outputs,
-            num_epochs=10,
+            num_epochs=1,
             save_folder='attack_models')
 
     # Load the best model
@@ -133,10 +139,6 @@ def fit_attack_model(message_sizes: List[int], labels: List[int], window_size: i
     train_accuracy = clf.accuracy(train_inputs, train_outputs)
     val_accuracy = clf.accuracy(val_inputs, val_outputs)
     test_accuracy = clf.accuracy(test_inputs, test_outputs)
-
-    most_freq_label = np.bincount(labels, minlength=np.amax(labels)).argmax()
-    most_freq_labels = [most_freq_label for _ in test_outputs]
-    most_freq_acc = metrics.accuracy_score(y_true=test_outputs, y_pred=most_freq_labels)
 
     print('Train Accuracy: {0:.5f} ({1})'.format(train_accuracy, len(train_inputs)))
     print('Val Accuracy: {0:.5f} ({1})'.format(val_accuracy, len(val_inputs)))
@@ -183,5 +185,5 @@ if __name__ == '__main__':
                                         num_samples=args.num_samples)
 
         # Save the attack result
-        policy_result['attack'] = attack_result._asdict()
+        policy_result['attack'] = attack_result
         save_json_gz(policy_result, policy_file)
