@@ -18,6 +18,7 @@ from adaptiveleak.utils.file_utils import read_json, read_pickle_gz
 
 
 MARGIN = 0.005
+MAX_ITER = 100
 
 
 class EncodingMode(Enum):
@@ -180,35 +181,46 @@ class AdaptivePolicy(Policy):
                                               min_width=MIN_WIDTH,
                                               target_size=target_bytes,
                                               encryption_mode=self.encryption_mode)
+            max_collected += 1
+            encoded_bytes = target_bytes + 1
 
-            # Subtract 1 to be safe due to later-changing widths
-            max_collected -= 1
+            counter = 0
+            while (target_bytes < encoded_bytes and counter < MAX_ITER):
+                max_collected -= 1
 
-            # Prune away any excess measurements
-            measurements, collected_indices = prune_sequence(measurements=measurements,
+                # Prune away any excess measurements
+                measurements, collected_indices = prune_sequence(measurements=measurements,
                                                              collected_indices=collected_indices,
                                                              max_collected=max_collected,
                                                              seq_length=self.seq_length)
 
-            num_collected = len(measurements)
+                num_collected = len(measurements)
 
-            # Set the group parameters
-            num_groups = get_num_groups(num_collected=num_collected,
+                # Set the group parameters
+                num_groups = get_num_groups(num_collected=num_collected,
                                         group_size=max_group_size,
                                         num_features=self.num_features)
 
-            group_size = balance_group_size(num_collected=num_collected,
+                group_size = balance_group_size(num_collected=num_collected,
                                             max_group_size=max_group_size,
                                             num_features=self.num_features)
 
-            # Get the group widths
-            widths = get_group_widths(group_size=group_size,
+                # Get the group widths
+                widths = get_group_widths(group_size=group_size,
                                       num_collected=num_collected,
                                       num_features=self.num_features,
                                       seq_length=self.seq_length,
                                       target_frac=self.target,
                                       standard_width=self.width,
                                       encryption_mode=self.encryption_mode)
+
+                encoded_bytes = calculate_grouped_bytes(widths=widths,
+                                                        num_collected=num_collected,
+                                                        num_features=self.num_features,
+                                                        group_size=group_size,
+                                                        encryption_mode=self.encryption_mode,
+                                                        seq_length=self.seq_length)
+                counter += 1
 
             widths = [min(w, MAX_WIDTH) for w in widths]
 
@@ -233,11 +245,13 @@ class AdaptivePolicy(Policy):
             return super().decode(message)
         elif self.encoding_mode == EncodingMode.GROUP:
             non_fractional = self.width - self.precision
+            max_group_size = max(int(BITS_PER_BYTE * AES_BLOCK_SIZE), 1)
 
             return decode_grouped_measurements(encoded=message,
                                                seq_length=self.seq_length,
                                                num_features=self.num_features,
-                                               non_fractional=non_fractional)
+                                               non_fractional=non_fractional,
+                                               max_group_size=max_group_size)
         else:
             raise ValueError('Unknown encoding type {0}'.format(self.encoding_mode.name))
 
@@ -392,7 +406,7 @@ class AdaptiveJitter(AdaptivePolicy):
     def should_collect(self, seq_idx: int) -> bool:
         self._seq_idx = seq_idx
 
-        if (seq_idx >= self._window) and (self._sample_skip < self._current_skip):
+        if (seq_idx >= 2) and (self._sample_skip < self._current_skip):
             self._sample_skip += 1
             return False
 
@@ -533,18 +547,9 @@ class AdaptiveLinear(AdaptiveJitter):
 
         # Form the best-fit parameters
         slope = measurement_diff / (idx_diff + SMALL_NUMBER)
-        intercept = mean_element - slope * mean_idx
-
-        delta = 1
-        projected = slope * (self._seq_idx + delta) + intercept
-        norm = np.sum(np.abs(projected - measurement))
-
-        while (norm < self._threshold) and (delta <= self._max_skip):
-            delta += 1
-            projected = slope * (self._seq_idx + delta) + intercept
-            norm = np.sum(np.abs(projected - measurement))
-
-        self._current_skip = delta - 1
+        delta = int(math.floor(self._threshold / (np.sum(np.abs(slope)) + SMALL_NUMBER)))
+        
+        self._current_skip = min(delta, self._max_skip)
         self._sample_skip = 0
 
     def __str__(self):

@@ -234,6 +234,9 @@ def round_to_block(length: Union[int, float], block_size: int) -> int:
     Rounds the given length to the nearest (larger) multiple of
     the block size.
     """
+    if isinstance(length, int) and (length % block_size == 0):
+        return length
+
     return int(math.ceil(length / block_size)) * block_size
 
 
@@ -507,8 +510,8 @@ def balance_group_size(num_collected: int, num_features: int, max_group_size: in
         The selected (balanced) group size in [1, G]
     """
     num_groups = get_num_groups(num_collected=num_collected,
-                               num_features=num_features,
-                               group_size=max_group_size)
+                                num_features=num_features,
+                                group_size=max_group_size)
 
     total_features = num_collected * num_features
     even_group_size = int(math.ceil(total_features / num_groups))
@@ -556,7 +559,7 @@ def calculate_grouped_bytes(widths: List[int],
         so_far += group_elements
 
     # Include the meta-data (group widths) and the sequence mask
-    total_bytes += num_groups + int(math.ceil(seq_length / 8)) + 2
+    total_bytes += num_groups + int(math.ceil(seq_length / 8)) + 1
 
     if encryption_mode == EncryptionMode.BLOCK:
         # Include the IV
@@ -742,6 +745,26 @@ def apply_signs(array: List[int], signs: List[int]) -> List[int]:
     assert len(array) == len(signs), 'Misaligned inputs ({0} vs {1})'.format(len(array), len(signs))
     return [x * (2 * s - 1) for x, s in zip(array, signs)]
 
+
+def fixed_point_integer_part(fixed_point_val: int, precision: int) -> int:
+    """
+    Extracts the integer part from the given fixed point value.
+    """
+    if (precision >= 0):
+        return fixed_point_val >> precision
+    
+    return fixed_point_val << precision
+
+
+def fixed_point_frac_part(fixed_point_val: int, precision: int) -> int:
+    """
+    Extracts the fractional part from the given fixed point value.
+    """
+    if (precision >= 0):
+        mask = (1 << precision) - 1
+        return fixed_point_val & mask
+    
+    return 0
 
 def num_bits_for_value(x: int) -> int:
     """

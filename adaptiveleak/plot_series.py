@@ -28,8 +28,6 @@ if __name__ == '__main__':
         inputs = fin['inputs'][:]
         labels = fin['output'][:]
 
-    print(inputs.shape)
-
     labels = labels.reshape(-1)
 
     if len(inputs.shape) == 2:
@@ -47,7 +45,8 @@ if __name__ == '__main__':
                          dataset=args.dataset,
                          target=target,
                          encryption_mode=EncryptionMode.STREAM,
-                         encoding='standard')
+                         encoding='standard',
+                         should_compress=False)
 
     errors: List[float] = []
     estimate_list: List[np.ndarray] = []

@@ -31,7 +31,8 @@ DATASET_NAMES = {
     'strawberry': 'Strawberry',
     'epilepsy': 'Epilepsy',
     'uci_har': 'Activity',
-    'tiselac': 'Tiselac'
+    'tiselac': 'Tiselac',
+    'haptics': 'Haptics'
 }
 
 

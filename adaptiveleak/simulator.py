@@ -64,8 +64,6 @@ if __name__ == '__main__':
             server_cmd += ' --should-compress'
             sensor_cmd += ' --should-compress'
 
-        print(server_cmd)
-
         server, sensor = None, None
 
         try:

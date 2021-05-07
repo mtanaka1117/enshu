@@ -97,7 +97,8 @@ if __name__ == '__main__':
                              num_features=inputs.shape[2],
                              encryption_mode=EncryptionMode.STREAM,
                              encoding='standard',
-                             dataset=args.dataset)
+                             dataset=args.dataset,
+                             should_compress=False)
 
         threshold = execute(policy=policy, inputs=inputs, batch_size=args.batch_size, upper=args.max_threshold)
         threshold_map[args.policy][target] = threshold

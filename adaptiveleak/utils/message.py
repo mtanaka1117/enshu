@@ -2,12 +2,13 @@ import numpy as np
 import math
 import time
 import bz2
-from functools import reduce
+from functools import reduce, partial
 from typing import List, Tuple
 
 from adaptiveleak.utils.constants import SHIFT_BITS, BITS_PER_BYTE, BOUND_BITS, BOUND_ORDER, SMALL_NUMBER
 from adaptiveleak.utils.data_utils import array_to_fp, array_to_float, pack, unpack, select_range_shift, to_fixed_point, to_float, get_signs
 from adaptiveleak.utils.data_utils import array_to_fp_unsigned, run_length_encode, run_length_decode, integer_part, fractional_part, apply_signs
+from adaptiveleak.utils.data_utils import fixed_point_integer_part, fixed_point_frac_part, balance_group_size
 
 
 def encode_collected_mask(collected_indices: List[int], seq_length: int) -> bytes:
@@ -75,15 +76,21 @@ def encode_standard_measurements(measurements: np.ndarray, collected_indices: Li
     # Flatten the measurements into a 1d array
     flattened = measurements.T.reshape(-1)
 
+    # Quantize the measurements
+    quantized = array_to_fp(flattened, precision=precision, width=width)
+
     if should_compress:
         # Delta encode the features
-        # flattened = delta_encode(flattened)
+        flattened = delta_encode(quantized)
+
+        # Take the absolute value of the flattened values
+        abs_values = np.abs(flattened)
 
         # Split the features into integer and fractional parts
-        integer_parts = list(map(integer_part, flattened))
+        integer_parts = list(map(partial(fixed_point_integer_part, precision=precision), abs_values))
 
-        frac_fn = np.vectorize(fractional_part)
-        fractional_parts = np.abs(frac_fn(flattened))
+        frac_fn = np.vectorize(partial(fixed_point_frac_part, precision=precision))
+        fractional_parts = frac_fn(abs_values)
 
         # Encode the integer part using RLE
         integer_values = np.abs(integer_parts)
@@ -92,22 +99,20 @@ def encode_standard_measurements(measurements: np.ndarray, collected_indices: Li
         encoded_integers = run_length_encode(integer_values, integer_signs)
 
         # Encode the fractional parts in fixed-point representation
-        fixed_point_fracs = array_to_fp_unsigned(fractional_parts,
-                                                 precision=precision,
-                                                 width=precision)
+        #fixed_point_fracs = array_to_fp_unsigned(fractional_parts,
+        #                                         precision=precision,
+        #                                         width=precision)
 
-        encoded_fracs = pack(fixed_point_fracs.astype(int).tolist(), width=precision)
+        # encoded_fracs = pack(fixed_point_fracs.astype(int).tolist(), width=precision)
+        encoded_fracs = pack(fractional_parts.astype(int).tolist(), width=precision)
 
         int_part_length = len(encoded_integers).to_bytes(2, 'little')
         encoded_measurements = int_part_length + encoded_integers + encoded_fracs
 
         encoded_measurements = bz2.compress(encoded_measurements)
     else:
-        # Encode the measurements
-        encoded = array_to_fp(flattened, precision=precision, width=width)
-
         # Add the offset value to ensure all positive values
-        encoded = encoded + (1 << (width - 1))
+        encoded = quantized + (1 << (width - 1))
 
         # Flatten measurements array and pack into a single bit-string
         encoded_list = encoded.astype(int).tolist()  # [K * D]
@@ -160,15 +165,18 @@ def decode_standard_measurements(byte_str: bytes, seq_length: int, num_features:
                                num_values=(len(collected_indices) * num_features))
 
         # Convert the fractional parts to floats
-        decoded_fracs = array_to_float(decoded_fracs, precision=precision)
+        # decoded_fracs = array_to_float(decoded_fracs, precision=precision)
         
         # Combine the numerical parts
-        combined = [v + frac for v, frac in zip(decoded_integers, decoded_fracs)]
+        combined = [(v << precision) | frac for v, frac in zip(decoded_integers, decoded_fracs)]
         combined = apply_signs(combined, decoded_signs)
 
         # Decode the delta-encoded measurements
-        # decoded = delta_decode(np.array(combined))
-        decoded = np.array(combined)
+        decoded = delta_decode(np.array(combined))
+
+        decoded = array_to_float(decoded, precision=precision)
+
+        # decoded = np.array(combined)
     else:
         decoded_values = unpack(encoded=byte_str[num_mask_bytes:],
                                 width=width,
@@ -205,10 +213,12 @@ def encode_grouped_measurements(measurements: np.ndarray, collected_indices: Lis
     # Collect the group meta-data
     num_groups = len(widths)
     num_measurements, num_features = measurements.shape
-    shifts: List[int] = []  # 0 for both, 1 for only pos, 2 for only neg
+    shifts: List[int] = []  # 3 bits allocated for precision shifts
 
     # Divide features into groups and encode separately
     flattened = measurements.T.reshape(-1)  # [K * D]
+
+    # integer_fn = np.vectorize(integer_part)
 
     encoded_groups: List[bytes] = []
     for group_idx, width in enumerate(widths):
@@ -221,11 +231,54 @@ def encode_grouped_measurements(measurements: np.ndarray, collected_indices: Lis
         else:
             group_features = flattened[start:end]
 
+        #precision = width - non_fractional
+
+        #shift = select_range_shift(measurements=group_features,
+        #                           width=width,
+        #                           precision=precision,
+        #                           num_range_bits=SHIFT_BITS,
+        #                           is_unsigned=False)
+
+        #signs = [int(x >= 0) for x in group_features]
+        #length = len(signs)
+        #split = max(int(length / 4), 1)
+
+        #group_encoded: List[int] = []
+        #group_sign = 0
+
+        #for split_idx in range(4):
+        #    start, end = split * split_idx, split * (split_idx + 1)
+        #    if split_idx == 3:
+        #        end = len(signs)
+
+        #    sign_split = signs[start:end]
+        #    is_pos = [s == 1 for s in sign_split]
+
+        #    if all(is_pos):
+        #        group_split = array_to_fp_unsigned(group_features[start:end],
+        #                                           width=width,
+        #                                           precision=precision + 1 - shift)
+        #        sign = 1
+        #    elif not any(is_pos):
+        #        group_split = array_to_fp_unsigned(np.abs(group_features[start:end]),
+        #                                           width=width,
+        #                                           precision=precision + 1 - shift)
+        #        sign = 2
+        #    else:
+        #        group_split = array_to_fp(group_features[start:end],
+        #                                  width=width,
+        #                                  precision=precision - shift)
+        #        offset = 1 << (width - 1)
+        #        group_split += offset
+        #        sign = 0
+
+        #    group_encoded.extend(group_split)
+        #    group_sign = (sign << (split_idx * 2)) | group_sign
+
         precision = width - non_fractional
 
         # Encode the features using a dynamic number of
         # fractional bits (starting at the range amount)
-
         shift = select_range_shift(measurements=group_features,
                                    width=width,
                                    precision=precision,
@@ -244,7 +297,6 @@ def encode_grouped_measurements(measurements: np.ndarray, collected_indices: Lis
         group_packed = pack(group_encoded, width=width)
 
         encoded_groups.append(group_packed)
-        
         shifts.append(shift)
 
     # Aggregate the encoded groups into a single bit-string
@@ -252,12 +304,7 @@ def encode_grouped_measurements(measurements: np.ndarray, collected_indices: Lis
 
     # Encode the group meta-data
     group_widths = encode_group_widths(widths=widths, shifts=shifts)
-    group_metadata = bytes([group_size, num_groups]) + group_widths
-
-    # Encode the max and min values
-    offset = 1 << (BOUND_BITS - 1)
-    bound_precision = BOUND_BITS - non_fractional
-    bound_bytes = int(math.ceil(BOUND_BITS / BITS_PER_BYTE))
+    group_metadata = bytes([num_groups]) + group_widths
 
     # Convert the collected indices into a byte array
     collected_mask = encode_collected_mask(collected_indices, seq_length=seq_length)
@@ -266,7 +313,7 @@ def encode_grouped_measurements(measurements: np.ndarray, collected_indices: Lis
     return bytes(collected_mask) + group_metadata + encoded
 
 
-def decode_grouped_measurements(encoded: bytes, seq_length: int, num_features: int, non_fractional: int) -> Tuple[np.ndarray, List[int], List[int]]:
+def decode_grouped_measurements(encoded: bytes, seq_length: int, num_features: int, non_fractional: int, max_group_size: int) -> Tuple[np.ndarray, List[int], List[int]]:
     """
     Decodes the encoded group of measurements into the raw measurement values and collected
     sequence indices.
@@ -276,6 +323,7 @@ def decode_grouped_measurements(encoded: bytes, seq_length: int, num_features: i
         seq_length: The true sequence length
         num_features: The number of features per measurement
         non_fractional: The number of non-fractional bits
+        max_group_size: The maximum group size
     Returns:
         A tuple of two values:
             (1) A [K, D] array of measurement values
@@ -288,19 +336,30 @@ def decode_grouped_measurements(encoded: bytes, seq_length: int, num_features: i
 
     collected_indices = decode_collected_mask(bitmask=bitmask,
                                               seq_length=seq_length)
-
     encoded = encoded[num_mask_bytes:]
 
     # Unpack the meta-data
     num_measurements = len(collected_indices)
-    group_size = int(encoded[0])
-    num_groups = int(encoded[1])
+    # group_size = int(encoded[0])
+    num_groups = int(encoded[0])
+    group_size = balance_group_size(max_group_size=max_group_size,
+                                    num_collected=num_measurements,
+                                    num_features=num_features)
+
     total_elements = num_features * num_measurements
 
-    encoded_widths = encoded[2:num_groups+2]
+    encoded_widths = encoded[1:num_groups+1]
     widths, shifts = decode_group_widths(encoded=encoded_widths)
 
-    encoded = encoded[num_groups+2:]
+    # Unpack the signs
+    #start, end = num_groups + 2, 2 * num_groups + 2
+    #signs = [encoded[i] for i in range(start, end)]
+
+    # Get the group offsets
+    # offset_bytes = int(math.ceil(num_groups * non_fractional / BITS_PER_BYTE))
+    # group_offsets = unpack(encoded[num_groups+2:num_groups+offset_bytes+2], width=non_fractional, num_values=num_groups)
+
+    encoded = encoded[num_groups+1:]
 
     start = 0
     count = 0  # the number of features so far
@@ -318,6 +377,25 @@ def decode_grouped_measurements(encoded: bytes, seq_length: int, num_features: i
 
         precision = width - non_fractional
         offset = 1 << (width - 1)
+        #split = max(int(len(group_features) / 4), 1)
+
+        #for split_idx in range(4):
+        #    sign = (signs[group_idx] >> (split_idx * 2)) & 0x3
+
+        #    split_start = split * split_idx
+        #    split_end = split * (split_idx + 1) if split_idx < 3 else len(group_features)
+
+        #    group_split = group_features[split_start:split_end]
+
+        #    if sign == 0:
+        #        group_split = [x - offset for x in group_split]
+        #        split_features = array_to_float(group_split, precision=precision - shift)
+        #    elif sign == 1:
+        #        split_features = array_to_float(group_split, precision=precision - shift + 1)
+        #    else:
+        #        split_features = -1 * array_to_float(group_split, precision=precision - shift + 1)
+
+        #    features.extend(split_features)
 
         # Remove the offset value
         group_features = [x - offset for x in group_features]

@@ -1,5 +1,6 @@
 import unittest
 import numpy as np
+from sklearn.metrics import mean_absolute_error
 
 from adaptiveleak.policies import AdaptiveHeuristic, EncodingMode
 from adaptiveleak.utils.encryption import EncryptionMode, CHACHA_NONCE_LEN, AES_BLOCK_SIZE
@@ -15,7 +16,7 @@ class TestAdaptiveEncode(unittest.TestCase):
 
         policy = AdaptiveHeuristic(target=0.7,
                                    threshold=0.0,
-                                   precision=6,
+                                   precision=5,
                                    width=8,
                                    seq_length=166,
                                    num_features=1,
@@ -28,7 +29,9 @@ class TestAdaptiveEncode(unittest.TestCase):
 
         measurements, indices, _ = policy.decode(encoded)
 
-        self.assertTrue(np.all(np.abs(measurements - sample['measurements']) < 0.01))
+        error = mean_absolute_error(measurements, sample['measurements'])
+
+        self.assertTrue(error < 0.01)
         self.assertEqual(indices, sample['indices'])
 
     def test_chlorine_stream(self):
@@ -110,7 +113,7 @@ class TestAdaptiveEncode(unittest.TestCase):
 
         decoded_measurements, decoded_collected, _ = policy.decode(encoded)
 
-        self.assertEqual(len(decoded_measurements), 117)
+        self.assertEqual(len(decoded_measurements), 118)
 
     def test_tiselac_stream(self):
          # Read the data
@@ -132,6 +135,25 @@ class TestAdaptiveEncode(unittest.TestCase):
         decoded_measurements, decoded_collected, _ = policy.decode(encoded)
 
         self.assertTrue(np.all(np.isclose(sample['measurements'], decoded_measurements)))
+
+    def test_haptics_stream(self):
+        # Read the data
+        sample = read_pickle_gz('haptics_sample.pkl.gz')
+
+        policy = AdaptiveHeuristic(target=0.2,
+                                   threshold=0.0,
+                                   precision=5,
+                                   width=10,
+                                   seq_length=1092,
+                                   num_features=1,
+                                   encryption_mode=EncryptionMode.STREAM,
+                                   encoding_mode=EncodingMode.GROUP,
+                                   should_compress=False)
+
+        encoded = policy.encode(measurements=sample['measurements'],
+                                collected_indices=sample['indices'])
+
+        self.assertEqual(len(encoded), 410)
 
 
 if __name__ == '__main__':

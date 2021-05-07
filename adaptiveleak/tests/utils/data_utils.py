@@ -275,7 +275,7 @@ class TestPadding(unittest.TestCase):
 
         expected_size = len(encrypt_aes128(message, key=key))
 
-        self.assertEqual(padded_size + AES_BLOCK_SIZE, expected_size)
+        self.assertEqual(padded_size, expected_size)
 
     def test_round_non_multiple(self):
         message = get_random_bytes(9)
@@ -531,17 +531,17 @@ class TestCalculateBytes(unittest.TestCase):
         self.assertEqual(message_bytes, len(encrypted))
 
     def test_group_block(self):
-        # 11 bytes of data, 4 meta-data, 2 for sequence mask = 17 bytes -> 32 bytes + 16 byte IV = 48 bytes
+        # 11 bytes of data, 3 meta-data, 2 for sequence mask = 16 bytes -> 16 bytes + 16 byte IV = 32 bytes
         data_bytes = data_utils.calculate_grouped_bytes(widths=[6, 7],
                                                         num_features=3,
                                                         num_collected=4,
                                                         seq_length=10,
                                                         group_size=6,
                                                         encryption_mode=EncryptionMode.BLOCK)
-        self.assertEqual(data_bytes, 48)
+        self.assertEqual(data_bytes, 32)
 
     def test_group_stream(self):
-        # 11 bytes of data, 4 meta-data, 2 for sequence mask, 12 for nonce = 29 bytes
+        # 11 bytes of data, 3 meta-data, 2 for sequence mask, 12 for nonce = 28 bytes
         data_bytes = data_utils.calculate_grouped_bytes(widths=[6, 7],
                                                         num_features=3,
                                                         num_collected=4,
@@ -549,10 +549,10 @@ class TestCalculateBytes(unittest.TestCase):
                                                         group_size=6,
                                                         encryption_mode=EncryptionMode.STREAM)
 
-        self.assertEqual(data_bytes, 29)
+        self.assertEqual(data_bytes, 28)
 
     def test_group_stream_unbalanced(self):
-        # 11 bytes of data, 4 meta-data, 2 for sequence mask, 12 for nonce = 29 bytes
+        # 11 bytes of data, 3 meta-data, 2 for sequence mask, 12 for nonce = 29 bytes
         data_bytes = data_utils.calculate_grouped_bytes(widths=[6, 7],
                                                         num_features=3,
                                                         num_collected=4,
@@ -560,7 +560,7 @@ class TestCalculateBytes(unittest.TestCase):
                                                         group_size=6,
                                                         encryption_mode=EncryptionMode.STREAM)
 
-        self.assertEqual(data_bytes, 29)
+        self.assertEqual(data_bytes, 28)
 
     def test_group_stream_large(self):
         data_bytes = data_utils.calculate_grouped_bytes(widths=[7, 9],
@@ -569,7 +569,7 @@ class TestCalculateBytes(unittest.TestCase):
                                                         seq_length=50,
                                                         group_size=132,
                                                         encryption_mode=EncryptionMode.STREAM)
-        self.assertEqual(data_bytes, 166)
+        self.assertEqual(data_bytes, 165)
 
     def test_group_stream_end_to_end_one(self):
         # Encode and encrypt measurements
@@ -697,7 +697,7 @@ class TestGroupWidths(unittest.TestCase):
 
         self.assertEqual(len(widths), 3)
         self.assertEqual(widths[0], 11)
-        self.assertEqual(widths[1], 10)
+        self.assertEqual(widths[1], 11)
         self.assertEqual(widths[2], 10)
 
     def test_widths_block_below(self):
@@ -710,8 +710,8 @@ class TestGroupWidths(unittest.TestCase):
                                              encryption_mode=EncryptionMode.BLOCK)
 
         self.assertEqual(len(widths), 2)
-        self.assertEqual(widths[0], 22)
-        self.assertEqual(widths[1], 22)
+        self.assertEqual(widths[0], 24)
+        self.assertEqual(widths[1], 24)
 
     def test_widths_stream_above(self):
         widths = data_utils.get_group_widths(group_size=6,
@@ -724,7 +724,7 @@ class TestGroupWidths(unittest.TestCase):
 
         self.assertEqual(len(widths), 3)
         self.assertEqual(widths[0], 4)
-        self.assertEqual(widths[1], 4)
+        self.assertEqual(widths[1], 5)
         self.assertEqual(widths[2], 5)
 
     def test_widths_stream_below(self):
@@ -737,7 +737,7 @@ class TestGroupWidths(unittest.TestCase):
                                              encryption_mode=EncryptionMode.STREAM)
 
         self.assertEqual(len(widths), 2)
-        self.assertEqual(widths[0], 9)
+        self.assertEqual(widths[0], 10)
         self.assertEqual(widths[1], 10)
 
 
@@ -950,6 +950,31 @@ class TestRLE(unittest.TestCase):
         decoded = data_utils.apply_signs(decoded_vals, decoded_signs)
 
         self.assertTrue(decoded, flattened.tolist())
+
+
+class TestPartExtraction(unittest.TestCase):
+
+    def test_half(self):
+        precision = 4
+        width = 8
+        fixed_point_value = data_utils.to_fixed_point(1.5, width=width, precision=precision)
+
+        int_part = data_utils.fixed_point_integer_part(fixed_point_value, precision=precision)
+        frac_part = data_utils.fixed_point_frac_part(fixed_point_value, precision=precision)
+
+        self.assertTrue(frac_part, 8)
+        self.assertTrue(int_part, 1)
+
+    def test_neg_eighth(self):
+        precision = 3
+        width = 8
+        fixed_point_value = data_utils.to_fixed_point(-1.125, width=width, precision=precision)
+
+        int_part = data_utils.fixed_point_integer_part(fixed_point_value, precision=precision)
+        frac_part = data_utils.fixed_point_frac_part(fixed_point_value, precision=precision)
+
+        self.assertTrue(frac_part, 1)
+        self.assertTrue(int_part, -1)
 
 
 if __name__ == '__main__':

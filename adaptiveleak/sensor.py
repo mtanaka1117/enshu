@@ -1,4 +1,5 @@
 import socket
+
 import os.path
 import numpy as np
 import time
@@ -70,6 +71,17 @@ class Sensor:
                 # Encrypt and send the message
                 key = self._aes_key if encryption_mode == EncryptionMode.BLOCK else self._chacha_key
                 encrypted_message = encrypt(message=message, key=key, mode=encryption_mode)
+
+                if len(message) != 410:
+                    sample = {
+                        'measurements': measurements,
+                        'indices': indices,
+                    }
+                    print(len(message))
+                    print(idx)
+                    print(policy.as_dict())
+                    print(message)
+                    save_pickle_gz(sample, 'haptics_sample.pkl.gz')
 
                 # Pre-pend the message length to the front (4 bytes)
                 length = len(encrypted_message).to_bytes(LENGTH_BYTES, byteorder=LENGTH_ORDER)
