@@ -43,7 +43,7 @@ def parse_message(message_buffer: bytes) -> Tuple[Message, int]:
 
 def reconstruct_sequence(measurements: np.ndarray, collected_indices: List[int], seq_length: int) -> np.ndarray:
     """
-    Reconstructs a sequence using a last-known policy.
+    Reconstructs a sequence using a linear interpolation.
 
     Args:
         measurements: A [K, D] array of sub-sampled features
@@ -52,20 +52,20 @@ def reconstruct_sequence(measurements: np.ndarray, collected_indices: List[int],
     Returns:
         A [T, D] array of reconstructed measurements.
     """
-    collected_idx = 0
+    feature_list: List[np.ndarray] = []
+    seq_idx = list(range(seq_length))
 
-    num_features = measurements.shape[-1]
-    estimate = np.zeros(shape=(1, num_features))  # [1, D]
+    for feature_idx in range(measurements.shape[1]):
+        collected_features = measurements[:, feature_idx]  # [K]
+        reconstructed = np.interp(x=seq_idx,
+                                  xp=collected_indices,
+                                  fp=collected_features,
+                                  left=collected_features[0],
+                                  right=collected_features[-1])
 
-    reconstructed: List[np.ndarray] = []
-    for seq_idx in range(seq_length):
-        if (collected_idx < len(collected_indices)) and (seq_idx == collected_indices[collected_idx]):
-            estimate = measurements[collected_idx].reshape(1, num_features)  # [1, D]
-            collected_idx += 1
-
-        reconstructed.append(estimate)
-
-    return np.vstack(reconstructed)
+        feature_list.append(np.expand_dims(reconstructed, axis=-1))
+        
+    return np.concatenate(feature_list, axis=-1)  # [T, D]
 
 
 class Server:
