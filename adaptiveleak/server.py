@@ -33,6 +33,7 @@ def parse_message(message_buffer: bytes) -> Tuple[Message, int]:
     data_start = SHA256_LEN + LENGTH_BYTES
 
     mac = message_buffer[:length_start]
+
     length = int.from_bytes(message_buffer[length_start:data_start], byteorder=LENGTH_ORDER)
     data = message_buffer[data_start:data_start + length]
     full = message_buffer[length_start:data_start + length]
@@ -136,7 +137,7 @@ class Server:
                 # Iterate over all samples
                 for idx in range(limit):
                     # Receive the given sequence (large-enough buffer)
-                    recv = conn.recv(2048)
+                    recv = conn.recv(5000)
                     message_buffer.extend(recv)
 
                     # Parse the message
