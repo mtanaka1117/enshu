@@ -53,6 +53,34 @@ def to_float(fp: int, precision: int) -> float:
     return float(fp) / multiplier if precision > 0 else float(fp) * multiplier
 
 
+def precision_change_error(fixed_point: int, old_precision: int, new_precision: int) -> float:
+    """
+    Calculates the error induced by changing the given fixed point value to a new precision.
+
+    Args:
+        fixed_point: The current fixed point value
+        old_precision: The old precision value
+        new_precision: The new precision value
+    Returns:
+        The error (pos if worse, neg if better) when changing to the new precision.
+    """
+    return to_float(fixed_point, old_precision) - to_float(fixed_point, new_precision)
+
+
+def precision_change_error_array(fixed_point: np.ndarray, old_precision: int, new_precision: int) -> float:
+    """
+    Calculates the error induced by changing the given fixed point value to a new precision.
+
+    Args:
+        fixed_point: The current fixed point value
+        old_precision: The old precision value
+        new_precision: The new precision value
+    Returns:
+        The error (pos if worse, neg if better) when changing to the new precision.
+    """
+    return np.sum(array_to_float(fixed_point, old_precision) - array_to_float(fixed_point, new_precision))
+
+
 def array_to_fp(arr: np.ndarray, precision: int, width: int) -> np.ndarray:
     multiplier = 1 << abs(precision)
     
@@ -118,22 +146,23 @@ def select_range_shift(measurements: np.ndarray, width: int, precision: int, num
     non_fractional = width - precision
 
     best_error = BIG_NUMBER
-    best_shift = (1 << num_range_bits) - 1
-
+    best_shift = (1 << (num_range_bits - 1)) - 1
 
     offset = (1 << (num_range_bits - 1))
+
     for idx in range(pow(2, num_range_bits)):
         shift = idx - offset
-
+        
         shifted_max = to_float(max_representable_fp, precision=precision - shift)
 
         # Construct error to favor going over
-        if shifted_max > max_value:
-            error = (shifted_max - max_value) * 0.25
-        else:
-            error = max_value - shifted_max
+        #if shifted_max > max_value:
+        #    error = (shifted_max - max_value) * 0.25
+        #else:
+        #    error = max_value - shifted_max
+        error = abs(shifted_max - max_value)
 
-        if (error < best_error):
+        if (error < best_error) and (shifted_max > max_value):
             best_shift = shift
             best_error = error
 
@@ -161,7 +190,6 @@ def select_range_shift(measurements: np.ndarray, width: int, precision: int, num
 
     #return shift
     
-
     # Try a shift of zero first
     #fixed_point_fn = array_to_fp_unsigned if is_unsigned else array_to_fp
 
@@ -183,8 +211,8 @@ def select_range_shift(measurements: np.ndarray, width: int, precision: int, num
     #    if shift == 0:
     #        error = initial_error
     #    else:
-    #        fixed_point = fixed_point_fn(measurements, width=width, precision=precision + shift)
-    #        quantized = array_to_float(fixed_point, precision=precision + shift)
+    #        fixed_point = fixed_point_fn(measurements, width=width, precision=precision - shift)
+    #        quantized = array_to_float(fixed_point, precision=precision - shift)
 
     #        error = np.sum(np.abs(quantized - measurements))
 
