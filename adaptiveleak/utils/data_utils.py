@@ -159,12 +159,12 @@ def array_to_float_shifted(arr: Union[np.ndarray, List[int]], precision: int, sh
     return recovered
 
 
-def select_range_shift(measurement: float, width: int, precision: int, num_range_bits: int, is_unsigned: bool) -> int:
+def select_range_shift(measurements: np.ndarray, width: int, precision: int, num_range_bits: int, is_unsigned: bool) -> int:
     """
     Selects the lowest-error range multiplier.
 
     Args:
-        measurement: A measurement feature
+        measurement: The measurement features
         width: The width of each feature
         precision: The precision of each feature
         num_range_bits: The number of bits for the range exponent
@@ -175,7 +175,7 @@ def select_range_shift(measurement: float, width: int, precision: int, num_range
     assert num_range_bits >= 1, 'Number of range bits must be non-negative'
     assert width >= 1, 'Number of width bits must be non-negative'
 
-    max_value = abs(measurement)
+    max_value = np.max(np.abs(measurements))
     max_representable_fp = (1 << width) - 1 if is_unsigned else (1 << (width - 1)) - 1
     non_fractional = width - precision
 

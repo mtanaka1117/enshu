@@ -119,7 +119,6 @@ class TestByte(unittest.TestCase):
                                                                      precision=precision,
                                                                      should_compress=True)
 
-        # expected = np.array([[0.25, -0.25, 0.5], [-0.25, 0.5, -0.75]])
         expected = np.array([[0.25, 0.0, 0.75], [0.0, 0.5, -0.5]])
 
         # Check recovered values
@@ -434,6 +433,8 @@ class TestGroups(unittest.TestCase):
 
         error = mean_absolute_error(y_true=inputs, y_pred=decoded)
 
+        print(error)
+
         self.assertLessEqual(error, 0.1)
 
     def test_encode_decode_large_padded(self):
@@ -488,6 +489,264 @@ class TestGroupWidths(unittest.TestCase):
 
         self.assertEqual(rec_widths, [31, 4, 6])
         self.assertEqual(rec_shifts, [1, 3, -4])
+
+
+class TestStable(unittest.TestCase):
+
+    def test_encode_decode_two_groups(self):
+        measurements = np.array([[0.25, -0.125, 0.75], [-0.125, 0.625, -0.5]])
+        non_fractional = 2
+        seq_length = 8
+        collected_indices = [0, 1]
+        width = 5
+
+        encoded = message.encode_stable_measurements(measurements=measurements,
+                                                     collected_indices=collected_indices,
+                                                     seq_length=seq_length,
+                                                     width=width,
+                                                     non_fractional=non_fractional)
+
+        decoded, indices, widths = message.decode_stable_measurements(encoded=encoded,
+                                                                      seq_length=seq_length,
+                                                                      num_features=measurements.shape[1],
+                                                                      non_fractional=non_fractional)
+
+        # Check recovered values
+        error = mean_absolute_error(y_true=measurements, y_pred=decoded)
+        self.assertLess(error, 0.1)
+
+        # Check the returned width
+        self.assertEqual(len(widths), 1)
+        self.assertEqual(widths[0], 5)
+
+        # Check indices
+        self.assertEqual(len(indices), 2)
+        self.assertEqual(indices[0], collected_indices[0])
+        self.assertEqual(indices[1], collected_indices[1])
+
+    def test_encode_decode_two_groups_truncated(self):
+        measurements = np.array([[0.25, -0.125, 0.75], [-0.125, 0.625, -0.5]])
+        non_fractional = 2
+        seq_length = 8
+        collected_indices = [0, 5]
+        width = 4
+
+        encoded = message.encode_stable_measurements(measurements=measurements,
+                                                     collected_indices=collected_indices,
+                                                     seq_length=seq_length,
+                                                     width=width,
+                                                     non_fractional=non_fractional)
+
+        decoded, indices, widths = message.decode_stable_measurements(encoded=encoded,
+                                                                      seq_length=seq_length,
+                                                                      num_features=measurements.shape[1],
+                                                                      non_fractional=non_fractional)
+
+        # Check recovered values
+        error = mean_absolute_error(y_true=measurements, y_pred=decoded)
+        self.assertLess(error, 0.03)
+
+        # Check the widths
+        self.assertEqual(len(widths), 1)
+        self.assertEqual(widths[0], 4)
+
+        # Check indices
+        self.assertEqual(len(indices), 2)
+        self.assertEqual(indices[0], collected_indices[0])
+        self.assertEqual(indices[1], collected_indices[1])
+
+    def test_encode_decode_two_groups_truncated_signed(self):
+        measurements = np.array([[0.25, -0.125, -0.75], [0.125, -0.625, -0.5]])
+        non_fractional = 2
+        seq_length = 8
+        collected_indices = [0, 5]
+        width = 4
+
+        encoded = message.encode_stable_measurements(measurements=measurements,
+                                                     collected_indices=collected_indices,
+                                                     seq_length=seq_length,
+                                                     width=width,
+                                                     non_fractional=non_fractional)
+
+        decoded, indices, widths = message.decode_stable_measurements(encoded=encoded,
+                                                                      seq_length=seq_length,
+                                                                      num_features=measurements.shape[1],
+                                                                      non_fractional=non_fractional)
+
+        # Check recovered values
+        error = mean_absolute_error(y_true=measurements, y_pred=decoded)
+        self.assertLess(error, 0.002)
+
+        # Check the width
+        self.assertEqual(len(widths), 1)
+        self.assertEqual(widths[0], 4)
+
+        # Check indices
+        self.assertEqual(len(indices), 2)
+        self.assertEqual(indices[0], collected_indices[0])
+        self.assertEqual(indices[1], collected_indices[1])
+
+    def test_encode_decode_three_groups(self):
+        measurements = np.array([[0.25, -0.125, 0.75], [-0.125, 0.625, -0.5]])
+        non_fractional = 2
+        seq_length = 8
+        collected_indices = [0, 7]
+        width = 5
+
+        encoded = message.encode_stable_measurements(measurements=measurements,
+                                                     collected_indices=collected_indices,
+                                                     seq_length=seq_length,
+                                                     width=width,
+                                                     non_fractional=non_fractional)
+
+        decoded, indices, widths = message.decode_stable_measurements(encoded=encoded,
+                                                                      seq_length=seq_length,
+                                                                      num_features=measurements.shape[1],
+                                                                      non_fractional=non_fractional)
+
+        # Check recovered values
+        error = mean_absolute_error(y_true=measurements, y_pred=decoded)
+        self.assertLess(error, 0.012)
+
+        # Check widths
+        self.assertEqual(len(widths), 1)
+        self.assertEqual(widths[0], 5)
+
+        # Check indices
+        self.assertEqual(len(indices), 2)
+        self.assertEqual(indices[0], collected_indices[0])
+        self.assertEqual(indices[1], collected_indices[1])
+
+    def test_encode_decode_padded(self):
+        measurements = np.array([[0.25, -0.125, 0.75], [-0.125, 0.625, -0.5]])
+        non_fractional = 2
+        seq_length = 8
+        collected_indices = [0, 7]
+        width = 5
+
+        encoded = message.encode_stable_measurements(measurements=measurements,
+                                                     collected_indices=collected_indices,
+                                                     seq_length=seq_length,
+                                                     width=width,
+                                                     non_fractional=non_fractional)
+
+        padded = pad_to_length(encoded, length=len(encoded) + 6)
+
+        decoded, indices, widths = message.decode_stable_measurements(encoded=padded,
+                                                                      seq_length=seq_length,
+                                                                      num_features=measurements.shape[1],
+                                                                      non_fractional=non_fractional)
+
+        # Check recovered values
+        error = mean_absolute_error(y_true=measurements, y_pred=decoded)
+        self.assertLess(error, 0.012)
+
+        # Check widths
+        self.assertEqual(len(widths), 1)
+        self.assertEqual(widths[0], 5)
+
+        # Check indices
+        self.assertEqual(len(indices), 2)
+        self.assertEqual(indices[0], collected_indices[0])
+        self.assertEqual(indices[1], collected_indices[1])
+
+    def test_encode_decode_large(self):
+        # Load the data
+        with h5py.File('../../datasets/uci_har/train/data.h5', 'r') as fin:
+            inputs = fin['inputs'][0]  # [50, 6]
+
+        width = 8
+        seq_length = inputs.shape[0]
+        collected_indices = list(range(seq_length))
+        non_fractional = 2
+
+        encoded = message.encode_stable_measurements(measurements=inputs,
+                                                     collected_indices=collected_indices,
+                                                     seq_length=seq_length,
+                                                     width=width,
+                                                     non_fractional=non_fractional)
+
+        decoded, indices, _ = message.decode_stable_measurements(encoded=encoded,
+                                                                 seq_length=seq_length,
+                                                                 num_features=inputs.shape[1],
+                                                                 non_fractional=non_fractional)
+
+        error = mean_absolute_error(y_true=inputs, y_pred=decoded)
+        self.assertLessEqual(error, 0.01)
+
+    def test_encode_decode_large_two(self):
+        # Load the data
+        with h5py.File('../../datasets/uci_har/train/data.h5', 'r') as fin:
+            inputs = fin['inputs'][495]  # [50, 6]
+
+        width = 8
+        seq_length = inputs.shape[0]
+        collected_indices = list(range(seq_length))
+        non_fractional = 2
+
+        encoded = message.encode_stable_measurements(measurements=inputs,
+                                                     collected_indices=collected_indices,
+                                                     seq_length=seq_length,
+                                                     width=width,
+                                                     non_fractional=non_fractional)
+
+        decoded, indices, _ = message.decode_stable_measurements(encoded=encoded,
+                                                                 seq_length=seq_length,
+                                                                 num_features=inputs.shape[1],
+                                                                 non_fractional=non_fractional)
+
+        error = mean_absolute_error(y_true=inputs, y_pred=decoded)
+        self.assertLessEqual(error, 0.01)
+
+    def test_encode_decode_large_tight(self):
+        # Load the data
+        with h5py.File('../../datasets/uci_har/train/data.h5', 'r') as fin:
+            inputs = fin['inputs'][495]  # [50, 6]
+
+        width = 4
+        seq_length = inputs.shape[0]
+        collected_indices = list(range(seq_length))
+        non_fractional = 2
+
+        encoded = message.encode_stable_measurements(measurements=inputs,
+                                                     collected_indices=collected_indices,
+                                                     seq_length=seq_length,
+                                                     width=width,
+                                                     non_fractional=non_fractional)
+
+        decoded, indices, _ = message.decode_stable_measurements(encoded=encoded,
+                                                                 seq_length=seq_length,
+                                                                 num_features=inputs.shape[1],
+                                                                 non_fractional=non_fractional)
+
+        error = mean_absolute_error(y_true=inputs, y_pred=decoded)
+        self.assertLessEqual(error, 0.065)
+
+    def test_encode_decode_large_padded(self):
+        # Load the data
+        with h5py.File('../../datasets/uci_har/train/data.h5', 'r') as fin:
+            inputs = fin['inputs'][495]  # [50, 6]
+
+        width = 8
+        seq_length = inputs.shape[0]
+        collected_indices = list(range(seq_length))
+        non_fractional = 2
+
+        encoded = message.encode_stable_measurements(measurements=inputs,
+                                                     collected_indices=collected_indices,
+                                                     seq_length=seq_length,
+                                                     width=width,
+                                                     non_fractional=non_fractional)
+        
+        encoded = pad_to_length(encoded, len(encoded) + 10)
+
+        decoded, indices, _ = message.decode_stable_measurements(encoded=encoded,
+                                                                 seq_length=seq_length,
+                                                                 num_features=inputs.shape[1],
+                                                                 non_fractional=non_fractional)
+
+        error = mean_absolute_error(y_true=inputs, y_pred=decoded)
+        self.assertLessEqual(error, 0.01)
 
 
 class TestDeltaEncode(unittest.TestCase):

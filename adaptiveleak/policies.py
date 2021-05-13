@@ -13,6 +13,7 @@ from adaptiveleak.utils.data_utils import prune_sequence, get_max_collected, cal
 from adaptiveleak.utils.data_utils import balance_group_size
 from adaptiveleak.utils.message import encode_standard_measurements, decode_standard_measurements
 from adaptiveleak.utils.message import encode_grouped_measurements, decode_grouped_measurements
+from adaptiveleak.utils.message import encode_stable_measurements, decode_stable_measurements
 from adaptiveleak.utils.encryption import AES_BLOCK_SIZE, EncryptionMode, CHACHA_NONCE_LEN
 from adaptiveleak.utils.file_utils import read_json, read_pickle_gz
 
@@ -175,68 +176,83 @@ class AdaptivePolicy(Policy):
                                            seq_length=self.seq_length,
                                            encryption_mode=self.encryption_mode)
 
-            max_collected = get_max_collected(seq_length=self.seq_length,
-                                              num_features=self.num_features,
-                                              group_size=max_group_size,
-                                              min_width=MIN_WIDTH,
-                                              target_size=target_bytes,
-                                              encryption_mode=self.encryption_mode)
-            max_collected += 1
-            encoded_bytes = target_bytes + 1
+            # Set the largest bit width possible. TODO: Account for meta-data and Prune if needed
+            target_bits = self.width * self.num_features * int(self.target * self.seq_length)
+            width = int(target_bits / (self.num_features * len(collected_indices)))
 
-            counter = 0
-            while (target_bytes < encoded_bytes and counter < MAX_ITER):
-                max_collected -= 1
-
-                # Prune away any excess measurements
-                measurements, collected_indices = prune_sequence(measurements=measurements,
-                                                             collected_indices=collected_indices,
-                                                             max_collected=max_collected,
-                                                             seq_length=self.seq_length)
-
-                num_collected = len(measurements)
-
-                # Set the group parameters
-                num_groups = get_num_groups(num_collected=num_collected,
-                                        group_size=max_group_size,
-                                        num_features=self.num_features)
-
-                group_size = balance_group_size(num_collected=num_collected,
-                                            max_group_size=max_group_size,
-                                            num_features=self.num_features)
-
-                # Get the group widths
-                widths = get_group_widths(group_size=group_size,
-                                      num_collected=num_collected,
-                                      num_features=self.num_features,
-                                      seq_length=self.seq_length,
-                                      target_frac=self.target,
-                                      standard_width=self.width,
-                                      encryption_mode=self.encryption_mode)
-
-                encoded_bytes = calculate_grouped_bytes(widths=widths,
-                                                        num_collected=num_collected,
-                                                        num_features=self.num_features,
-                                                        group_size=group_size,
-                                                        encryption_mode=self.encryption_mode,
-                                                        seq_length=self.seq_length)
-                counter += 1
-
-            widths = [min(w, MAX_WIDTH) for w in widths]
-
-            # Encode the measurement values
-            non_fractional = self.width - self.precision
-            encoded = encode_grouped_measurements(measurements=measurements,
-                                                  collected_indices=collected_indices,
-                                                  seq_length=self.seq_length,
-                                                  widths=widths,
-                                                  non_fractional=non_fractional,
-                                                  group_size=group_size)
+            encoded = encode_stable_measurements(measurements=measurements,
+                                                 collected_indices=collected_indices,
+                                                 width=width,
+                                                 non_fractional=(self.width - self.precision),
+                                                 seq_length=self.seq_length)
 
             if self.encryption_mode == EncryptionMode.STREAM:
                 return pad_to_length(encoded, length=target_bytes - CHACHA_NONCE_LEN)
 
             return encoded
+
+            #max_collected = get_max_collected(seq_length=self.seq_length,
+            #                                  num_features=self.num_features,
+            #                                  group_size=max_group_size,
+            #                                  min_width=MIN_WIDTH,
+            #                                  target_size=target_bytes,
+            #                                  encryption_mode=self.encryption_mode)
+            #max_collected += 1
+            #encoded_bytes = target_bytes + 1
+
+            #counter = 0
+            #while (target_bytes < encoded_bytes and counter < MAX_ITER):
+            #    max_collected -= 1
+
+            #    # Prune away any excess measurements
+            #    measurements, collected_indices = prune_sequence(measurements=measurements,
+            #                                                 collected_indices=collected_indices,
+            #                                                 max_collected=max_collected,
+            #                                                 seq_length=self.seq_length)
+
+            #    num_collected = len(measurements)
+
+            #    # Set the group parameters
+            #    num_groups = get_num_groups(num_collected=num_collected,
+            #                            group_size=max_group_size,
+            #                            num_features=self.num_features)
+
+            #    group_size = balance_group_size(num_collected=num_collected,
+            #                                max_group_size=max_group_size,
+            #                                num_features=self.num_features)
+
+            #    # Get the group widths
+            #    widths = get_group_widths(group_size=group_size,
+            #                          num_collected=num_collected,
+            #                          num_features=self.num_features,
+            #                          seq_length=self.seq_length,
+            #                          target_frac=self.target,
+            #                          standard_width=self.width,
+            #                          encryption_mode=self.encryption_mode)
+
+            #    encoded_bytes = calculate_grouped_bytes(widths=widths,
+            #                                            num_collected=num_collected,
+            #                                            num_features=self.num_features,
+            #                                            group_size=group_size,
+            #                                            encryption_mode=self.encryption_mode,
+            #                                            seq_length=self.seq_length)
+            #    counter += 1
+
+            #widths = [min(w, MAX_WIDTH) for w in widths]
+
+            ## Encode the measurement values
+            #non_fractional = self.width - self.precision
+            #encoded = encode_grouped_measurements(measurements=measurements,
+            #                                      collected_indices=collected_indices,
+            #                                      seq_length=self.seq_length,
+            #                                      widths=widths,
+            #                                      non_fractional=non_fractional,
+            #                                      group_size=group_size)
+
+            #if self.encryption_mode == EncryptionMode.STREAM:
+            #    return pad_to_length(encoded, length=target_bytes - CHACHA_NONCE_LEN)
+
+            #return encoded
         else:
             raise ValueError('Unknown encoding type {0}'.format(self.encoding_mode.name))
 
@@ -247,11 +263,10 @@ class AdaptivePolicy(Policy):
             non_fractional = self.width - self.precision
             max_group_size = max(int(BITS_PER_BYTE * AES_BLOCK_SIZE), 1)
 
-            return decode_grouped_measurements(encoded=message,
-                                               seq_length=self.seq_length,
-                                               num_features=self.num_features,
-                                               non_fractional=non_fractional,
-                                               max_group_size=max_group_size)
+            return decode_stable_measurements(encoded=message,
+                                              seq_length=self.seq_length,
+                                              num_features=self.num_features,
+                                              non_fractional=non_fractional)
         else:
             raise ValueError('Unknown encoding type {0}'.format(self.encoding_mode.name))
 
