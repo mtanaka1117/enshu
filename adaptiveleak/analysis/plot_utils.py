@@ -29,10 +29,13 @@ COLORS = {
 
 DATASET_NAMES = {
     'strawberry': 'Strawberry',
+    'pavement': 'Pavement',
     'epilepsy': 'Epilepsy',
     'uci_har': 'Activity',
     'tiselac': 'Tiselac',
-    'haptics': 'Haptics'
+    'haptics': 'Haptics',
+    'eog': 'EOG',
+    'trajectories': 'Characters'
 }
 
 

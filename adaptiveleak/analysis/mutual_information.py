@@ -141,7 +141,7 @@ def plot(information_results: DefaultDict[str, Dict[float, float]], dataset: str
 
             ax.plot(fractions, values, label=to_label(name), color=COLORS[name], linewidth=LINE_WIDTH, marker=MARKER, markersize=MARKER_SIZE)
 
-            print('{0} & {1:.3f} ({2:.3f})'.format(name, np.average(values), np.max(values)))
+            print('{0} & {1:.2f} ({2:.2f})'.format(name, np.average(values), np.max(values)))
 
         ax.legend(fontsize=LEGEND_FONT, loc='center')
 

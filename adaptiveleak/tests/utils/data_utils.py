@@ -112,8 +112,17 @@ class TestQuantization(unittest.TestCase):
     def test_array_to_fp(self):
         array = np.array([0.25, -0.28700833, 0.95151288, 0.63029945])
         result = data_utils.array_to_fp(array, precision=10, width=12)
-        expected = np.array([256, -294, 974, 645])
-        self.assertTrue(np.all(np.equal(expected, result)))
+        expected = [256, -294, 974, 645]
+        self.assertEqual(expected, result.tolist())
+
+    def test_array_to_fp_shifted(self):
+        array = np.array([0.25, -1.28700833, 0.95151288, 0.63029945])
+        shifts = np.array([0, -1, -2, -2])
+
+        result = data_utils.array_to_fp_shifted(array, precision=3, width=6, shifts=shifts)
+        expected = [2, -21, 30, 20]
+
+        self.assertEqual(expected, result.tolist())
 
     def test_to_float_pos(self):
         self.assertTrue(np.isclose(0.25, data_utils.to_float(64, precision=8)))
@@ -156,6 +165,15 @@ class TestQuantization(unittest.TestCase):
         expected = np.array([-0.25, 0.2861328125, 0.951171875, -0.6298828125])
         self.assertTrue(np.all(np.isclose(expected, result)))
 
+    def test_array_to_float_shifted(self):
+        array = [-2, 21, 30, -20]
+        shifts = np.array([0, -1, -2, -2])
+
+        result = data_utils.array_to_float_shifted(array, precision=3, shifts=shifts)
+
+        expected = [-0.25, 1.3125, 0.9375, -0.625]
+        self.assertEqual(expected, result.tolist())
+
     def test_unsigned(self):
         array = np.array([10, 255, 12, 17, 0, 256])
         
@@ -176,60 +194,93 @@ class TestQuantization(unittest.TestCase):
         expected = np.array([16, 32, 32, 48, 1024, 2032])
         self.assertTrue(np.all(np.isclose(recovered, expected)))
 
+    def test_end_to_end_eq_precision(self):
+        value = -0.03125  # -1 / 32
+        width = 4
+        precision = 4
+
+        fixed_point = data_utils.to_fixed_point(value, width=width, precision=precision)
+        quantized = data_utils.to_float(fixed_point, precision=precision)
+
+        self.assertTrue(np.isclose(quantized, 0.0))
+
+    def test_end_to_end_higher_precision_lower(self):
+        value = -0.03125  # -1 / 32
+        width = 4
+        precision = 5
+
+        fixed_point = data_utils.to_fixed_point(value, width=width, precision=precision)
+        quantized = data_utils.to_float(fixed_point, precision=precision)
+
+        self.assertTrue(np.isclose(quantized, value))
+
+    def test_end_to_end_higher_precision_upper(self):
+        value = -0.25
+        width = 4
+        precision = 5
+
+        fixed_point = data_utils.to_fixed_point(value, width=width, precision=precision)
+        quantized = data_utils.to_float(fixed_point, precision=precision)
+
+        self.assertTrue(np.isclose(quantized, -0.21875))
+
 
 class TestRangeShift(unittest.TestCase):
 
-    def test_range_integers(self):
-        measurements = np.array([[1.0, 2.0, -3.0], [4.0, -1.0, 3.0]])
+    def test_range_arr_integers(self):
+        measurements = np.array([1.0, 2.0, -3.0, 4.0, -1.0, 3.0])
         width = 8
         precision = 7
         num_range_bits = 3
 
-        shift = data_utils.select_range_shift(measurements=measurements,
-                                              width=width,
-                                              precision=precision,
-                                              num_range_bits=num_range_bits,
-                                              is_unsigned=False)
-        self.assertEqual(shift, 2)
+        shifts = data_utils.select_range_shifts_array(measurements=measurements,
+                                                      width=width,
+                                                      precision=precision,
+                                                      num_range_bits=num_range_bits)
+        shifts_list = shifts.tolist()
 
-    def test_range_mixed_one(self):
-        measurements = np.array([[1.5, 2.0, -3.5], [4.75, -1.0, 3.0]])
+        self.assertEqual(shifts_list, [1, 2, 2, 3, 1, 2])
+
+    def test_range_arr_mixed_one(self):
+        measurements = np.array([1.5, 2.0, -3.5, 4.75, -1.0, 0.0625])
         width = 5
-        precision = 4
+        precision = 3
         num_range_bits = 3
 
-        shift = data_utils.select_range_shift(measurements=measurements,
-                                              width=width,
-                                              precision=precision,
-                                              num_range_bits=num_range_bits,
-                                              is_unsigned=False)
-        self.assertEqual(shift, 3)
+        shifts = data_utils.select_range_shifts_array(measurements=measurements,
+                                                      width=width,
+                                                      precision=precision,
+                                                      num_range_bits=num_range_bits)
+        shifts_list = shifts.tolist()
 
-    def test_range_mixed_two(self):
-        measurements = np.array([[1.5, 2.0, -3.5], [4.75, -1.0, 3.0]])
-        width = 6
+        self.assertEqual(shifts_list, [0, 1, 1, 2, 0, -4])
+
+    def test_range_arr_mixed_two(self):
+        measurements = np.array([1.5, 2.05, -3.5, 1.03125])
+        width = 7
         precision = 4
         num_range_bits = 4
 
-        shift = data_utils.select_range_shift(measurements=measurements,
-                                              width=width,
-                                              precision=precision,
-                                              num_range_bits=num_range_bits,
-                                              is_unsigned=False)
-        self.assertEqual(shift, 2)
+        shifts = data_utils.select_range_shifts_array(measurements=measurements,
+                                                      width=width,
+                                                      precision=precision,
+                                                      num_range_bits=num_range_bits)
+        shifts_list = shifts.tolist()
 
-    def test_range_border(self):
-        measurements = np.array([[1.869, 1.0]])
+        self.assertEqual(shifts_list, [-1, 0, 0, -1])
+
+    def test_range_arr_border(self):
+        measurements = np.array([1.75, 1.0])
         width = 4
         precision = 2
         num_range_bits = 2
 
-        shift = data_utils.select_range_shift(measurements=measurements,
-                                              width=width,
-                                              precision=precision,
-                                              num_range_bits=num_range_bits,
-                                              is_unsigned=False)
-        self.assertEqual(shift, 0)
+        shifts = data_utils.select_range_shifts_array(measurements=measurements,
+                                                      width=width,
+                                                      precision=precision,
+                                                      num_range_bits=num_range_bits)
+        shifts_list = shifts.tolist()
+        self.assertEqual(shifts_list, [0, 0])
 
 
 class TestExtrapolation(unittest.TestCase):

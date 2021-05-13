@@ -500,6 +500,76 @@ def decode_group_widths(encoded: bytes) -> Tuple[List[int], List[int]]:
     return widths, shifts
 
 
+def encode_shifts(shifts: List[int], reps: List[int], num_shift_bits: int) -> bytes:
+    """
+    Encodes the given run-length encoded shifts into a bit string.
+
+    Args:
+        shifts: A list of [K] precision shifts
+        reps: A list of [K] repetitions
+        num_shift_bits: The number of bits per shift value
+    Returns:
+        The shifts and reps encoded as a byte string
+    """
+    assert len(shifts) == len(reps), 'Must provide same number of reps ({0}) and shifts ({1})'.format(len(reps), len(shifts))
+    
+    # Encode the count
+    num_shifts = len(shifts)
+    encoded_count = num_shifts.to_bytes(1, 'little')
+
+    # Encode the shift values
+    encoded_shifts = pack(shifts, width=num_shift_bits)
+
+    # Encode the repetitions
+    reps_width = num_bits_for_value(max(reps))
+    encoded_reps = pack(reps, width=reps_width)
+
+    # Encode the count and reps width
+    num_shifts = len(shifts)
+    combined = (num_shifts << 4) | (reps_width & 0xF)
+    encoded_header = combined.to_bytes(1, 'little')
+
+    # Compile the result
+    return encoded_header + encoded_reps + encoded_shifts
+
+
+def decode_shifts(encoded: bytes, num_shift_bits: int) -> Tuple[List[int], List[int], int]:
+    """
+    Decodes the shifts into a list of shift values
+    and repetitions.
+
+    Args:
+        encoded: The encoded shifts byte string (output of encode_shifts())
+    Returns:
+        A tuple with three elements.
+            (1) The shift values
+            (2) The repetitions
+            (3) The number of consumed bytes
+    """
+    # Extract the header elements
+    encoded_header = int(encoded[0])
+    reps_width = encoded_header & 0xF
+    num_shifts = (encoded_header >> 4) & 0xF
+
+    encoded = encoded[1:]
+
+    # Get the repetitions
+    num_reps_bytes = int(math.ceil((num_shifts * reps_width) / BITS_PER_BYTE))
+    encoded_reps = encoded[0:num_reps_bytes]
+    reps = unpack(encoded_reps, width=reps_width)
+
+    encoded = encoded[num_reps_bytes:]
+
+    # Get the shifts
+    num_shift_bytes = int(math.ceil((num_shifts * num_shift_bits) / BITS_PER_BYTE))
+    encoded_shifts = encoded[0:num_shift_bytes]
+    shifts = unpack(encoded_shifts, width=num_shift_bits)
+
+    total_bytes = 1 + num_reps_bytes + num_shift_bytes
+
+    return shifts, reps, total_bytes
+
+
 def delta_encode(measurements: np.ndarray) -> np.ndarray:
     """
     Encodes the given measurements using the difference

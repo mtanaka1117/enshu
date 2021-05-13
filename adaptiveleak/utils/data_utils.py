@@ -113,7 +113,24 @@ def array_to_fp_unsigned(arr: np.ndarray, precision: int, width: int) -> np.ndar
     return np.clip(quantized, a_min=min_val, a_max=max_val)
 
 
-def array_to_float(fp_arr: Union[np.ndarray, List[float]], precision: int) -> np.ndarray:
+def array_to_fp_shifted(arr: np.ndarray, precision: int, width: int, shifts: np.ndarray) -> np.ndarray:
+    assert len(arr.shape) == 1, 'Must provide a 1d array'
+    assert arr.shape == shifts.shape, 'Misaligned data {0} and shifts {1}'.format(arr.shape, shifts.shape)
+
+    shifted_precisions = precision - shifts
+    multipliers = np.left_shift(np.ones_like(shifts), np.abs(shifted_precisions))
+
+    quantized = np.where(shifted_precisions > 0, arr * multipliers, arr / multipliers)
+    quantized = np.round(quantized).astype(int)
+
+    max_val = (1 << (width - 1)) - 1
+    min_val = -max_val
+
+    return np.clip(quantized, a_min=min_val, a_max=max_val)
+
+
+
+def array_to_float(fp_arr: Union[np.ndarray, List[int]], precision: int) -> np.ndarray:
     multiplier = float(1 << abs(precision))
 
     if isinstance(fp_arr, list):
@@ -125,12 +142,29 @@ def array_to_float(fp_arr: Union[np.ndarray, List[float]], precision: int) -> np
         return fp_arr.astype(float) * multiplier
 
 
-def select_range_shift(measurements: np.ndarray, width: int, precision: int, num_range_bits: int, is_unsigned: bool) -> int:
+def array_to_float_shifted(arr: Union[np.ndarray, List[int]], precision: int, shifts: np.ndarray) -> np.ndarray:
+    shifted_precisions = precision - shifts
+    multipliers = np.left_shift(np.ones_like(shifts), np.abs(shifted_precisions))
+
+    if isinstance(arr, list):
+        fp_arr = np.array(arr).astype(float)
+    else:
+        fp_arr = arr.astype(float)
+
+    assert len(fp_arr.shape) == 1, 'Must provide a 1d array'
+    assert fp_arr.shape == shifts.shape, 'Misaligned data {0} and shifts {1}'.format(fp_arr.shape, shifts.shape)
+
+    recovered = np.where(shifted_precisions > 0, fp_arr / multipliers, fp_arr * multipliers)
+
+    return recovered
+
+
+def select_range_shift(measurement: float, width: int, precision: int, num_range_bits: int, is_unsigned: bool) -> int:
     """
     Selects the lowest-error range multiplier.
 
     Args:
-        measurements: An array of measurement features
+        measurement: A measurement feature
         width: The width of each feature
         precision: The precision of each feature
         num_range_bits: The number of bits for the range exponent
@@ -141,7 +175,7 @@ def select_range_shift(measurements: np.ndarray, width: int, precision: int, num
     assert num_range_bits >= 1, 'Number of range bits must be non-negative'
     assert width >= 1, 'Number of width bits must be non-negative'
 
-    max_value = np.max(np.abs(measurements))
+    max_value = abs(measurement)
     max_representable_fp = (1 << width) - 1 if is_unsigned else (1 << (width - 1)) - 1
     non_fractional = width - precision
 
@@ -154,12 +188,6 @@ def select_range_shift(measurements: np.ndarray, width: int, precision: int, num
         shift = idx - offset
         
         shifted_max = to_float(max_representable_fp, precision=precision - shift)
-
-        # Construct error to favor going over
-        #if shifted_max > max_value:
-        #    error = (shifted_max - max_value) * 0.25
-        #else:
-        #    error = max_value - shifted_max
         error = abs(shifted_max - max_value)
 
         if (error < best_error) and (shifted_max > max_value):
@@ -168,64 +196,42 @@ def select_range_shift(measurements: np.ndarray, width: int, precision: int, num
 
     return best_shift
 
+def select_range_shifts_array(measurements: np.ndarray, width: int, precision: int, num_range_bits: int) -> np.ndarray:
+    """
+    Selects the lowest-error range multiplier.
 
-    #if (max_value >= 1):
-    #    shift = 1
+    Args:
+        measurements: A 1d array of measurement features
+        width: The width of each feature
+        precision: The precision of each feature
+        num_range_bits: The number of bits for the range exponent
+    Returns:
+        The range exponent in [-2^{range_bits - 1}, 2^{range_bits - 1}]
+    """
+    assert num_range_bits >= 1, 'Number of range bits must be non-negative'
+    assert width >= 1, 'Number of width bits must be non-negative'
+    assert len(measurements.shape) == 1, 'Must provide a 1d numpy array'
 
-    #    shifted_max = max_value >> precision
-    #    while (shifted_max & 1 == 0 and shifted_max > 0):
-    #        shift -= 1
-    #        shifted_max = shifted_max >> 1
-    #else:
-    #    shift = 0
+    abs_values = np.abs(measurements)
+    max_representable_fp = (1 << (width - 1)) - 1
+    non_fractional = width - precision
 
-    #    mask = (1 << precision) - 1
-    #    masked_max = max_value & mask
-    #
-    #    test_bit = (1 << precision)
+    best_errors = np.ones_like(abs_values) * BIG_NUMBER
+    best_shifts = np.ones_like(abs_values) * ((1 << (num_range_bits - 1)) - 1)
 
-    #    while (masked_max & test_bit == 0 and shifted_max > 0):
-    #        shift += 1
-    #        masked_max = masked_mask << 1
+    offset = 1 << (num_range_bits - 1)
 
-    #return shift
-    
-    # Try a shift of zero first
-    #fixed_point_fn = array_to_fp_unsigned if is_unsigned else array_to_fp
+    for idx in range(pow(2, num_range_bits)):
+        shift = idx - offset
+        
+        shifted_max = to_float(max_representable_fp, precision=precision - shift)
+        errors = np.abs(shifted_max - abs_values)
 
-    #fixed_point = fixed_point_fn(measurements, width=width, precision=precision)
-    #quantized = array_to_float(fixed_point, precision=precision)
+        cond = np.logical_and(errors < best_errors, shifted_max >= abs_values)
+        best_errors = np.where(cond, errors, best_errors)
+        best_shifts = np.where(cond, shift, best_shifts)
 
-    #best_shift = 0
-    #best_error = np.sum(np.abs(quantized - measurements))
-    #prev_error = BIG_NUMBER
-    #initial_error = best_error
-
-    #offset = 1 << (num_range_bits - 1)
-    #for x in range(pow(2, num_range_bits)):
-    #    if abs(best_error) < SMALL_NUMBER:
-    #        break
-
-    #    shift = x - offset
-
-    #    if shift == 0:
-    #        error = initial_error
-    #    else:
-    #        fixed_point = fixed_point_fn(measurements, width=width, precision=precision - shift)
-    #        quantized = array_to_float(fixed_point, precision=precision - shift)
-
-    #        error = np.sum(np.abs(quantized - measurements))
-
-    #    if error <= best_error:
-    #        best_error = error
-    #        best_shift = shift
-
-    #    if error > prev_error:
-    #        break
-
-    #    prev_error = error
-
-    #return best_shift
+    return best_shifts.astype(int)
 
 
 def linear_extrapolate(prev: np.ndarray, curr: np.ndarray, delta: float, num_steps: int) -> np.ndarray:
