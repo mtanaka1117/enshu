@@ -120,7 +120,7 @@ class UnionFind:
         return ';'.join(map(str, self._union_find))
 
 
-def merge_shift_groups(values: List[float], shifts: List[int], width: int, precision: int, max_num_groups: int) -> Tuple[List[int], List[int]]:
+def merge_shift_groups(values: List[float], shifts: List[int], max_num_groups: int) -> Tuple[List[int], List[int]]:
     """
     Merges the given shift groups to meet the given budget in a manner
     which minimizes the induced error.
@@ -128,8 +128,6 @@ def merge_shift_groups(values: List[float], shifts: List[int], width: int, preci
     Args:
         values: A list of the measurement values
         shifts: A list of the current per-element shifts
-        width: The bit-width of each measurement
-        precision: The base precision of each measurement
         max_num_groups: The maximum number of groups to allow (K)
     Returns:
         A pair of length-K lists denoting the shifts and repetitions

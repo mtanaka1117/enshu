@@ -7,10 +7,11 @@ from enum import Enum, auto
 from typing import Tuple, List, Dict, Any
 
 from adaptiveleak.controllers import PIDController
-from adaptiveleak.utils.constants import BITS_PER_BYTE, MIN_WIDTH, SMALL_NUMBER, MAX_WIDTH
+from adaptiveleak.utils.constants import BITS_PER_BYTE, MIN_WIDTH, SMALL_NUMBER, MAX_WIDTH, SHIFT_BITS, MAX_SHIFT_GROUPS
 from adaptiveleak.utils.data_utils import get_group_widths, get_num_groups, calculate_bytes, pad_to_length
 from adaptiveleak.utils.data_utils import prune_sequence, get_max_collected, calculate_grouped_bytes, linear_extrapolate
-from adaptiveleak.utils.data_utils import balance_group_size
+from adaptiveleak.utils.data_utils import balance_group_size, set_widths, select_range_shifts_array
+from adaptiveleak.utils.shifting import merge_shift_groups
 from adaptiveleak.utils.message import encode_standard_measurements, decode_standard_measurements
 from adaptiveleak.utils.message import encode_grouped_measurements, decode_grouped_measurements
 from adaptiveleak.utils.message import encode_stable_measurements, decode_stable_measurements
@@ -18,7 +19,7 @@ from adaptiveleak.utils.encryption import AES_BLOCK_SIZE, EncryptionMode, CHACHA
 from adaptiveleak.utils.file_utils import read_json, read_pickle_gz
 
 
-MARGIN = 0.005
+MARGIN = 0.0
 MAX_ITER = 100
 
 
@@ -59,6 +60,10 @@ class Policy:
     @property
     def precision(self) -> int:
         return self._precision
+
+    @property
+    def non_fractional(self) -> int:
+        return self.width - self.precision
 
     @property
     def seq_length(self) -> int:
@@ -166,8 +171,6 @@ class AdaptivePolicy(Policy):
         if self.encoding_mode == EncodingMode.STANDARD:
             return super().encode(measurements, collected_indices)
         elif self.encoding_mode == EncodingMode.GROUP:
-            max_group_size = max(int(BITS_PER_BYTE * AES_BLOCK_SIZE), 1)
-
             # Get the maximum number of collected measurements to still
             # meet the target size
             target_bytes = calculate_bytes(width=self.width,
@@ -176,14 +179,52 @@ class AdaptivePolicy(Policy):
                                            seq_length=self.seq_length,
                                            encryption_mode=self.encryption_mode)
 
-            # Set the largest bit width possible. TODO: Account for meta-data and Prune if needed
-            target_bits = self.width * self.num_features * int(self.target * self.seq_length)
-            width = int(target_bits / (self.num_features * len(collected_indices)))
+            # Calculate the meta-data bytes associated with stable encoding
+            shift_bytes = 1 + 2 * MAX_SHIFT_GROUPS
+            metadata_bytes = shift_bytes + int(math.ceil(self.seq_length / BITS_PER_BYTE))
+
+            if metadata_bytes == EncryptionMode.STREAM:
+                metadata_bytes += CHACHA_NONCE_LEN
+            else:
+                metadata_bytes += AES_BLOCK_SIZE
+
+            # Compute the target number of data bytes
+            target_data_bytes = target_bytes - metadata_bytes
+            target_data_bits = target_data_bytes * BITS_PER_BYTE
+
+            # Estimate the maximum number of measurements we can collect
+            max_features = int(target_data_bits / MIN_WIDTH)
+            max_collected = int(max_features / self.num_features)
+
+            # Prune measurements if needed
+            measurements, collected_indices = prune_sequence(measurements=measurements,
+                                                             collected_indices=collected_indices,
+                                                             max_collected=max_collected,
+                                                             seq_length=self.seq_length)
+
+            flattened = measurements.T.reshape(-1)
+            min_width = int(target_data_bits / (self.num_features * len(collected_indices)))
+
+            # Select the range shifts
+            shifts = select_range_shifts_array(measurements=flattened,
+                                               width=min_width,
+                                               precision=min_width - self.non_fractional,
+                                               num_range_bits=SHIFT_BITS)
+
+            # Merge the shift groups
+            merged_shifts, group_sizes = merge_shift_groups(values=flattened,
+                                                            shifts=shifts,
+                                                            max_num_groups=MAX_SHIFT_GROUPS)
+
+            # Set the group sizes
+            group_widths = set_widths(group_sizes, target_bytes=target_data_bytes)
 
             encoded = encode_stable_measurements(measurements=measurements,
                                                  collected_indices=collected_indices,
-                                                 width=width,
-                                                 non_fractional=(self.width - self.precision),
+                                                 widths=group_widths,
+                                                 shifts=merged_shifts,
+                                                 group_sizes=group_sizes,
+                                                 non_fractional=self.non_fractional,
                                                  seq_length=self.seq_length)
 
             if self.encryption_mode == EncryptionMode.STREAM:

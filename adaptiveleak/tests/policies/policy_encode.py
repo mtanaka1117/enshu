@@ -111,6 +111,8 @@ class TestAdaptiveEncode(unittest.TestCase):
         encoded = policy.encode(measurements=sample['measurements'],
                                 collected_indices=sample['indices'])
 
+        print(len(sample['measurements']))
+
         decoded_measurements, decoded_collected, _ = policy.decode(encoded)
 
         self.assertEqual(len(decoded_measurements), 118)

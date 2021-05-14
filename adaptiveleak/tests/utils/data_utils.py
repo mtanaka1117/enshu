@@ -282,6 +282,20 @@ class TestRangeShift(unittest.TestCase):
         shifts_list = shifts.tolist()
         self.assertEqual(shifts_list, [0, 0])
 
+    def test_range_larger_integers(self):
+        measurements = np.array([65.0, 63.0, 63.0, 425.0, 425.0, 425.0])
+        width = 13
+        num_range_bits = 3
+        precision = 0
+
+        shifts = data_utils.select_range_shifts_array(measurements=measurements,
+                                                      width=width,
+                                                      precision=precision,
+                                                      num_range_bits=num_range_bits)
+
+        shifts_list = shifts.tolist()
+        self.assertEqual(shifts_list, [-4, -4, -4, -3, -3, -3])
+
 
 class TestExtrapolation(unittest.TestCase):
 
@@ -912,19 +926,21 @@ class TestPruning(unittest.TestCase):
         # Iter 0 -> Expected Diffs: [0, 2, 2.5, 2.0], Expected Diff Idx: [2, 4, 1, 2]  -> Prune 1
         # iter 1 -> Expected Diffs: [2, 2.5, 2.0], Expected Diff Idx: [4, 1, 2] -> Prune 3
 
+        # Errors -> [1.0, 0.5, 1.9] -> Prune 1, 2
+
         pruned_features, pruned_indices = data_utils.prune_sequence(measurements=measurements,
                                                                     max_collected=max_collected,
                                                                     collected_indices=collected_indices,
                                                                     seq_length=seq_length)
 
-        expected_features = np.array([[1.0, 1.0], [2.0, 2.0], [3.5, 3.0]])
-        expected_indices = [1, 5, 10]
+        expected_features = np.array([[1.0, 1.0], [2.5, 4.0], [3.5, 3.0]])
+        expected_indices = [1, 9, 10]
 
         self.assertTrue(np.all(np.isclose(pruned_features, expected_features)))
         self.assertEqual(pruned_indices, expected_indices)
 
-    def test_prune_final(self):
-        measurements = np.array([[1.0, 1.0], [1.0, 1.0], [2.0, 2.0], [2.5, 4.0], [3.5, 3.0]])
+    def test_prune_middle(self):
+        measurements = np.array([[1.0, 1.0], [1.5, 1.5], [3.0, 3.0], [3.2, 3.0], [3.5, 3.0]])
         max_collected = 3
         collected_indices = [1, 3, 5, 7, 10]
         seq_length = 11
@@ -932,13 +948,15 @@ class TestPruning(unittest.TestCase):
         # Iter 0 -> Expected Diffs: [0, 2, 2.5, 2.0], Expected Diff Idx: [2, 2, 3, 1]  -> Prune 1
         # iter 1 -> Expected Diffs: [2, 2.5, 2.0], Expected Diff Idx: [4, 3, 1] -> Prune 4
 
+        # Errors: [1.0, 1.4, 0.0]
+
         pruned_features, pruned_indices = data_utils.prune_sequence(measurements=measurements,
                                                                     max_collected=max_collected,
                                                                     collected_indices=collected_indices,
                                                                     seq_length=seq_length)
 
-        expected_features = np.array([[1.0, 1.0], [2.0, 2.0], [2.5, 4.0]])
-        expected_indices = [1, 5, 7]
+        expected_features = np.array([[1.0, 1.0], [3.0, 3.0], [3.5, 3.0]])
+        expected_indices = [1, 5, 10]
 
         self.assertTrue(np.all(np.isclose(pruned_features, expected_features)))
         self.assertEqual(pruned_indices, expected_indices)
@@ -957,8 +975,8 @@ class TestPruning(unittest.TestCase):
                                                                     collected_indices=collected_indices,
                                                                     seq_length=seq_length)
 
-        expected_features = np.array([[1.0, 1.0], [3.0, 3.0]])
-        expected_indices = [1, 10]
+        expected_features = np.array([[1.0, 1.0], [4.0, 4.0]])
+        expected_indices = [1, 15]
 
         self.assertTrue(np.all(np.isclose(pruned_features, expected_features)))
         self.assertEqual(pruned_indices, expected_indices)

@@ -5,7 +5,7 @@ from functools import partial
 from Cryptodome.Random import get_random_bytes
 from typing import List, Union, Tuple, Iterable
 
-from adaptiveleak.utils.constants import BITS_PER_BYTE, BIG_NUMBER, MIN_WIDTH, SMALL_NUMBER, BOUND_BITS
+from adaptiveleak.utils.constants import BITS_PER_BYTE, BIG_NUMBER, MIN_WIDTH, SMALL_NUMBER, BOUND_BITS, MAX_WIDTH
 from adaptiveleak.utils.encryption import AES_BLOCK_SIZE, EncryptionMode, CHACHA_NONCE_LEN
 
 
@@ -419,6 +419,61 @@ def unpack(encoded: bytes, width: int,  num_values: int) -> List[int]:
     return result
 
 
+def set_widths(group_sizes: List[int], target_bytes: int) -> List[int]:
+    """
+    Sets the group widths in a round-robin fashion
+    to saturate the target bytes.
+
+    Args:
+        group_sizes: The size (in number of features) of each group
+        target_bytes: The target number of data bytes
+    Returns:
+        A list of the bit widths for each group
+    """
+    num_groups = len(group_sizes)
+    num_values = sum(group_sizes)
+    target_bits = target_bytes * BITS_PER_BYTE
+
+    # Set the initial widths based on an even distribution
+    even_width = int(target_bits / num_values)
+    consumed_bytes = sum((int(math.ceil((even_width * size) / BITS_PER_BYTE)) for size in group_sizes))
+
+    widths: List[int] = [even_width for _ in range(num_groups)]
+
+    if even_width == MAX_WIDTH:
+        return widths
+
+    # Select the iteration order based on the group size
+    # to favor adding bits to larger groups
+    group_order = np.argsort(group_sizes)
+
+    counter = 0
+    has_improved = True
+    while (has_improved and counter < MAX_ITER):
+
+        has_improved = False
+
+        for idx in reversed(group_order):
+            if (widths[idx] == MAX_WIDTH):
+                continue
+
+            # Increase this group's width by 1 bit
+            widths[idx] += 1
+
+            # Calculate the new number of data bytes
+            candidate_bytes = sum((int(math.ceil((w * size) / BITS_PER_BYTE)) for w, size in zip(widths, group_sizes)))
+
+            if (candidate_bytes <= target_bytes):
+                consumed_bytes = candidate_bytes
+                has_improved = True
+            else:
+                widths[idx] -= 1
+
+        counter += 1
+
+    return widths
+
+
 def get_group_widths(group_size: int,
                      num_collected: int,
                      num_features: int,
@@ -629,62 +684,91 @@ def prune_sequence(measurements: np.ndarray, collected_indices: List[int], max_c
     if num_collected <= max_collected:
         return measurements, collected_indices
 
-    # Make a list of the current indices in the measurements array
-    idx_list = list(range(len(measurements)))
+    # Compute the two-step differences in measurements
+    first = measurements[:-2]  # [L - 2, D]
+    last = measurements[2:]  # [L - 2, D]
+    measurement_diff = last - first 
 
-    # Compute the consecutive differences
-    first = measurements[:-1]  # [L - 1, D]
-    last = measurements[1:]  # [L - 1, D]
-    diffs_array = np.sum(np.abs(last - first), axis=-1)  # [L - 1] array of consecutive differences
-    diffs = diffs_array.tolist()
+    # Compute the two-step differences in indices
+    idx_two_diff = np.array([(collected_indices[i+2] - collected_indices[i]) for i in range(len(collected_indices) - 2)])  # [L - 2]
+    idx_two_diff = np.expand_dims(idx_two_diff, axis=-1)  # [L - 2, 1]
 
-    # Compute the differences between consecutive indices
-    idx_diffs = [(collected_indices[i+1] - collected_indices[i]) for i in range(1, len(collected_indices) - 1)]  # [L - 2]
-    idx_diffs.append(seq_length - collected_indices[-1])  # Append 'distance' to the end of the sequence
+    slopes = measurement_diff / idx_two_diff  # [L - 2, D]
 
-    while len(idx_list) > max_collected:
-        # first = measurements[idx_list[:-1]]  # [L - 1, D] array of the first L - 1 measurements
-        # last = measurements[idx_list[1:]]  # [L - 1, D] array of the last L - 1 measurements
+    # Re-interpolate the middle values
+    idx_one_diff = np.array([collected_indices[i+1] - collected_indices[i] for i in range(len(collected_indices) - 2)])  # [L - 2]
+    idx_one_diff = np.expand_dims(idx_one_diff, axis=-1)  # [L - 2, 1]
 
-        # Calculate the consecutive differences between elements
-        # diffs = np.sum(np.abs(last - first), axis=-1)  # [L - 1] array of consecutive absolute differences
+    interpolated = first + slopes * idx_one_diff  # [L - 2, D]
 
-        # Calculate the consecutive differences between indices (shifted over by one)
-        # idx_diffs = [(collected_indices[idx_list[i + 1]] - collected_indices[idx_list[i]]) for i in range(1, len(idx_list) - 1)]  # [L - 2]
-        # idx_diffs.append(seq_length - collected_indices[idx_list[-1]])  # Append 'distance' to the end of the sequence
+    # Compare interpolated values to the observed measurements
+    true = measurements[1:-1]  # [L - 2, D]
+    error = np.sum(np.abs(true - interpolated), axis=-1)  # [L - 2]
 
-        # Scale the differences by the index differences. Conceptually, these values
-        # measure the additional error caused by replacing one measurement by the previous
-        # for the next X steps.
-        scaled_diffs = [error * idx for error, idx in zip(diffs, idx_diffs)]
-        
-        # Remove the index with the smallest scaled difference
-        min_error_idx = np.argmin(scaled_diffs)
+    num_to_prune = len(measurements) - max_collected
 
-        idx_list.pop(min_error_idx + 1)
+    if num_to_prune >= len(error):
+        to_remove_set = set(i + 1 for i in range(len(error)))
+    else:
+        idx_to_prune = np.argpartition(error, num_to_prune)[0:num_to_prune]
+        idx_to_prune += 1
 
-        # Remove index from the error lists
-        diffs.pop(min_error_idx)
-        idx_diffs.pop(min_error_idx)
+        # Remove the given elements from the measurements and collected lists
+        to_remove_set = set(idx_to_prune)
+ 
+    idx_to_keep = [i for i in range(len(measurements)) if i not in to_remove_set]
 
-        # Update the measurement differences
-        if min_error_idx < len(idx_list) - 1:
-            curr_idx = idx_list[min_error_idx + 1]
-            curr = measurements[curr_idx]  # [D]
+    pruned_measurements = measurements[idx_to_keep]
+    pruned_indices = [collected_indices[i] for i in idx_to_keep]
 
-            prev_idx = idx_list[min_error_idx]
-            prev = measurements[prev_idx]  # [D]
+    return pruned_measurements, pruned_indices
 
-            diffs[min_error_idx] = np.sum(np.abs(curr - prev))
+    ## Make a list of the current indices in the measurements array
+    #idx_list = list(range(len(measurements)))
 
-            # Update the index difference
-            next_idx = collected_indices[idx_list[min_error_idx + 2]] if min_error_idx < (len(idx_list) - 2) else seq_length
-            idx_diffs[min_error_idx] = next_idx - collected_indices[curr_idx]
+    ## Compute the consecutive differences
+    #first = measurements[:-1]  # [L - 1, D]
+    #last = measurements[1:]  # [L - 1, D]
+    #diffs_array = np.sum(np.abs(last - first), axis=-1)  # [L - 1] array of consecutive differences
+    #diffs = diffs_array.tolist()
 
-    updated_indices = [collected_indices[i] for i in idx_list]
-    updated_measurements = measurements[idx_list]
+    ## Compute the differences between consecutive indices
+    #idx_diffs = [(collected_indices[i+1] - collected_indices[i]) for i in range(1, len(collected_indices) - 1)]  # [L - 2]
+    #idx_diffs.append(seq_length - collected_indices[-1])  # Append 'distance' to the end of the sequence
 
-    return updated_measurements, updated_indices
+    #while len(idx_list) > max_collected:
+    #    # Scale the differences by the index differences. Conceptually, these values
+    #    # measure the additional error caused by replacing one measurement by the previous
+    #    # for the next X steps.
+    #    scaled_diffs = [error * idx for error, idx in zip(diffs, idx_diffs)]
+    #    
+    #    # Remove the index with the smallest scaled difference
+    #    min_error_idx = np.argmin(scaled_diffs)
+
+    #    idx_list.pop(min_error_idx + 1)
+
+    #    # Remove index from the error lists
+    #    diffs.pop(min_error_idx)
+    #    idx_diffs.pop(min_error_idx)
+
+    #    # Update the measurement differences
+    #    if min_error_idx < len(idx_list) - 1:
+    #        curr_idx = idx_list[min_error_idx + 1]
+    #        curr = measurements[curr_idx]  # [D]
+
+    #        prev_idx = idx_list[min_error_idx]
+    #        prev = measurements[prev_idx]  # [D]
+
+    #        diffs[min_error_idx] = np.sum(np.abs(curr - prev))
+
+    #        # Update the index difference
+    #        next_idx = collected_indices[idx_list[min_error_idx + 2]] if min_error_idx < (len(idx_list) - 2) else seq_length
+    #        idx_diffs[min_error_idx] = next_idx - collected_indices[curr_idx]
+
+    #updated_indices = [collected_indices[i] for i in idx_list]
+    #updated_measurements = measurements[idx_list]
+
+    #return updated_measurements, updated_indices
 
 
 def create_groups(measurements: np.ndarray, max_num_groups: int, max_group_size: int) -> List[np.ndarray]:
