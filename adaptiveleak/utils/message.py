@@ -5,15 +5,11 @@ import bz2
 from functools import reduce, partial
 from typing import List, Tuple
 
-from adaptiveleak.utils.constants import SHIFT_BITS, BITS_PER_BYTE, BOUND_BITS, BOUND_ORDER, SMALL_NUMBER
+from adaptiveleak.utils.constants import SHIFT_BITS, BITS_PER_BYTE, BOUND_BITS, BOUND_ORDER, SMALL_NUMBER, MAX_SHIFT_GROUPS
 from adaptiveleak.utils.data_utils import array_to_fp, array_to_float, pack, unpack, select_range_shift, to_fixed_point, to_float, get_signs, num_bits_for_value
 from adaptiveleak.utils.data_utils import array_to_fp_unsigned, run_length_encode, run_length_decode, integer_part, fractional_part, apply_signs, select_range_shifts_array
-from adaptiveleak.utils.data_utils import fixed_point_integer_part, fixed_point_frac_part, balance_group_size, array_to_fp_shifted, array_to_float_shifted
+from adaptiveleak.utils.data_utils import fixed_point_integer_part, fixed_point_frac_part, balance_group_size, array_to_fp_shifted, array_to_float_shifted, set_widths
 from adaptiveleak.utils.shifting import merge_shift_groups
-
-
-NUM_SHIFT_BITS = 3
-MAX_NUM_GROUPS = 6
 
 
 def encode_collected_mask(collected_indices: List[int], seq_length: int) -> bytes:
@@ -348,7 +344,13 @@ def decode_grouped_measurements(encoded: bytes, seq_length: int, num_features: i
     return measurements.T, collected_indices, widths
 
 
-def encode_stable_measurements(measurements: np.ndarray, collected_indices: List[int], width: int, seq_length: int, non_fractional: int) -> bytes:
+def encode_stable_measurements(measurements: np.ndarray,
+                               collected_indices: List[int],
+                               widths: List[int],
+                               shifts: List[int],
+                               group_sizes: List[int],
+                               seq_length: int,
+                               non_fractional: int) -> bytes:
     """
     Encodes the measurements into sets of grouped features with different widths.
 
@@ -359,6 +361,7 @@ def encode_stable_measurements(measurements: np.ndarray, collected_indices: List
         seq_length: The length of the full sequence (T)
         width: The bit width for each feature
         non_fractional: The number of non-fractional bits per value
+        target_bytes: The target number of bytes for this message
     Returns:
         A hex string that represents the encoded measurements.
     """
@@ -370,30 +373,37 @@ def encode_stable_measurements(measurements: np.ndarray, collected_indices: List
     # Divide features into groups and encode separately
     flattened = measurements.T.reshape(-1)  # [K * D]
 
+    # Convert the collected indices into a byte array
+    collected_mask = encode_collected_mask(collected_indices, seq_length=seq_length)
+
+    # Encode the bit width
+    encoded_width = width.to_bytes(1, 'little')
+
     # Compute the shifts
     precision = width - non_fractional
     shifts = select_range_shifts_array(flattened,
                                        width=width,
                                        precision=precision,
-                                       num_range_bits=NUM_SHIFT_BITS)
+                                       num_range_bits=SHIFT_BITS)
 
     # Merge the shifts and perform run-length encoding
     merged_shifts, merged_reps = merge_shift_groups(values=flattened,
                                                     shifts=shifts,
                                                     width=width,
                                                     precision=precision,
-                                                    max_num_groups=MAX_NUM_GROUPS)
+                                                    max_num_groups=MAX_SHIFT_GROUPS)
 
-    recovered_shifts = np.repeat(merged_shifts, merged_reps)
+    # Expand the shifts according to the given group sizes
+    recovered_shifts = np.repeat(merged_shifts, group_sizes)
 
     # Ensure positive shift values
-    shift_offset = (1 << (NUM_SHIFT_BITS - 1))
+    shift_offset = (1 << (SHIFT_BITS - 1))
     merged_shifts = [s + shift_offset for s in merged_shifts]
 
     # Encode the shifts
     encoded_shifts = encode_shifts(shifts=merged_shifts,
                                    reps=merged_reps,
-                                   num_shift_bits=NUM_SHIFT_BITS)
+                                   num_shift_bits=SHIFT_BITS)
 
     # Convert the measurement values to fixed point
     quantized = array_to_fp_shifted(flattened, width=width, precision=precision, shifts=recovered_shifts)
@@ -402,12 +412,6 @@ def encode_stable_measurements(measurements: np.ndarray, collected_indices: List
 
     # Pack the data features
     encoded_features = pack(quantized, width=width)
-
-    # Convert the collected indices into a byte array
-    collected_mask = encode_collected_mask(collected_indices, seq_length=seq_length)
-
-    # Encode the bit width
-    encoded_width = width.to_bytes(1, 'little')
 
     # Convert to bytes
     return encoded_width + collected_mask + encoded_shifts + encoded_features
@@ -442,11 +446,11 @@ def decode_stable_measurements(encoded: bytes, seq_length: int, num_features: in
     encoded = encoded[num_mask_bytes:]
 
     # Retrieve the shifts and run-length decode
-    shifts, reps, shift_bytes = decode_shifts(encoded=encoded, num_shift_bits=NUM_SHIFT_BITS)
+    shifts, reps, shift_bytes = decode_shifts(encoded=encoded, num_shift_bits=SHIFT_BITS)
     shifts = np.repeat(shifts, reps)
 
     # Remove the shift offset
-    shift_offset = (1 << (NUM_SHIFT_BITS - 1))
+    shift_offset = (1 << (SHIFT_BITS - 1))
     shifts -= shift_offset
 
     encoded = encoded[shift_bytes:]
