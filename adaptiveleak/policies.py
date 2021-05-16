@@ -252,7 +252,7 @@ class AdaptivePolicy(Policy):
                 return pad_to_length(encoded, length=target_bytes - CHACHA_NONCE_LEN)
 
             return encoded
-       else:
+        else:
             raise ValueError('Unknown encoding type {0}'.format(self.encoding_mode.name))
 
     def decode(self, message: bytes) -> Tuple[np.ndarray, List[int]]:
