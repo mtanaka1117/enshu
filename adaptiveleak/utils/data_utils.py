@@ -419,7 +419,7 @@ def unpack(encoded: bytes, width: int,  num_values: int) -> List[int]:
     return result
 
 
-def set_widths(group_sizes: List[int], target_bytes: int) -> List[int]:
+def set_widths(group_sizes: List[int], target_bytes: int, start_width: int) -> List[int]:
     """
     Sets the group widths in a round-robin fashion
     to saturate the target bytes.
@@ -427,6 +427,7 @@ def set_widths(group_sizes: List[int], target_bytes: int) -> List[int]:
     Args:
         group_sizes: The size (in number of features) of each group
         target_bytes: The target number of data bytes
+        start_width: The starting number of bits per feature
     Returns:
         A list of the bit widths for each group
     """
@@ -435,12 +436,12 @@ def set_widths(group_sizes: List[int], target_bytes: int) -> List[int]:
     target_bits = target_bytes * BITS_PER_BYTE
 
     # Set the initial widths based on an even distribution
-    even_width = int(target_bits / num_values)
-    consumed_bytes = sum((int(math.ceil((even_width * size) / BITS_PER_BYTE)) for size in group_sizes))
+    #even_width = int(target_bits / num_values)
+    consumed_bytes = sum((int(math.ceil((start_width * size) / BITS_PER_BYTE)) for size in group_sizes))
 
-    widths: List[int] = [even_width for _ in range(num_groups)]
+    widths: List[int] = [min(start_width, MAX_WIDTH) for _ in range(num_groups)]
 
-    if even_width == MAX_WIDTH:
+    if start_width >= MAX_WIDTH:
         return widths
 
     # Select the iteration order based on the group size

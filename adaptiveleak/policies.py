@@ -10,7 +10,7 @@ from adaptiveleak.controllers import PIDController
 from adaptiveleak.utils.constants import BITS_PER_BYTE, MIN_WIDTH, SMALL_NUMBER, MAX_WIDTH, SHIFT_BITS, MAX_SHIFT_GROUPS
 from adaptiveleak.utils.data_utils import get_group_widths, get_num_groups, calculate_bytes, pad_to_length
 from adaptiveleak.utils.data_utils import prune_sequence, get_max_collected, calculate_grouped_bytes, linear_extrapolate
-from adaptiveleak.utils.data_utils import balance_group_size, set_widths, select_range_shifts_array
+from adaptiveleak.utils.data_utils import balance_group_size, set_widths, select_range_shifts_array, num_bits_for_value
 from adaptiveleak.utils.shifting import merge_shift_groups
 from adaptiveleak.utils.message import encode_standard_measurements, decode_standard_measurements
 from adaptiveleak.utils.message import encode_grouped_measurements, decode_grouped_measurements
@@ -179,18 +179,22 @@ class AdaptivePolicy(Policy):
                                            seq_length=self.seq_length,
                                            encryption_mode=self.encryption_mode)
 
-            # Calculate the meta-data bytes associated with stable encoding
-            shift_bytes = 1 + 2 * MAX_SHIFT_GROUPS
-            metadata_bytes = shift_bytes + int(math.ceil(self.seq_length / BITS_PER_BYTE))
+            # Conservatively Estimate the meta-data bytes associated with stable encoding
+            size_width = num_bits_for_value(len(collected_indices))
+            size_bytes = int(math.ceil((size_width * MAX_SHIFT_GROUPS) / BITS_PER_BYTE))
+            mask_bytes = int(math.ceil(self.seq_length / BITS_PER_BYTE))
 
-            if metadata_bytes == EncryptionMode.STREAM:
+            shift_bytes = 1 + MAX_SHIFT_GROUPS + size_bytes
+            metadata_bytes = shift_bytes + mask_bytes
+
+            if self.encryption_mode == EncryptionMode.STREAM:
                 metadata_bytes += CHACHA_NONCE_LEN
             else:
                 metadata_bytes += AES_BLOCK_SIZE
 
             # Compute the target number of data bytes
             target_data_bytes = target_bytes - metadata_bytes
-            target_data_bits = target_data_bytes * BITS_PER_BYTE
+            target_data_bits = (target_data_bytes - MAX_SHIFT_GROUPS) * self.width
 
             # Estimate the maximum number of measurements we can collect
             max_features = int(target_data_bits / MIN_WIDTH)
@@ -216,8 +220,23 @@ class AdaptivePolicy(Policy):
                                                             shifts=shifts,
                                                             max_num_groups=MAX_SHIFT_GROUPS)
 
+            # Re-calculate the meta-data size based on the given shift groups. Smaller
+            # ranges allow for greater savings.
+            size_width = num_bits_for_value(max(group_sizes))
+            size_bytes = int(math.ceil((size_width * MAX_SHIFT_GROUPS) / BITS_PER_BYTE))
+
+            shift_bytes = 1 + MAX_SHIFT_GROUPS + size_bytes
+            metadata_bytes = shift_bytes + mask_bytes
+
+            if self.encryption_mode == EncryptionMode.STREAM:
+                metadata_bytes += CHACHA_NONCE_LEN
+            else:
+                metadata_bytes += AES_BLOCK_SIZE
+
+            target_data_bytes = target_bytes - metadata_bytes
+
             # Set the group sizes
-            group_widths = set_widths(group_sizes, target_bytes=target_data_bytes)
+            group_widths = set_widths(group_sizes, target_bytes=target_data_bytes, start_width=MIN_WIDTH)
 
             encoded = encode_stable_measurements(measurements=measurements,
                                                  collected_indices=collected_indices,
@@ -227,74 +246,13 @@ class AdaptivePolicy(Policy):
                                                  non_fractional=self.non_fractional,
                                                  seq_length=self.seq_length)
 
+            diff = (target_bytes - CHACHA_NONCE_LEN) - len(encoded)
+
             if self.encryption_mode == EncryptionMode.STREAM:
                 return pad_to_length(encoded, length=target_bytes - CHACHA_NONCE_LEN)
 
             return encoded
-
-            #max_collected = get_max_collected(seq_length=self.seq_length,
-            #                                  num_features=self.num_features,
-            #                                  group_size=max_group_size,
-            #                                  min_width=MIN_WIDTH,
-            #                                  target_size=target_bytes,
-            #                                  encryption_mode=self.encryption_mode)
-            #max_collected += 1
-            #encoded_bytes = target_bytes + 1
-
-            #counter = 0
-            #while (target_bytes < encoded_bytes and counter < MAX_ITER):
-            #    max_collected -= 1
-
-            #    # Prune away any excess measurements
-            #    measurements, collected_indices = prune_sequence(measurements=measurements,
-            #                                                 collected_indices=collected_indices,
-            #                                                 max_collected=max_collected,
-            #                                                 seq_length=self.seq_length)
-
-            #    num_collected = len(measurements)
-
-            #    # Set the group parameters
-            #    num_groups = get_num_groups(num_collected=num_collected,
-            #                            group_size=max_group_size,
-            #                            num_features=self.num_features)
-
-            #    group_size = balance_group_size(num_collected=num_collected,
-            #                                max_group_size=max_group_size,
-            #                                num_features=self.num_features)
-
-            #    # Get the group widths
-            #    widths = get_group_widths(group_size=group_size,
-            #                          num_collected=num_collected,
-            #                          num_features=self.num_features,
-            #                          seq_length=self.seq_length,
-            #                          target_frac=self.target,
-            #                          standard_width=self.width,
-            #                          encryption_mode=self.encryption_mode)
-
-            #    encoded_bytes = calculate_grouped_bytes(widths=widths,
-            #                                            num_collected=num_collected,
-            #                                            num_features=self.num_features,
-            #                                            group_size=group_size,
-            #                                            encryption_mode=self.encryption_mode,
-            #                                            seq_length=self.seq_length)
-            #    counter += 1
-
-            #widths = [min(w, MAX_WIDTH) for w in widths]
-
-            ## Encode the measurement values
-            #non_fractional = self.width - self.precision
-            #encoded = encode_grouped_measurements(measurements=measurements,
-            #                                      collected_indices=collected_indices,
-            #                                      seq_length=self.seq_length,
-            #                                      widths=widths,
-            #                                      non_fractional=non_fractional,
-            #                                      group_size=group_size)
-
-            #if self.encryption_mode == EncryptionMode.STREAM:
-            #    return pad_to_length(encoded, length=target_bytes - CHACHA_NONCE_LEN)
-
-            #return encoded
-        else:
+       else:
             raise ValueError('Unknown encoding type {0}'.format(self.encoding_mode.name))
 
     def decode(self, message: bytes) -> Tuple[np.ndarray, List[int]]:
