@@ -4,7 +4,7 @@ import h5py
 import socket
 from argparse import ArgumentParser
 from collections import namedtuple, Counter
-from sklearn.metrics import mean_absolute_error, r2_score
+from sklearn.metrics import mean_absolute_error, r2_score, mean_absolute_percentage_error
 from typing import Optional, List, Tuple
 
 from adaptiveleak.policies import make_policy, Policy
@@ -108,7 +108,8 @@ class Server:
         # Initialize lists for logging
         num_bytes: List[int] = []
         num_measurements: List[int] = []
-        errors: List[float] = []
+        maes: List[float] = []
+        mapes: List[float] = []
         label_list: List[int] = []
         reconstructed_list: List[np.ndarray] = []
         width_counts: Counter = Counter()
@@ -167,13 +168,17 @@ class Server:
                                                          seq_length=seq_length)
 
                     # Compute the reconstruction error in the measurements
-                    error = mean_absolute_error(y_true=inputs[idx],
-                                                y_pred=reconstructed)
+                    mae = mean_absolute_error(y_true=inputs[idx],
+                                              y_pred=reconstructed)
+
+                    mape = mean_absolute_percentage_error(y_true=inputs[idx],
+                                                          y_pred=reconstructed)
 
                     # Log the results of this sequence
                     num_bytes.append(len(parsed.data))
                     num_measurements.append(len(measurements))
-                    errors.append(error)
+                    maes.append(mae)
+                    mapes.append(mape)
                     label_list.append(int(labels[idx]))
                     reconstructed_list.append(np.expand_dims(reconstructed, axis=0))
 
@@ -192,13 +197,15 @@ class Server:
 
         # Save the results
         result_dict = {
-            'avg_error': np.average(errors),
+            'avg_error': np.average(maes),
+            'avg_mape': np.average(mapes),
             'r2_score': r2,
             'avg_bytes': np.average(num_bytes),
             'avg_measurements': np.average(num_measurements),
-            'count': len(errors),
+            'count': len(maes),
             'widths': width_counts,
-            'errors': errors,
+            'MAEs': maes,
+            'MAPEs': mapes,
             'num_bytes': num_bytes,
             'num_measurements': num_measurements,
             'labels': label_list,
