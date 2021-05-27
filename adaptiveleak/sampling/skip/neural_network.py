@@ -3,6 +3,7 @@ import tensorflow as tf
 import numpy as np
 import sklearn.metrics as metrics
 import time
+import math
 from datetime import datetime
 from sklearn.preprocessing import StandardScaler
 from typing import Dict, Any, Optional, List, Tuple, Set, Union
@@ -12,10 +13,10 @@ from adaptiveleak.utils.file_utils import save_pickle_gz, read_pickle_gz, make_d
 
 
 DEFAULT_HYPERS = {
-    'batch_size': 16,
+    'batch_size': 32,
     'learning_rate': 0.001,
     'gradient_clip': 1,
-    'num_epochs': 10,
+    'num_epochs': 15,
     'patience': 10
 }
 
@@ -330,7 +331,8 @@ class NeuralNetwork:
 
         # Create the sample indices for batch creation
         train_idx = np.arange(len(train_inputs))
-        val_idx = np.arange(len(val_inputs))
+        num_train_batches = int(math.ceil(train_inputs.shape[0] / self.batch_size))
+        num_val_batches = int(math.ceil(val_inputs.shape[0] / self.batch_size))
 
         for epoch in range(self.num_epochs):
 
@@ -349,8 +351,8 @@ class NeuralNetwork:
             train_start = time.time()
 
             train_ops = [LOSS_OP, OPTIMIZER_OP]
-            for batch_idx in range(0, len(train_idx), self.batch_size):
-                start, end = batch_idx, batch_idx + self.batch_size
+            for batch_idx in range(num_train_batches):
+                start, end = batch_idx * self.batch_size, (batch_idx + 1) * self.batch_size
                 
                 indices = train_idx[start:end]
                 batch_features = train_inputs[indices]
@@ -373,7 +375,7 @@ class NeuralNetwork:
 
                 if should_print:
                     train_loss_so_far = epoch_train_loss / num_train_samples
-                    print('Train Batch {0}: Loss -> {1:.5f}'.format(batch_idx + 1, train_loss_so_far), end='\r')
+                    print('Train Batch {0} / {1}: Loss -> {2:.5f}'.format(batch_idx + 1, num_train_batches, train_loss_so_far), end='\r')
 
             # Clear the line after the epoch
             if should_print:
@@ -392,9 +394,8 @@ class NeuralNetwork:
             val_start = time.time()
 
             val_ops = [LOSS_OP]
-            for batch_idx in range(0, len(val_inputs), self.batch_size):
-
-                start, end = batch_idx, batch_idx + self.batch_size
+            for batch_idx in range(num_val_batches):
+                start, end = batch_idx * self.batch_size, (batch_idx + 1 ) * self.batch_size
                 batch_features = val_inputs[start:end]
 
                 feed_dict = self.batch_to_feed_dict(batch_features, is_train=False)
@@ -407,7 +408,7 @@ class NeuralNetwork:
 
                 if should_print:
                     val_loss_so_far = epoch_val_loss / num_val_samples
-                    print('Validation Batch {0}: Loss -> {1:.5f}'.format(batch_idx + 1, val_loss_so_far), end='\r')
+                    print('Validation Batch {0} / {1}: Loss -> {2:.5f}'.format(batch_idx + 1, num_val_batches, val_loss_so_far), end='\r')
 
             if should_print:
                 print()

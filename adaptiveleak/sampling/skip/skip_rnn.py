@@ -6,11 +6,15 @@ Paper: https://arxiv.org/abs/1708.06834
 Repo: https://github.com/imatge-upc/skiprnn-2017-telecombcn/blob/master/src/rnn_cells/skip_rnn_cells.py.
 """
 import tensorflow as tf
-from collections import namedtuple
-from typing import Optional, Any, Tuple
+import numpy as np
+from collections import namedtuple, defaultdict
+from sklearn.metrics import mean_absolute_error
+from typing import Optional, Any, Dict, Tuple
 
 from adaptiveleak.utils.constants import SMALL_NUMBER
+from adaptiveleak.server import reconstruct_sequence
 from neural_network import NeuralNetwork, PREDICTION_OP, LOSS_OP, INPUTS
+from tfutils import apply_noise
 
 
 SkipUGRNNStateTuple = namedtuple('SkipUGRNNStateTuple', ['state', 'prev_input', 'cumulative_state_update'])
@@ -106,6 +110,9 @@ class SkipUGRNNCell(tf.compat.v1.nn.rnn_cell.RNNCell):
 
             next_cell_state = update_gate * candidate + (1.0 - update_gate) * prev_state
 
+            # Apply a small amount of noise for regularization
+            next_cell_state = apply_noise(next_cell_state, scale=0.01)
+
             # Apply the state update gate. This is the Skip portion.
             # We first compute the state update gate. This is a binary version of the cumulative state update prob.
             state_update_gate = binarize(prev_cum_state_update_prob)  # A [B, 1] binary tensor
@@ -164,14 +171,51 @@ class SkipRNN(NeuralNetwork):
         prediction = self._ops[PREDICTION_OP]
         expected = self._placeholders[INPUTS]
 
-        print('Prediction: {}'.format(prediction))
-        print('Expected: {}'.format(expected))
-
         squared_diff = tf.square(prediction - expected)
         pred_loss = tf.reduce_mean(squared_diff)
 
         num_updates = tf.reduce_sum(self._ops['skip_gates'], axis=-1)  # [B]
-        update_rate = num_updates / self.seq_length
-        update_loss = self._hypers['update_weight'] * tf.reduce_mean(tf.square(update_rate - self.target))
+        update_rate = num_updates / self.seq_length  # [B]
+        avg_update_rate = tf.reduce_mean(update_rate)
+
+        update_loss = self._hypers['update_weight'] * tf.square(tf.nn.leaky_relu(avg_update_rate - self.target))
 
         self._ops[LOSS_OP] = pred_loss + update_loss
+
+    def reconstruct(self, inputs: np.ndarray, labels: np.ndarray) -> Tuple[float, float, Dict[str, Tuple[float, float]]]:
+        # Compute the skip gates, [N, T]
+        feed_dict = self.batch_to_feed_dict(inputs, is_train=False)
+        model_result = self.execute('skip_gates', feed_dict=feed_dict)
+        skip_gates = model_result['skip_gates']
+
+        errors: List[float] = []
+        num_collected: List[float] = []
+
+        label_sizes: DefaultDict[int, List[int]] = defaultdict(list)
+
+        for gates, seq_inputs, label in zip(skip_gates, inputs, labels):
+            collected_indices = [idx for idx in range(self.seq_length) if np.isclose(gates[idx], 1)]
+            measurements = seq_inputs[collected_indices]
+
+            reconstructed = reconstruct_sequence(measurements=measurements,
+                                                 collected_indices=collected_indices,
+                                                 seq_length=self.seq_length)
+
+            error = mean_absolute_error(y_true=seq_inputs,
+                                        y_pred=reconstructed)
+
+            errors.append(error)
+            num_collected.append(len(collected_indices))
+
+            label_sizes[label].append(len(collected_indices))
+
+        avg_error = np.average(errors)
+        collection_rate = np.average(num_collected) / self.seq_length
+
+        label_stats: Dict[str, Tuple[float, float]] = dict()
+        for label in label_sizes.keys():
+            avg_size = np.average(label_sizes[label])
+            std_size = np.std(label_sizes[label])
+            label_stats[str(label)] = (float(avg_size), float(std_size))
+
+        return avg_error, collection_rate, label_stats
