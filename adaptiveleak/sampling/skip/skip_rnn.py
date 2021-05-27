@@ -225,7 +225,7 @@ class SkipRNN(NeuralNetwork):
         avg_update_rate = tf.reduce_mean(update_rate)
         update_diff = avg_update_rate - self.target
 
-        update_loss = self._placeholders[LOSS_WEIGHT] * tf.math.maximum(update_diff, -0.1 * update_diff)
+        update_loss = self._placeholders[LOSS_WEIGHT] * tf.math.maximum(update_diff, -0.2 * update_diff)
 
         self._ops[LOSS_OP] = pred_loss + update_loss
 
