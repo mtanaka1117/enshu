@@ -15,8 +15,10 @@ from adaptiveleak.utils.file_utils import save_pickle_gz, read_pickle_gz, make_d
 DEFAULT_HYPERS = {
     'batch_size': 32,
     'learning_rate': 0.001,
+    'learning_rate_decay': 0.9,
+    'decay_patience': 2,
     'gradient_clip': 1,
-    'num_epochs': 15,
+    'num_epochs': 50,
     'patience': 10
 }
 
@@ -66,6 +68,10 @@ class NeuralNetwork:
         return float(self._hypers['learning_rate_decay'])
 
     @property
+    def decay_patience(self) -> int:
+        return int(self._hypers['decay_patience'])
+
+    @property
     def batch_size(self) -> int:
         return int(self._hypers['batch_size'])
 
@@ -89,6 +95,14 @@ class NeuralNetwork:
     def input_shape(self) -> Tuple[int, ...]:
         return self._metadata['input_shape']
 
+    @property
+    def num_train_batches(self) -> int:
+        return self._metadata['num_train_batches']
+
+    @property
+    def warmup(self) -> int:
+        return int(self._hypers.get('warmup', 0))
+
     def get_trainable_vars(self) -> List[tf.Variable]:
         return list(self._sess.graph.get_collection(tf.compat.v1.GraphKeys.TRAINABLE_VARIABLES))
 
@@ -108,7 +122,7 @@ class NeuralNetwork:
         """
         raise NotImplementedError()
 
-    def batch_to_feed_dict(self, features: np.ndarray, is_train: bool) -> Dict[tf.compat.v1.placeholder, np.ndarray]:
+    def batch_to_feed_dict(self, features: np.ndarray, epoch: int, is_train: bool) -> Dict[tf.compat.v1.placeholder, np.ndarray]:
         # Normalize the inputs
         feature_shape = features.shape
         flattened = features.reshape(-1, feature_shape[-1])
@@ -141,6 +155,7 @@ class NeuralNetwork:
         # Save results in the meta-data dict
         self._metadata[INPUT_SHAPE] = inputs.shape[1:]
         self._metadata[SCALER] = scaler
+        self._metadata['num_train_batches'] = int(math.ceil(inputs.shape[0] / self.batch_size))
 
     def make(self, is_train: bool):
         """
@@ -158,7 +173,17 @@ class NeuralNetwork:
             self.make_loss()
             assert LOSS_OP in self._ops, 'Must create a loss operation'
 
-            self._optimizer = tf.compat.v1.train.AdamOptimizer(learning_rate=self.learning_rate)
+            self._global_step = tf.Variable(0, dtype=tf.int64, trainable=False)
+            self._global_step_op = tf.compat.v1.assign_add(self._global_step, 1)
+
+            learning_rate = tf.compat.v1.train.exponential_decay(learning_rate=self.learning_rate,
+                                                                 global_step=self._global_step,
+                                                                 decay_steps=1,
+                                                                 decay_rate=self.learning_rate_decay,
+                                                                 staircase=True)
+            self._lr_schedule = learning_rate
+
+            self._optimizer = tf.compat.v1.train.AdamOptimizer(learning_rate=learning_rate)
 
             self.make_training_step()
             assert OPTIMIZER_OP in self._ops, 'Must create an optimizer operation'
@@ -182,6 +207,9 @@ class NeuralNetwork:
 
         # Apply clipped gradients
         optimizer_op = self._optimizer.apply_gradients(pruned_gradients)
+
+        # Increment the global step
+        #global_step_op = tf.compat.v1.assign_add(self._global_step, 1)
 
         # Add optimization to the operations dict
         self._ops[OPTIMIZER_OP] = optimizer_op
@@ -240,7 +268,7 @@ class NeuralNetwork:
             start, end = batch_idx, batch_idx + test_batch_size
             batch_features = test_inputs[start:end]
 
-            feed_dict = self.batch_to_feed_dict(batch_features, is_train=False)
+            feed_dict = self.batch_to_feed_dict(batch_features, epoch=self.warmup, is_train=False)
 
             batch_start = time.perf_counter()
             batch_result = self.execute(ops=test_ops, feed_dict=feed_dict)
@@ -355,14 +383,14 @@ class NeuralNetwork:
                 indices = train_idx[start:end]
                 batch_features = train_inputs[indices]
 
-                feed_dict = self.batch_to_feed_dict(batch_features, is_train=True)
+                feed_dict = self.batch_to_feed_dict(batch_features, epoch=epoch, is_train=True)
 
                 start_batch_time = time.perf_counter()
                 train_batch_results = self.execute(feed_dict=feed_dict, ops=train_ops)
                 end_batch_time = time.perf_counter()
 
                 # Add to the total time for training steps
-                train_time += end_batch_time - start_batch_time
+                train_time += (end_batch_time - start_batch_time)
 
                 batch_samples = len(batch_features)
 
@@ -396,7 +424,7 @@ class NeuralNetwork:
                 start, end = batch_idx * self.batch_size, (batch_idx + 1 ) * self.batch_size
                 batch_features = val_inputs[start:end]
 
-                feed_dict = self.batch_to_feed_dict(batch_features, is_train=False)
+                feed_dict = self.batch_to_feed_dict(batch_features, epoch=epoch, is_train=False)
                 val_batch_results = self.execute(feed_dict=feed_dict, ops=val_ops)
 
                 batch_samples = len(batch_features)
@@ -420,19 +448,17 @@ class NeuralNetwork:
 
             # Check if we see improved validation performance
             should_save = False
-            if avg_val_loss < best_val_loss:
-                should_save = True
-                num_not_improved = 0
-                best_val_loss = avg_val_loss
-            else:
-                num_not_improved += 1
+            if epoch >= self.warmup:
+                if avg_val_loss < best_val_loss:
+                    should_save = True
+                    num_not_improved = 0
+                    best_val_loss = avg_val_loss
+                else:
+                    num_not_improved += 1
 
-            has_ended = bool(epoch == self.num_epochs - 1)
-            if num_not_improved >= self.patience:
-                if should_print:
-                    print('Exiting due to early stopping.')
-
-                has_ended = True
+            # Decay learning rate (if needed)
+            if (num_not_improved > 0) and ((num_not_improved % self.decay_patience) == 0):
+                self._sess.run(self._global_step_op)
 
             # Save model if specified
             if should_save:
@@ -440,7 +466,11 @@ class NeuralNetwork:
                     print('Saving...')
                 self.save(save_folder=save_folder, model_name=model_name)
 
-            if has_ended:
+            # Exit due to early stopping if needed
+            if num_not_improved >= self.patience:
+                if should_print:
+                    print('Exiting due to early stopping.')
+
                 break
 
         # Log the training results
