@@ -142,6 +142,10 @@ class SkipRNN(NeuralNetwork):
     def seq_length(self) -> int:
         return self.input_shape[0]
 
+    @property
+    def name(self) -> float:
+        return '{0}-{1}'.format(self._name, int(self.target * 100))
+
     def make_graph(self, is_train: bool):
         inputs = self._placeholders[INPUTS]  # [B, T, D]
 

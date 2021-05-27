@@ -28,7 +28,8 @@ OPTIMIZER_OP = 'optimizer'
 PREDICTION_OP = 'prediction'
 LOSS_OP = 'loss'
 
-TRAIN_LOG_FMT = '{0}-train-log.json.gz'
+TEST_LOG_FMT = '{0}_test-log.json.gz'
+TRAIN_LOG_FMT = '{0}_train-log.json.gz'
 MODEL_FILE_FMT = '{0}.pkl.gz'
 
 
@@ -301,7 +302,7 @@ class NeuralNetwork:
 
         # Create a name for this training run based on the current date and time
         start_time = datetime.now()
-        model_name = '{0}-{1}-{2}'.format(self.name, dataset_name, start_time.strftime('%Y-%m-%d-%H-%M-%S'))
+        model_name = self.name
 
         # Create lists to track the training and validation metrics
         train_loss: List[float] = []
@@ -322,9 +323,6 @@ class NeuralNetwork:
         make_dir(save_folder)
 
         save_folder = os.path.join(save_folder, dataset_name)
-        make_dir(save_folder)
-
-        save_folder = os.path.join(save_folder, self.name)
         make_dir(save_folder)
 
         train_time = 0.0
