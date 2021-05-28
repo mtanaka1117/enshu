@@ -279,7 +279,7 @@ if __name__ == '__main__':
 
     # Make the policy
     policy = make_policy(name=args.policy,
-                         target=args.target,
+                         target=round(args.target, 2),
                          num_features=inputs.shape[2],
                          seq_length=inputs.shape[1],
                          dataset=args.dataset,

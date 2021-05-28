@@ -57,8 +57,10 @@ if __name__ == '__main__':
 
     for target in sorted(targets):
 
+        target = round(target, 2)
+
         print('==========')
-        print('Starting {0:.3f}'.format(target))
+        print('Starting {0:.2f}'.format(target))
         print('==========')
 
         port = random.randint(50000, 60000)

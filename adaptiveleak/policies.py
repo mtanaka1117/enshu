@@ -471,6 +471,9 @@ class SkipRNN(AdaptivePolicy):
         self._cum_update_prob = 1.0  # Cumulative update prob
         self._update_prob = 0.0  # Update prob from the previous step (avoid re-computation)
 
+    def __str__(self) -> str:
+        return 'skip_rnn_{0}'.format(self._encoding_mode.name.lower())
+
 
 class AdaptiveJitter(AdaptivePolicy):
 
