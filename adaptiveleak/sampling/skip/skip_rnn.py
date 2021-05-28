@@ -36,32 +36,62 @@ def binarize(x: tf.Tensor, name: str = 'binarize') -> tf.Tensor:
         return tf.round(x, name=name)
 
 
+def gru_transform(state: tf.Tensor,
+                  inputs: tf.Tensor,
+                  W_gates: tf.Tensor,
+                  b_gates: tf.Tensor,
+                  W_candidate: tf.Tensor,
+                  b_candidate: tf.Tensor):
+    """
+    Performs a standard GRU transformation.
+    """
+    # Compute the linear transformation for the gates
+    stacked = tf.concat([inputs, state], axis=-1)  # [B, K + D]
+    gates = tf.matmul(stacked, W_gates) + b_gates  # [B, 2 * D]
+    
+    # Split into update and reset gates, [B, D] each
+    update_gate, reset_gate = tf.split(gates, num_or_size_splits=2, axis=-1)
+
+    update_gate = tf.math.sigmoid(update_gate + 1)  # [B, D]
+    reset_gate = tf.math.sigmoid(reset_gate)  # [B, D]
+
+    # Create the candidate state
+    reset_state = tf.multiply(reset_gate, state)  # [B, D]
+    stacked = tf.concat([inputs, reset_state], axis=-1)  # [B, K + D]
+    candidate = tf.nn.tanh(tf.matmul(stacked, W_candidate) + b_candidate) # [B, D]
+
+    # Create the next state
+    next_state = update_gate * state + (1.0 - update_gate) * candidate
+    return next_state
+
+
 class SkipGRUCell(tf.compat.v1.nn.rnn_cell.RNNCell):
 
-    def __init__(self, units: int, input_size: int, name: str):
+    def __init__(self, units: int, input_size: int, target: float, name: str):
         self._units = units
         self._input_size = input_size
+        self._target = target
 
         # Make the trainable variables for this cell
         with tf.compat.v1.variable_scope(name):
             self.W_gates = tf.compat.v1.get_variable(name='W-gates',
                                                      initializer=tf.compat.v1.glorot_uniform_initializer(),
-                                                     shape=[units + input_size, 2 * units],
+                                                     shape=[input_size + units, 2 * units],
                                                      trainable=True)
             self.b_gates = tf.compat.v1.get_variable(name='b-gates',
                                                      initializer=tf.compat.v1.glorot_uniform_initializer(),
                                                      shape=[1, 2 * units],
                                                      trainable=True)
-            
+        
             self.W_candidate = tf.compat.v1.get_variable(name='W-candidate',
                                                          initializer=tf.compat.v1.glorot_uniform_initializer(),
-                                                         shape=[units + input_size, units],
+                                                         shape=[input_size + units, units],
                                                          trainable=True)
             self.b_candidate = tf.compat.v1.get_variable(name='b-candidate',
                                                          initializer=tf.compat.v1.glorot_uniform_initializer(),
                                                          shape=[1, units],
                                                          trainable=True)
-            
+
             self.W_state = tf.compat.v1.get_variable(name='W-state',
                                                      initializer=tf.compat.v1.glorot_uniform_initializer(),
                                                      shape=[units, 1],
@@ -84,10 +114,10 @@ class SkipGRUCell(tf.compat.v1.nn.rnn_cell.RNNCell):
         Creates an initial state by setting the hidden state to zero and the update probability to 1.
         """
         initial_state = tf.compat.v1.get_variable(name='initial-hidden-state',
-                                                  initializer=tf.compat.v1.zeros_initializer(),
+                                                  initializer=tf.compat.v1.glorot_uniform_initializer(),
                                                   shape=[1, self._units],
                                                   dtype=dtype,
-                                                  trainable=False)
+                                                  trainable=True)
 
         initial_prev_input = tf.compat.v1.get_variable(name='initial-prev-input',
                                                   initializer=tf.compat.v1.zeros_initializer(),
@@ -110,23 +140,36 @@ class SkipGRUCell(tf.compat.v1.nn.rnn_cell.RNNCell):
         # Unpack the previous state
         prev_state, prev_input, prev_cum_state_update_prob = state
 
+        #level_states = tf.split(prev_state, num_or_size_splits=self._num_levels, axis=-1)
+
         scope = scope if scope is not None else type(self).__name__
         with tf.compat.v1.variable_scope(scope):
-            # Apply the standard GRU update, [B, D]
-            stacked = tf.concat([inputs, prev_state], axis=-1)
-            gates = tf.math.sigmoid(tf.matmul(stacked, self.W_gates) + self.b_gates)
+            ## Apply the standard GRU update, [B, D]
+            #stacked = tf.concat([inputs, prev_state], axis=-1)
+            #gates = tf.matmul(stacked, self.W_gates) + self.b_gates
 
-            # Pair of [B, D] tensors
-            update_gate, reset_gate = tf.split(gates, num_or_size_splits=2, axis=-1)
+            ## Pair of [B, D] tensors
+            #update_gate, reset_gate = tf.split(gates, num_or_size_splits=2, axis=-1)
 
-            # Stack the features after applying the reset gate and compute the candidate state, [B, D]
-            stacked = tf.concat([inputs, tf.multiply(prev_state, reset_gate)], axis=-1)
-            candidate = tf.nn.tanh(tf.matmul(stacked, self.W_candidate) + self.b_candidate)
+            ## Add initial biases and apply activation functions
+            #update_gate = tf.math.sigmoid(update_gate + 1)  # Keep more of the previous state
+            #reset_gate = tf.math.sigmoid(reset_gate)
 
-            next_cell_state = tf.multiply(update_gate, candidate) + tf.multiply(1.0 - update_gate, prev_state)
+            ## Stack the features after applying the reset gate and compute the candidate state, [B, D]
+            #stacked = tf.concat([inputs, tf.multiply(prev_state, reset_gate)], axis=-1)
+            #candidate = tf.nn.tanh(tf.matmul(stacked, self.W_candidate) + self.b_candidate)
+
+            #next_cell_state = tf.multiply(1.0 - update_gate, candidate) + tf.multiply(update_gate, prev_state)
+
+            next_cell_state = gru_transform(state=prev_state,
+                                            inputs=inputs,
+                                            W_gates=self.W_gates,
+                                            b_gates=self.b_gates,
+                                            W_candidate=self.W_candidate,
+                                            b_candidate=self.b_candidate)
 
             # Apply a small amount of noise for regularization
-            #next_cell_state = apply_noise(next_cell_state, scale=0.01)
+            next_cell_state = apply_noise(next_cell_state, scale=0.01)
 
             # Apply the state update gate. This is the Skip portion.
             # We first compute the state update gate. This is a binary version of the cumulative state update prob.
@@ -194,6 +237,7 @@ class SkipRNN(NeuralNetwork):
         # Create the RNN Cell
         rnn_cell = SkipGRUCell(units=self._hypers['rnn_units'],
                                input_size=self.input_shape[-1],
+                               target=self.target,
                                name='rnn-cell')
 
         initial_state = rnn_cell.get_initial_state(inputs=inputs,
@@ -225,7 +269,7 @@ class SkipRNN(NeuralNetwork):
         avg_update_rate = tf.reduce_mean(update_rate)
         update_diff = avg_update_rate - self.target
 
-        update_loss = self._placeholders[LOSS_WEIGHT] * tf.math.maximum(update_diff, -0.5 * update_diff)
+        update_loss = self._placeholders[LOSS_WEIGHT] * tf.nn.leaky_relu(update_diff, alpha=-0.5)
 
         self._ops[LOSS_OP] = pred_loss + update_loss
 
