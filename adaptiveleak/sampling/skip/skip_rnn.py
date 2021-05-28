@@ -168,7 +168,7 @@ class SkipRNN(NeuralNetwork):
     def batch_to_feed_dict(self, features: np.ndarray, epoch: int, is_train: bool) -> Dict[tf.compat.v1.placeholder, np.ndarray]:
         feed_dict = super().batch_to_feed_dict(features=features, epoch=epoch, is_train=is_train)
     
-        if (epoch >= self.warmup):
+        if (epoch >= self.warmup) or (self.loss_weight <= START_LOSS_WEIGHT):
             loss_weight = self.loss_weight
         else:
             alpha = (1.0 / self.warmup) * np.log(self.loss_weight / START_LOSS_WEIGHT)
