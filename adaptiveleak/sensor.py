@@ -91,30 +91,29 @@ class Sensor:
 if __name__ == '__main__':
     parser = ArgumentParser()
     parser.add_argument('--dataset', type=str, required=True)
+    parser.add_argument('--target', type=float, required=True)
     parser.add_argument('--encryption', type=str, choices=['block', 'stream'], required=True)
-    parser.add_argument('--params', type=str, required=True)
+    parser.add_argument('--policy', type=str, required=True)
+    parser.add_argument('--encoding', type=str, choices=['standard', 'group'], required=True)
     parser.add_argument('--port', type=int, default=50000)
     parser.add_argument('--max-num-samples', type=int)
     parser.add_argument('--should-compress', action='store_true')
     args = parser.parse_args()
 
     # Load the data
-    inputs, _ = load_data(dataset_name=args.dataset, fold='all')
-
-    # Read the parameters
-    params = read_json(args.params)
+    inputs, _ = load_data(dataset_name=args.dataset, fold='test')
 
     # Extract the encryption mode
     encryption_mode = EncryptionMode[args.encryption.upper()]
 
     # Make the policy
-    policy = make_policy(name=params['name'],
-                         target=params['target'],
+    policy = make_policy(name=args.policy,
+                         target=args.target,
                          num_features=inputs.shape[2],
                          seq_length=inputs.shape[1],
                          dataset=args.dataset,
                          encryption_mode=encryption_mode,
-                         encoding=params.get('encoding', 'unknown'),
+                         encoding=args.encoding,
                          should_compress=args.should_compress)
 
     # Run the sensor

@@ -71,6 +71,8 @@ def extract_results(folder: str, field: str, aggregate_mode: Optional[str]) -> T
             value = np.median(serialized[field])
         elif aggregate_mode == 'max':
             value = np.max(serialized[field])
+        elif aggregate_mode == 'geom':
+            value = geometric_mean(serialized[field])
         else:
             raise ValueError('Unknown aggregation mode: {0}'.format(aggregate_mode))
 

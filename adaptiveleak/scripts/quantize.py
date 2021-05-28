@@ -11,9 +11,9 @@ from adaptiveleak.utils.shifting import merge_shift_groups
 
 
 NUM_SAMPLES = 2500
-WIDTH = 16
+WIDTH = 20
 PRECISIONS = list(range(0, WIDTH))
-DATASET_NAME = 'tiselac'
+DATASET_NAME = 'eog'
 
 with h5py.File(os.path.join('..', 'datasets', DATASET_NAME, 'train', 'data.h5'), 'r') as fin:
     inputs = fin['inputs'][:NUM_SAMPLES]

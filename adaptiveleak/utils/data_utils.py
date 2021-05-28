@@ -32,6 +32,10 @@ def softmax(x: np.ndarray, axis: int) -> np.ndarray:
     return exp_x / np.sum(exp_x, axis=axis, keepdims=True)
 
 
+def sigmoid(x: np.ndarray) -> np.ndarray:
+    return 1.0 / (1.0 + np.exp(-1 * x))
+
+
 def to_fixed_point(x: float, precision: int, width: int) -> int:
     assert width >= 1, 'Must have a non-negative width'
 

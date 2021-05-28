@@ -2,6 +2,7 @@ import os
 import pexpect
 import sys
 import random
+import numpy as np
 from argparse import ArgumentParser
 from datetime import datetime
 from typing import List
@@ -10,55 +11,65 @@ from adaptiveleak.utils.constants import POLICIES
 from adaptiveleak.utils.file_utils import make_dir
 
 
-SERVER_CMD_ALL = 'python server.py --dataset {0} --encryption {1} --params {2} --output-folder {3} --port {4}'
-SERVER_CMD_SAMPLES = 'python server.py --dataset {0} --encryption {1} --params {2} --output-folder {3} --port {4} --max-num-samples {5}'
+SERVER_CMD_ALL = 'python server.py --dataset {0} --encryption {1} --policy {2} --encoding {3} --target {4} --output-folder {5} --port {6}'
+SERVER_CMD_SAMPLES = 'python server.py --dataset {0} --encryption {1} --policy {2} --encoding {3} --target {4} --output-folder {5} --port {6} --max-num-samples {7}'
 
-SENSOR_CMD_ALL = 'python sensor.py --dataset {0} --encryption {1} --params {2} --port {3}'
-SENSOR_CMD_SAMPLES = 'python sensor.py --dataset {0} --encryption {1} --params {2} --port {3} --max-num-samples {4}'
+SENSOR_CMD_ALL = 'python sensor.py --dataset {0} --encryption {1} --policy {2} --encoding {3} --target {4} --port {5}'
+SENSOR_CMD_SAMPLES = 'python sensor.py --dataset {0} --encryption {1} --policy {2} --encoding {3} --target {4} --port {5} --max-num-samples {6}'
 
 
 if __name__ == '__main__':
     parser = ArgumentParser()
     parser.add_argument('--dataset', type=str, required=True)
     parser.add_argument('--policy', type=str, required=True, choices=POLICIES)
-    parser.add_argument('--policy-params', type=str, required=True, nargs='+')
+    parser.add_argument('--encoding', type=str, required=True, choices=['standard', 'group'])
     parser.add_argument('--encryption', type=str, required=True, choices=['block', 'stream'])
+    parser.add_argument('--target', type=float, required=True, nargs='+')
     parser.add_argument('--should-compress', action='store_true')
     parser.add_argument('--max-num-samples', type=int)
     args = parser.parse_args()
 
     # Unpack the parameter files by detecting directories
-    param_files: List[str] = []
-    for param_file in args.policy_params:
-        if os.path.isdir(param_file):
-            file_names = [name for name in os.listdir(param_file) if name.endswith('.json')]
-            param_files.extend(os.path.join(param_file, name) for name in file_names)
-        else:
-            param_files.append(param_file)
+    #param_files: List[str] = []
+    #for param_file in args.policy_params:
+    #    if os.path.isdir(param_file):
+    #        file_names = [name for name in os.listdir(param_file) if name.endswith('.json')]
+    #        param_files.extend(os.path.join(param_file, name) for name in file_names)
+    #    else:
+    #        param_files.append(param_file)
+
+    # Unpack the targets
+    assert len(args.target) in (1, 3), 'Must provide 1 target or a range of targets'
+
+    if len(args.target) == 1:
+        targets = args.target
+    else:
+        targets = np.arange(start=args.target[0], stop=args.target[1] + 1e-5, step=args.target[2]).tolist()
 
     # Make the output folder
     current_date = datetime.now().strftime('%Y-%m-%d')
     base = os.path.join('saved_models', args.dataset, current_date)
     make_dir(base)
 
-    output_folder = os.path.join(base, args.policy)
+    folder_name = '{0}_{1}'.format(args.policy, args.encoding)
+    output_folder = os.path.join(base, folder_name)
     make_dir(output_folder)
 
-    for params_path in sorted(param_files):
+    for target in sorted(targets):
 
         print('==========')
-        print('Starting {0}'.format(params_path))
+        print('Starting {0:.3f}'.format(target))
         print('==========')
 
         port = random.randint(50000, 60000)
 
         # Set the commands
         if args.max_num_samples is None:
-            server_cmd = SERVER_CMD_ALL.format(args.dataset, args.encryption, params_path, output_folder, port)
-            sensor_cmd = SENSOR_CMD_ALL.format(args.dataset, args.encryption, params_path, port)
+            server_cmd = SERVER_CMD_ALL.format(args.dataset, args.encryption, args.policy, args.encoding, target, output_folder, port)
+            sensor_cmd = SENSOR_CMD_ALL.format(args.dataset, args.encryption, args.policy, args.encoding, target,  port)
         else:
-            server_cmd = SERVER_CMD_SAMPLES.format(args.dataset, args.encryption, params_path, output_folder, port, args.max_num_samples)
-            sensor_cmd = SENSOR_CMD_SAMPLES.format(args.dataset, args.encryption, params_path, port, args.max_num_samples)
+            server_cmd = SERVER_CMD_SAMPLES.format(args.dataset, args.encryption, args.policy, args.encoding, target, output_folder, port, args.max_num_samples)
+            sensor_cmd = SENSOR_CMD_SAMPLES.format(args.dataset, args.encryption, args.policy, args.encoding, target, port, args.max_num_samples)
 
         if args.should_compress:
             server_cmd += ' --should-compress'

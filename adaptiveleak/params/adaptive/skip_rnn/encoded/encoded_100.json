@@ -1,0 +1,5 @@
+{
+    "name": "skip_rnn",
+    "target": 1.0,
+    "encoding": "group"
+}

@@ -8,7 +8,8 @@ from typing import Tuple, List, Dict, Any
 
 from adaptiveleak.controllers import PIDController
 from adaptiveleak.utils.constants import BITS_PER_BYTE, MIN_WIDTH, SMALL_NUMBER, MAX_WIDTH, SHIFT_BITS, MAX_SHIFT_GROUPS
-from adaptiveleak.utils.data_utils import get_group_widths, get_num_groups, calculate_bytes, pad_to_length
+from adaptiveleak.utils.constants import MIN_SHIFT_GROUPS
+from adaptiveleak.utils.data_utils import get_group_widths, get_num_groups, calculate_bytes, pad_to_length, sigmoid
 from adaptiveleak.utils.data_utils import prune_sequence, get_max_collected, calculate_grouped_bytes, linear_extrapolate
 from adaptiveleak.utils.data_utils import balance_group_size, set_widths, select_range_shifts_array, num_bits_for_value
 from adaptiveleak.utils.shifting import merge_shift_groups
@@ -383,6 +384,94 @@ class AdaptiveDeviation(AdaptiveLiteSense):
         return 'adaptive_deviation_{0}'.format(self._encoding_mode.name.lower())
 
 
+class SkipRNN(AdaptivePolicy):
+
+    def __init__(self,
+                 target: float,
+                 threshold: float,
+                 precision: int,
+                 width: int,
+                 seq_length: int,
+                 num_features: int,
+                 encryption_mode: EncryptionMode,
+                 encoding_mode: EncodingMode,
+                 should_compress: bool,
+                 dataset_name: str):
+        super().__init__(target=target,
+                         threshold=threshold,
+                         precision=precision,
+                         width=width,
+                         seq_length=seq_length,
+                         num_features=num_features,
+                         encryption_mode=encryption_mode,
+                         encoding_mode=encoding_mode,
+                         should_compress=should_compress)
+
+        # Fetch the parameters
+        model_file = os.path.join('saved_models', dataset_name, 'skip_rnn', 'skip-rnn-{0}.pkl.gz'.format(int(target * 100)))
+        model_weights = read_pickle_gz(model_file)['trainable_vars']
+
+        # Unpack the model parameters
+        self._W_gates = model_weights['rnn-cell/W-gates:0'].T
+        self._b_gates = model_weights['rnn-cell/b-gates:0'].T
+
+        self._W_candidate = model_weights['rnn-cell/W-candidate:0'].T
+        self._b_candidate = model_weights['rnn-cell/b-candidate:0'].T
+
+        self._W_state = model_weights['rnn-cell/W-state:0'].T
+        self._b_state = model_weights['rnn-cell/b-state:0'].T
+
+        # Unpack the normalization object
+        scaler = read_pickle_gz(model_file)['metadata']['scaler']
+        self._mean = np.expand_dims(scaler.mean_, axis=-1) # [K, 1]
+        self._var = np.expand_dims(scaler.var_, axis=-1)  # [K, 1]
+
+        # Initialize the state
+        self._state_size = self._W_state.shape[1]
+        self._state = np.zeros(shape=(self._state_size, 1))
+        self._cum_update_prob = 1.0  # Cumulative update prob
+        self._update_prob = 0.0  # Update prob from the previous step (avoid re-computation)
+
+    def should_collect(self, seq_idx: int) -> bool:
+        if (self._cum_update_prob >= self._threshold):
+            self._cum_update_prob = 0.0            
+            return True
+        else:
+            self._cum_update_prob = min(self._cum_update_prob + self._update_prob, 1.0)
+            return False
+
+    def collect(self, measurement: np.ndarray):
+        assert len(measurement.shape) in (1, 2), 'Must prove a 1d or 2d measurement'
+
+        if len(measurement.shape) == 1:
+            measurement = np.expand_dims(measurement, axis=-1)
+
+        # Normalize the measurements
+        measurement = (measurement - self._mean) / self._var
+
+        # Compute the GRU gates
+        stacked = np.concatenate([measurement, self._state], axis=0)  # [K + D, 1]
+        gates = sigmoid(self._W_gates.dot(stacked) + self._b_gates)
+
+        update_gate, reset_gate = gates[:self._state_size], gates[self._state_size:]
+
+        # Compute the candidate state
+        stacked = np.concatenate([measurement, reset_gate * self._state], axis=0)
+        candidate = np.tanh(self._W_candidate.dot(stacked) + self._b_candidate)
+
+        # Compute the next state
+        self._state = update_gate * candidate + (1.0 - update_gate) * self._state
+
+        # Compute the update probabilities
+        self._update_prob = sigmoid(self._W_state.dot(self._state) + self._b_state)
+        self._cum_update_prob = self._update_prob
+
+    def reset(self):
+        self._state = np.zeros(shape=(self._state_size, 1))
+        self._cum_update_prob = 1.0  # Cumulative update prob
+        self._update_prob = 0.0  # Update prob from the previous step (avoid re-computation)
+
+
 class AdaptiveJitter(AdaptivePolicy):
 
     def __init__(self,
@@ -420,7 +509,7 @@ class AdaptiveJitter(AdaptivePolicy):
     def should_collect(self, seq_idx: int) -> bool:
         self._seq_idx = seq_idx
 
-        if (seq_idx >= 2) and (self._sample_skip < self._current_skip):
+        if (seq_idx > 0) and (self._sample_skip < self._current_skip) and (seq_idx < (self._seq_length - 1)):
             self._sample_skip += 1
             return False
 
@@ -487,42 +576,58 @@ class AdaptiveJitter(AdaptivePolicy):
 
 class AdaptiveSlope(AdaptiveJitter):
 
+    def __init__(self,
+                 target: float,
+                 threshold: float,
+                 precision: int,
+                 width: int,
+                 seq_length: int,
+                 num_features: int,
+                 encryption_mode: EncryptionMode,
+                 encoding_mode: EncodingMode,
+                 should_compress: bool):
+        super().__init__(target=target,
+                         threshold=threshold,
+                         precision=precision,
+                         width=width,
+                         seq_length=seq_length,
+                         num_features=num_features,
+                         encryption_mode=encryption_mode,
+                         encoding_mode=encoding_mode,
+                         should_compress=should_compress)
+        self._window = 2
+        self._current_skip = int(self._max_skip / 2)
+        self._prev_slope = np.zeros((num_features, ))
+
     def collect(self, measurement: np.ndarray):
         # Add measurement and index to the queue
         self._captured.append(measurement)
         self._captured_idx.append(self._seq_idx)
 
         # Update the sum values
-        self._measurement_sum += measurement
-        self._time_sum += self._seq_idx
-
         while len(self._captured) > self._window:
-            removed_measurement = self._captured.popleft()
-            self._measurement_sum -= removed_measurement
+            self._captured.popleft()
+            self._captured_idx.popleft()
 
-            removed_time = self._captured_idx.popleft()
-            self._time_sum -= removed_time
+        self._sample_skip = 0
 
-        # Update the mean values
-        mean_idx = self._time_sum / len(self._captured_idx)
-        mean_element = self._measurement_sum / len(self._captured)
+        if len(self._captured) < self._window:
+            self._current_skip = int(self._max_skip / 2)
+            return
 
-        # Calculate the differences
-        idx_diff = sum(np.square(idx - mean_idx) for idx in self._captured_idx)
-        measurement_diff = np.zeros_like(measurement)
+        # Compute the slope based on the previous two values
+        feature_diff = self._captured[-1] - self._captured[-2]
+        time_diff = self._captured_idx[-1] - self._captured_idx[-2]
+        slope = feature_diff / time_diff
 
-        for element, idx in zip(self._captured, self._captured_idx):
-            measurement_diff += (idx - mean_idx) * (element - mean_element)
-
-        # Form the best-fit parameters
-        slope = measurement_diff / (idx_diff + SMALL_NUMBER)
-        slope_norm = np.sum(np.abs(slope))
+        error = np.sum(np.abs(slope - self._prev_slope))
+        self._prev_slope = slope
 
         # Update the skipping window
-        if slope_norm > self._threshold:
+        if error > self._threshold:
             self._current_skip = max(int(self._current_skip / 2), 0)
         else:
-            self._current_skip = min(self._current_skip + 1, self._max_skip)
+            self._current_skip = min(self._current_skip * 2 + 1, self._max_skip)
 
         self._sample_skip = 0
 
@@ -532,39 +637,89 @@ class AdaptiveSlope(AdaptiveJitter):
 
 class AdaptiveLinear(AdaptiveJitter):
 
+    def __init__(self,
+                 target: float,
+                 threshold: float,
+                 precision: int,
+                 width: int,
+                 seq_length: int,
+                 num_features: int,
+                 encryption_mode: EncryptionMode,
+                 encoding_mode: EncodingMode,
+                 should_compress: bool):
+        super().__init__(target=target,
+                         threshold=threshold,
+                         precision=precision,
+                         width=width,
+                         seq_length=seq_length,
+                         num_features=num_features,
+                         encryption_mode=encryption_mode,
+                         encoding_mode=encoding_mode,
+                         should_compress=should_compress)
+        self._window = 2
+        self._current_skip = int(self._max_skip / 2)
+
     def collect(self, measurement: np.ndarray):
         # Add measurement and index to the queue
         self._captured.append(measurement)
         self._captured_idx.append(self._seq_idx)
 
-        # Update the sum values
-        self._measurement_sum += measurement
-        self._time_sum += self._seq_idx
-
-        while len(self._captured) > self._window:
-            removed_measurement = self._captured.popleft()
-            self._measurement_sum -= removed_measurement
-
-            removed_time = self._captured_idx.popleft()
-            self._time_sum -= removed_time
-
-        # Update the mean values
-        mean_idx = self._time_sum / len(self._captured_idx)
-        mean_element = self._measurement_sum / len(self._captured)
-
-        # Calculate the differences
-        idx_diff = sum(np.square(idx - mean_idx) for idx in self._captured_idx)
-        measurement_diff = np.zeros_like(measurement)
-
-        for element, idx in zip(self._captured, self._captured_idx):
-            measurement_diff += (idx - mean_idx) * (element - mean_element)
-
-        # Form the best-fit parameters
-        slope = measurement_diff / (idx_diff + SMALL_NUMBER)
-        delta = int(math.floor(self._threshold / (np.sum(np.abs(slope)) + SMALL_NUMBER)))
-        
-        self._current_skip = min(delta, self._max_skip)
         self._sample_skip = 0
+
+        if len(self._captured) <= self._window:
+            self._current_skip = int(self._max_skip / 2)
+            return
+
+        # Compute the slope based on the previous two values
+        feature_diff = self._captured[-2] - self._captured[-3]
+        time_diff = self._captured_idx[-2] - self._captured_idx[-3]
+        slope = feature_diff / time_diff
+
+        step = self._captured_idx[-1] - self._captured_idx[-3]
+        projected = slope * step + self._captured[-3]
+
+        error = np.sum(np.abs(projected - measurement))
+
+        if (error < self._threshold):
+            #self._current_skip = self._current_skip * 2 + 1
+            self._current_skip = self._max_skip
+        else:
+            #self._current_skip -= 1
+            self._current_skip = int(self._current_skip / 2)
+
+        self._current_skip = max(min(self._current_skip, self._max_skip), 0)
+
+        #print('Current Window: {0}'.format(self._captured))
+        #print('Current Idx: {0}'.format(self._captured_idx))
+        #print('Projected: {0}'.format(projected))
+        #print('Diff: {0}'.format(feature_diff))
+        #print('Slope: {0}'.format(slope))
+        #print('Error: {0}, Threshold: {1}'.format(error, self._threshold))
+        #print('Next Skip: {0}'.format(self._current_skip))
+        #print('=========')
+
+        # Update the sum values
+        while len(self._captured) > self._window:
+            self._captured.popleft()
+            self._captured_idx.popleft()
+
+        ## Update the mean values
+        #mean_idx = self._time_sum / len(self._captured_idx)
+        #mean_element = self._measurement_sum / len(self._captured)
+
+        ## Calculate the differences
+        #idx_diff = sum(np.square(idx - mean_idx) for idx in self._captured_idx)
+        #measurement_diff = np.zeros_like(measurement)
+
+        #for element, idx in zip(self._captured, self._captured_idx):
+        #    measurement_diff += (idx - mean_idx) * (element - mean_element)
+
+        ## Form the best-fit parameters
+        #slope = measurement_diff / (idx_diff + SMALL_NUMBER)
+        #delta = int(math.floor(self._threshold / (np.sum(np.abs(slope)) + SMALL_NUMBER)))
+        #
+        #self._current_skip = min(delta, self._max_skip)
+        #self._sample_skip = 0
 
     def __str__(self):
         return 'adaptive_linear'.format(self._encoding_mode.name.lower())
@@ -728,6 +883,8 @@ def make_policy(name: str,
             cls = AdaptiveJitter
         elif name == 'adaptive_linear':
             cls = AdaptiveLinear
+        elif name == 'adaptive_slope':
+            cls = AdaptiveSlope
         else:
             raise ValueError('Unknown adaptive policy with name: {0}'.format(name))
 
@@ -740,5 +897,16 @@ def make_policy(name: str,
                    encryption_mode=encryption_mode,
                    encoding_mode=EncodingMode[str(kwargs['encoding']).upper()],
                    should_compress=should_compress)
+    elif name == 'skip_rnn':
+        return SkipRNN(target=target,
+                       threshold=0.5,
+                       precision=precision,
+                       width=width,
+                       seq_length=seq_length,
+                       num_features=num_features,
+                       encryption_mode=encryption_mode,
+                       encoding_mode=EncodingMode[str(kwargs['encoding']).upper()],
+                       should_compress=should_compress,
+                       dataset_name=dataset)
     else:
         raise ValueError('Unknown policy with name: {0}'.format(name))

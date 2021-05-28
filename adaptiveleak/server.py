@@ -4,11 +4,12 @@ import h5py
 import socket
 from argparse import ArgumentParser
 from collections import namedtuple, Counter
-from sklearn.metrics import mean_absolute_error, r2_score, mean_absolute_percentage_error
+from sklearn.metrics import mean_absolute_error, r2_score, mean_squared_error
 from typing import Optional, List, Tuple
 
 from adaptiveleak.policies import make_policy, Policy
 from adaptiveleak.utils.constants import LENGTH_BYTES, LENGTH_ORDER
+from adaptiveleak.utils.analysis import normalized_mae, normalized_rmse
 from adaptiveleak.utils.encryption import decrypt, EncryptionMode, verify_hmac, SHA256_LEN
 from adaptiveleak.utils.loading import load_data
 from adaptiveleak.utils.file_utils import read_json, save_json_gz, read_pickle_gz
@@ -55,6 +56,21 @@ def reconstruct_sequence(measurements: np.ndarray, collected_indices: List[int],
     """
     feature_list: List[np.ndarray] = []
     seq_idx = list(range(seq_length))
+
+    # Get the 'final' value using a linear interpolation on the last two values (if necessary)
+    if collected_indices[-1] < (seq_length - 1):
+        feature_diff = measurements[-1] - measurements[-2]
+        time_diff = collected_indices[-1] - collected_indices[-2]
+
+        slope = feature_diff / time_diff
+        step = (seq_length - 1) - collected_indices[-2]
+
+        right = slope * step + measurements[-2]
+        right = np.expand_dims(right, axis=0)
+
+        collected_indices.append(seq_length - 1)
+        measurements = np.concatenate([measurements, right], axis=0)
+
 
     for feature_idx in range(measurements.shape[1]):
         collected_features = measurements[:, feature_idx]  # [K]
@@ -108,8 +124,10 @@ class Server:
         # Initialize lists for logging
         num_bytes: List[int] = []
         num_measurements: List[int] = []
+
         maes: List[float] = []
-        mapes: List[float] = []
+        rmses: List[float] = []
+
         label_list: List[int] = []
         reconstructed_list: List[np.ndarray] = []
         width_counts: Counter = Counter()
@@ -171,14 +189,17 @@ class Server:
                     mae = mean_absolute_error(y_true=inputs[idx],
                                               y_pred=reconstructed)
 
-                    mape = mean_absolute_percentage_error(y_true=inputs[idx],
-                                                          y_pred=reconstructed)
+                    rmse = mean_squared_error(y_true=inputs[idx],
+                                              y_pred=reconstructed,
+                                              squared=False)
 
                     # Log the results of this sequence
                     num_bytes.append(len(parsed.data))
                     num_measurements.append(len(measurements))
+                    
                     maes.append(mae)
-                    mapes.append(mape)
+                    rmses.append(rmse)
+
                     label_list.append(int(labels[idx]))
                     reconstructed_list.append(np.expand_dims(reconstructed, axis=0))
 
@@ -188,24 +209,38 @@ class Server:
                     if ((idx + 1) % 100) == 0:
                         print('Completed {0} sequences.'.format(idx + 1))
 
-                # Compute the R^2 score across all samples
+                # Compute the aggregate scores across across all samples
                 true = inputs[0:limit]  # [N, T, D]
+                true = true.reshape(-1, num_features)
+
+                print(true.shape)
+
                 reconstructed = np.vstack(reconstructed_list)  # [N, T, D]
-                r2 = r2_score(y_true=true.reshape(-1, num_features),
-                              y_pred=reconstructed.reshape(-1, num_features),
-                              multioutput='variance_weighted')
+                pred = reconstructed.reshape(-1, num_features)
+
+                print(pred.shape)
+
+                mae = mean_absolute_error(y_true=true, y_pred=pred)
+                norm_mae = normalized_mae(y_true=true, y_pred=pred)
+
+                rmse = mean_squared_error(y_true=true, y_pred=pred, squared=False)
+                norm_rmse = normalized_rmse(y_true=true, y_pred=pred)
+
+                r2 = r2_score(y_true=true, y_pred=pred, multioutput='variance_weighted')
 
         # Save the results
         result_dict = {
-            'avg_error': np.average(maes),
-            'avg_mape': np.average(mapes),
+            'mae': mae,
+            'rmse': rmse,
+            'norm_mae': norm_mae,
+            'norm_rmse': norm_rmse,
             'r2_score': r2,
             'avg_bytes': np.average(num_bytes),
             'avg_measurements': np.average(num_measurements),
             'count': len(maes),
             'widths': width_counts,
-            'MAEs': maes,
-            'MAPEs': mapes,
+            'all_mae': maes,
+            'all_rmse': rmses,
             'num_bytes': num_bytes,
             'num_measurements': num_measurements,
             'labels': label_list,
@@ -220,8 +255,10 @@ class Server:
 if __name__ == '__main__':
     parser = ArgumentParser()
     parser.add_argument('--dataset', type=str, required=True)
+    parser.add_argument('--target', type=float, required=True)
     parser.add_argument('--encryption', type=str, choices=['block', 'stream'], required=True)
-    parser.add_argument('--params', type=str, required=True)
+    parser.add_argument('--policy', type=str, required=True)
+    parser.add_argument('--encoding', type=str, choices=['standard', 'group'], required=True)
     parser.add_argument('--output-folder', type=str, required=True)
     parser.add_argument('--port', type=int, default=50000)
     parser.add_argument('--max-num-samples', type=int)
@@ -229,7 +266,7 @@ if __name__ == '__main__':
     args = parser.parse_args()
 
     # Load the test data
-    inputs, labels = load_data(dataset_name=args.dataset, fold='all')
+    inputs, labels = load_data(dataset_name=args.dataset, fold='test')
 
     # Set the encryption mode
     encryption_mode = EncryptionMode[args.encryption.upper()]
@@ -238,16 +275,16 @@ if __name__ == '__main__':
     server = Server(host='localhost', port=args.port)
 
     # Extract the parameters
-    params = read_json(args.params)
+    #params = read_json(args.params)
 
     # Make the policy
-    policy = make_policy(name=params['name'],
-                         target=params['target'],
+    policy = make_policy(name=args.policy,
+                         target=args.target,
                          num_features=inputs.shape[2],
                          seq_length=inputs.shape[1],
                          dataset=args.dataset,
                          encryption_mode=encryption_mode,
-                         encoding=params.get('encoding', 'unknown'),
+                         encoding=args.encoding,
                          should_compress=args.should_compress)
 
     # Run the experiment
