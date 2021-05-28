@@ -7,10 +7,7 @@ from skip_rnn import SkipRNN
 from test import test_model
 
 
-#UPDATE_WEIGHTS = [10.0, 5.0, 2.0, 1.5, 1.0, 1.0, 0.75, 0.75, 0.0]
-#TARGETS = [0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0]
-
-UPDATE_WEIGHTS = [2.25, 1.75, 1.25, 1.0, 0.75, 0.5, 0.25, 0.1, 0.0]
+UPDATE_WEIGHTS = [2.25, 1.75, 1.5, 1.25, 1.0, 0.75, 0.5, 0.1, 0.0]
 TARGETS = [0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0]
 
 SAVE_FOLDER = 'saved_models'

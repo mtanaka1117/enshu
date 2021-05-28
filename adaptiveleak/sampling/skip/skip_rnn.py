@@ -126,7 +126,7 @@ class SkipGRUCell(tf.compat.v1.nn.rnn_cell.RNNCell):
             next_cell_state = tf.multiply(update_gate, candidate) + tf.multiply(1.0 - update_gate, prev_state)
 
             # Apply a small amount of noise for regularization
-            next_cell_state = apply_noise(next_cell_state, scale=0.01)
+            #next_cell_state = apply_noise(next_cell_state, scale=0.01)
 
             # Apply the state update gate. This is the Skip portion.
             # We first compute the state update gate. This is a binary version of the cumulative state update prob.
@@ -225,7 +225,7 @@ class SkipRNN(NeuralNetwork):
         avg_update_rate = tf.reduce_mean(update_rate)
         update_diff = avg_update_rate - self.target
 
-        update_loss = self._placeholders[LOSS_WEIGHT] * tf.math.maximum(update_diff, -0.2 * update_diff)
+        update_loss = self._placeholders[LOSS_WEIGHT] * tf.math.maximum(update_diff, -0.5 * update_diff)
 
         self._ops[LOSS_OP] = pred_loss + update_loss
 

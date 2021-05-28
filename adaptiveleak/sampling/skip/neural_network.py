@@ -14,6 +14,7 @@ from adaptiveleak.utils.file_utils import save_pickle_gz, read_pickle_gz, make_d
 
 DEFAULT_HYPERS = {
     'batch_size': 32,
+    'val_batch_size': 128,
     'learning_rate': 0.001,
     'learning_rate_decay': 0.9,
     'decay_patience': 2,
@@ -74,6 +75,10 @@ class NeuralNetwork:
     @property
     def batch_size(self) -> int:
         return int(self._hypers['batch_size'])
+
+    @property
+    def val_batch_size(self) -> int:
+        return int(self._hypers['val_batch_size'])
 
     @property
     def gradient_clip(self) -> float:
@@ -358,7 +363,12 @@ class NeuralNetwork:
         # Create the sample indices for batch creation
         train_idx = np.arange(len(train_inputs))
         num_train_batches = int(math.ceil(train_inputs.shape[0] / self.batch_size))
-        num_val_batches = int(math.ceil(val_inputs.shape[0] / self.batch_size))
+        num_val_batches = int(math.floor(val_inputs.shape[0] / self.val_batch_size))
+
+        # Shuffle the validation data once to ensure 'even' batches
+        val_idx = np.arange(len(val_inputs))
+        self._rand.shuffle(val_idx)
+        val_inputs = val_inputs[val_idx]
 
         for epoch in range(self.num_epochs):
 
@@ -421,8 +431,11 @@ class NeuralNetwork:
 
             val_ops = [LOSS_OP]
             for batch_idx in range(num_val_batches):
-                start, end = batch_idx * self.batch_size, (batch_idx + 1 ) * self.batch_size
+                start, end = batch_idx * self.val_batch_size, (batch_idx + 1 ) * self.val_batch_size
                 batch_features = val_inputs[start:end]
+
+                if len(batch_features) < self.val_batch_size:
+                    continue
 
                 feed_dict = self.batch_to_feed_dict(batch_features, epoch=epoch, is_train=False)
                 val_batch_results = self.execute(feed_dict=feed_dict, ops=val_ops)
