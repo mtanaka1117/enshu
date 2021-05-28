@@ -18,7 +18,7 @@ DEFAULT_HYPERS = {
     'learning_rate_decay': 0.9,
     'decay_patience': 2,
     'gradient_clip': 1,
-    'num_epochs': 50,
+    'num_epochs': 25,
     'patience': 10
 }
 
