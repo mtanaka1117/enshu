@@ -1,5 +1,6 @@
 import h5py
 import os.path
+import numpy as np
 
 from argparse import ArgumentParser
 
@@ -14,6 +15,9 @@ def test_model(model_name: str, save_folder: str, dataset_name: str):
     with h5py.File(test_path, 'r') as fin:
         test_inputs = fin['inputs'][:]
         test_labels = fin['output'][:]
+
+    if len(test_inputs.shape) == 2:
+        test_inputs = np.expand_dims(test_inputs, axis=-1)
 
     model_path = os.path.join(save_folder, MODEL_FILE_FMT.format(model_name))
     model = SkipRNN.restore(model_file=model_path)

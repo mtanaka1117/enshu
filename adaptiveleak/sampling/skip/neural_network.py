@@ -363,7 +363,7 @@ class NeuralNetwork:
         # Create the sample indices for batch creation
         train_idx = np.arange(len(train_inputs))
         num_train_batches = int(math.ceil(train_inputs.shape[0] / self.batch_size))
-        num_val_batches = int(math.floor(val_inputs.shape[0] / self.val_batch_size))
+        num_val_batches = max(int(math.floor(val_inputs.shape[0] / self.val_batch_size)), 1)
 
         # Shuffle the validation data once to ensure 'even' batches
         val_idx = np.arange(len(val_inputs))
@@ -421,7 +421,7 @@ class NeuralNetwork:
             train_loss.append(epoch_train_loss / num_train_samples)
 
             train_end = time.time()
-            train_batch_time = (train_end - train_start) / batch_idx
+            train_batch_time = (train_end - train_start) / (batch_idx + 1)
 
             # Execute the validation operations
             epoch_val_loss = 0.0
@@ -434,7 +434,7 @@ class NeuralNetwork:
                 start, end = batch_idx * self.val_batch_size, (batch_idx + 1 ) * self.val_batch_size
                 batch_features = val_inputs[start:end]
 
-                if len(batch_features) < self.val_batch_size:
+                if len(batch_features) < self.val_batch_size and batch_idx > 0:
                     continue
 
                 feed_dict = self.batch_to_feed_dict(batch_features, epoch=epoch, is_train=False)
@@ -457,7 +457,7 @@ class NeuralNetwork:
             val_loss.append(avg_val_loss)
 
             val_end = time.time()
-            val_batch_time = (val_end - val_start) / batch_idx
+            val_batch_time = (val_end - val_start) / (batch_idx + 1)
 
             # Check if we see improved validation performance
             should_save = False
