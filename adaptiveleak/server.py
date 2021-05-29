@@ -58,7 +58,7 @@ def reconstruct_sequence(measurements: np.ndarray, collected_indices: List[int],
     seq_idx = list(range(seq_length))
 
     # Get the 'final' value using a linear interpolation on the last two values (if necessary)
-    if collected_indices[-1] < (seq_length - 1):
+    if (len(measurements) >= 2) and (collected_indices[-1] < (seq_length - 1)):
         feature_diff = measurements[-1] - measurements[-2]
         time_diff = collected_indices[-1] - collected_indices[-2]
 
@@ -213,12 +213,8 @@ class Server:
                 true = inputs[0:limit]  # [N, T, D]
                 true = true.reshape(-1, num_features)
 
-                print(true.shape)
-
                 reconstructed = np.vstack(reconstructed_list)  # [N, T, D]
                 pred = reconstructed.reshape(-1, num_features)
-
-                print(pred.shape)
 
                 mae = mean_absolute_error(y_true=true, y_pred=pred)
                 norm_mae = normalized_mae(y_true=true, y_pred=pred)

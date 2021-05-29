@@ -138,6 +138,7 @@ class AdaptivePolicy(Policy):
                  width: int,
                  seq_length: int,
                  num_features: int,
+                 max_skip: int,
                  encryption_mode: EncryptionMode,
                  encoding_mode: EncodingMode,
                  should_compress: bool):
@@ -153,7 +154,7 @@ class AdaptivePolicy(Policy):
         self._encoding_mode = encoding_mode
 
         # Variables used to track the adaptive sampling policy
-        self._max_skip = int(1.0 / target) + 1
+        self._max_skip = int(1.0 / target) + max_skip
         self._current_skip = 0
         self._sample_skip = 0
 
@@ -312,6 +313,7 @@ class AdaptiveLiteSense(AdaptivePolicy):
                  width: int,
                  seq_length: int,
                  num_features: int,
+                 max_skip: int,
                  encryption_mode: EncryptionMode,
                  encoding_mode: EncodingMode,
                  should_compress: bool):
@@ -321,6 +323,7 @@ class AdaptiveLiteSense(AdaptivePolicy):
                          width=width,
                          seq_length=seq_length,
                          num_features=num_features,
+                         max_skip=max_skip,
                          encryption_mode=encryption_mode,
                          encoding_mode=encoding_mode,
                          should_compress=should_compress)
@@ -403,6 +406,7 @@ class SkipRNN(AdaptivePolicy):
                          width=width,
                          seq_length=seq_length,
                          num_features=num_features,
+                         max_skip=0,
                          encryption_mode=encryption_mode,
                          encoding_mode=encoding_mode,
                          should_compress=should_compress)
@@ -428,7 +432,14 @@ class SkipRNN(AdaptivePolicy):
 
         # Initialize the state
         self._state_size = self._W_state.shape[1]
-        self._state = np.zeros(shape=(self._state_size, 1))
+        
+        if 'rnn-cell/initial-hidden-state:0' in model_weights:
+            self._state = model_weights['rnn-cell/initial-hidden-state:0']
+            self._init_update_bias = 1
+        else:
+            self._state = np.zeros(shape=(self._state_size, 1))
+            self._init_update_bias = 0
+        
         self._cum_update_prob = 1.0  # Cumulative update prob
         self._update_prob = 0.0  # Update prob from the previous step (avoid re-computation)
 
@@ -451,9 +462,12 @@ class SkipRNN(AdaptivePolicy):
 
         # Compute the GRU gates
         stacked = np.concatenate([measurement, self._state], axis=0)  # [K + D, 1]
-        gates = sigmoid(self._W_gates.dot(stacked) + self._b_gates)
+        gates = self._W_gates.dot(stacked) + self._b_gates
 
         update_gate, reset_gate = gates[:self._state_size], gates[self._state_size:]
+
+        update_gate = sigmoid(update_gate + self._init_update_bias)
+        reset_gate = sigmoid(reset_gate)
 
         # Compute the candidate state
         stacked = np.concatenate([measurement, reset_gate * self._state], axis=0)
@@ -467,7 +481,13 @@ class SkipRNN(AdaptivePolicy):
         self._cum_update_prob = self._update_prob
 
     def reset(self):
-        self._state = np.zeros(shape=(self._state_size, 1))
+        if 'rnn-cell/initial-hidden-state:0' in model_weights:
+            self._state = model_weights['rnn-cell/initial-hidden-state:0']
+            self._init_update_bias = 1
+        else:
+            self._state = np.zeros(shape=(self._state_size, 1))
+            self._init_update_bias = 0
+        
         self._cum_update_prob = 1.0  # Cumulative update prob
         self._update_prob = 0.0  # Update prob from the previous step (avoid re-computation)
 
@@ -843,6 +863,7 @@ def make_policy(name: str,
     quantize_dict = read_json(quantize_path)
     precision = quantize_dict['precision']
     width = quantize_dict['width']
+    max_skip = quantize_dict.get('max_skip', 1)
 
     if name == 'random':
         return RandomPolicy(target=target + MARGIN,
@@ -897,6 +918,7 @@ def make_policy(name: str,
                    width=width,
                    seq_length=seq_length,
                    num_features=num_features,
+                   max_skip=max_skip,
                    encryption_mode=encryption_mode,
                    encoding_mode=EncodingMode[str(kwargs['encoding']).upper()],
                    should_compress=should_compress)

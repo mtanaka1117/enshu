@@ -12,7 +12,7 @@ from adaptiveleak.utils.loading import load_data
 from adaptiveleak.utils.file_utils import iterate_dir, read_json, save_pickle_gz, read_pickle_gz
 
 
-EPSILON = 1e-3
+EPSILON = 1e-5
 
 
 def execute(policy: AdaptivePolicy, inputs: np.ndarray, batch_size: int, upper: float) -> float:
