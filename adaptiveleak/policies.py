@@ -432,14 +432,15 @@ class SkipRNN(AdaptivePolicy):
 
         # Initialize the state
         self._state_size = self._W_state.shape[1]
-        
-        if 'rnn-cell/initial-hidden-state:0' in model_weights:
-            self._state = model_weights['rnn-cell/initial-hidden-state:0']
+
+        if 'initial-hidden-state:0' in model_weights:
+            self._initial_state = model_weights['initial-hidden-state:0'].T
             self._init_update_bias = 1
         else:
-            self._state = np.zeros(shape=(self._state_size, 1))
+            self._initial_state = np.zeros(shape=(self._state_size, 1))
             self._init_update_bias = 0
-        
+       
+        self._state = self._initial_state
         self._cum_update_prob = 1.0  # Cumulative update prob
         self._update_prob = 0.0  # Update prob from the previous step (avoid re-computation)
 
@@ -474,20 +475,17 @@ class SkipRNN(AdaptivePolicy):
         candidate = np.tanh(self._W_candidate.dot(stacked) + self._b_candidate)
 
         # Compute the next state
-        self._state = update_gate * candidate + (1.0 - update_gate) * self._state
+        if self._init_update_bias == 0:
+            self._state = update_gate * candidate + (1.0 - update_gate) * self._state
+        else:
+            self._state = (1.0 - update_gate) * candidate + update_gate * self._state
 
         # Compute the update probabilities
         self._update_prob = sigmoid(self._W_state.dot(self._state) + self._b_state)
         self._cum_update_prob = self._update_prob
 
     def reset(self):
-        if 'rnn-cell/initial-hidden-state:0' in model_weights:
-            self._state = model_weights['rnn-cell/initial-hidden-state:0']
-            self._init_update_bias = 1
-        else:
-            self._state = np.zeros(shape=(self._state_size, 1))
-            self._init_update_bias = 0
-        
+        self._state = self._initial_state
         self._cum_update_prob = 1.0  # Cumulative update prob
         self._update_prob = 0.0  # Update prob from the previous step (avoid re-computation)
 
