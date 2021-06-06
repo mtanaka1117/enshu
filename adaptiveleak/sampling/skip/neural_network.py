@@ -213,9 +213,6 @@ class NeuralNetwork:
         # Apply clipped gradients
         optimizer_op = self._optimizer.apply_gradients(pruned_gradients)
 
-        # Increment the global step
-        #global_step_op = tf.compat.v1.assign_add(self._global_step, 1)
-
         # Add optimization to the operations dict
         self._ops[OPTIMIZER_OP] = optimizer_op
 
@@ -278,6 +275,11 @@ class NeuralNetwork:
             batch_start = time.perf_counter()
             batch_result = self.execute(ops=test_ops, feed_dict=feed_dict)
             batch_end = time.perf_counter()
+
+            #if batch_idx == 0:
+            #    print(batch_result[PREDICTION_OP])
+            #    print(batch_result['skip_gates'])
+            #    print(feed_dict[self._placeholders['inputs']])
 
             if batch_idx > 0:
                 test_exec_time += (batch_end - batch_start)

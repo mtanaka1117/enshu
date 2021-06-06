@@ -7,6 +7,7 @@ from argparse import ArgumentParser
 from adaptiveleak.utils.file_utils import save_json_gz
 from neural_network import MODEL_FILE_FMT, TEST_LOG_FMT
 from skip_rnn import SkipRNN
+from skip_esn import SkipESN
 
 
 
@@ -21,14 +22,15 @@ def test_model(model_name: str, save_folder: str, dataset_name: str):
 
     model_path = os.path.join(save_folder, MODEL_FILE_FMT.format(model_name))
     model = SkipRNN.restore(model_file=model_path)
+    #model = SkipESN.restore(model_file=model_path)
 
-    avg_error, collection_rate, label_sizes = model.reconstruct(test_inputs, labels=test_labels)
-    print('Avg Error: {0:.5f}, Collection Rate: {1:.5f}'.format(avg_error, collection_rate))
+    #avg_error, collection_rate, label_sizes = model.reconstruct(test_inputs, labels=test_labels)
+    #print('Avg Error: {0:.5f}, Collection Rate: {1:.5f}'.format(avg_error, collection_rate))
 
     test_result = model.test(test_inputs=test_inputs, batch_size=None)
-    test_result['reconstruct_error'] = avg_error
-    test_result['rate'] = collection_rate
-    test_result['label_sizes'] = label_sizes
+    #test_result['reconstruct_error'] = avg_error
+    #test_result['rate'] = collection_rate
+    #test_result['label_sizes'] = label_sizes
 
     test_log_path = os.path.join(save_folder, TEST_LOG_FMT.format(model_name))
     save_json_gz(test_result, test_log_path)
