@@ -6,6 +6,7 @@ import time
 import math
 from datetime import datetime
 from sklearn.preprocessing import StandardScaler
+from sklearn.metrics import mean_absolute_error, mean_squared_error
 from typing import Dict, Any, Optional, List, Tuple, Set, Union
 
 from adaptiveleak.utils.constants import BIG_NUMBER
@@ -276,10 +277,10 @@ class NeuralNetwork:
             batch_result = self.execute(ops=test_ops, feed_dict=feed_dict)
             batch_end = time.perf_counter()
 
-            #if batch_idx == 0:
-            #    print(batch_result[PREDICTION_OP])
-            #    print(batch_result['skip_gates'])
-            #    print(feed_dict[self._placeholders['inputs']])
+            if batch_idx == 0:
+               # print(batch_result[PREDICTION_OP])
+                print(batch_result['skip_gates'][0:5])
+                print(feed_dict[self._placeholders['inputs']][0:5])
 
             if batch_idx > 0:
                 test_exec_time += (batch_end - batch_start)
@@ -306,14 +307,24 @@ class NeuralNetwork:
 
         print('Exec Batches: {0}, Total Time: {1}'.format(exec_batches, test_exec_time))
 
+        preds = preds.reshape(-1, preds.shape[-1])
+        expected = expected.reshape(-1, expected.shape[-1])
+
         # Compute the testing metrics
-        mae = np.average(np.abs(preds - expected))
+        mae = mean_absolute_error(y_pred=preds,
+                                  y_true=expected)
+                                    
+        rmse = mean_squared_error(y_pred=preds,
+                                  y_true=expected,
+                                  squared=False)
+
         loss = loss_sum / num_samples
         avg_updates = num_updates / (num_samples * self.input_shape[0])
         time_per_batch = test_exec_time / max(exec_batches, 1.0)
 
         return {
             'mae': float(mae),
+            'rmse': float(rmse),
             'loss': float(loss),
             'avg_updates': float(avg_updates),
             'duration': str(end_time - start_time),

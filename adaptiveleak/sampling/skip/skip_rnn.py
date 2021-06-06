@@ -26,52 +26,61 @@ SkipRNNStateTuple = namedtuple('SkipUGRNNStateTuple', ['state', 'prev_input', 'c
 SkipRNNOutputTuple = namedtuple('SkipUGRNNOutputTuple', ['output', 'state_update_gate', 'gate_value'])
 
 
-def binarize(x: tf.Tensor, name: str = 'binarize') -> tf.Tensor:
-    """
-    Maps the values in the given tensor to {0, 1} using a rounding function. This function
-    assigns the gradient to be the identity.
-    """
-    g = tf.compat.v1.get_default_graph()
+@tf.custom_gradient
+def binarize(x: tf.Tensor) -> tf.Tensor:
 
-    with g.gradient_override_map({'Round': 'Identity'}):
-        return tf.round(x, name=name)
+    def grad(dy):
+        abs_x = tf.abs(x)
+        cond = tf.cast(abs_x < 0.5, dtype=dy.dtype)
+        factor = cond * (4 - 6 * abs_x) + (1 - cond)
+        return factor * dy
+
+    return tf.round(x), grad
 
 
-def gru_transform(state: tf.Tensor,
-                  inputs: tf.Tensor,
-                  W_gates: tf.Tensor,
-                  b_gates: tf.Tensor,
-                  W_candidate: tf.Tensor,
-                  b_candidate: tf.Tensor):
+#def binarize(x: tf.Tensor, name: str = 'binarize') -> tf.Tensor:
+#    """
+#    Maps the values in the given tensor to {0, 1} using a rounding function. This function
+#    assigns the gradient to be the identity.
+#    """
+#    g = tf.compat.v1.get_default_graph()
+#
+#    with g.gradient_override_map({'Round': 'Identity'}):
+#        return tf.round(x, name=name)
+
+
+def ugrnn_transform(state: tf.Tensor,
+                    inputs: tf.Tensor,
+                    W_gates: tf.Tensor,
+                    b_gates: tf.Tensor):
     """
-    Performs a standard GRU transformation.
+    Performs a standard UGRNN transformation.
     """
     # Compute the linear transformation for the gates
     stacked = tf.concat([inputs, state], axis=-1)  # [B, K + D]
     gates = tf.matmul(stacked, W_gates) + b_gates  # [B, 2 * D]
     
     # Split into update and reset gates, [B, D] each
-    update_gate, reset_gate = tf.split(gates, num_or_size_splits=2, axis=-1)
+    update_gate, candidate = tf.split(gates, num_or_size_splits=2, axis=-1)
 
+    # Apply the activation functions
     update_gate = tf.math.sigmoid(update_gate + 1)  # [B, D]
-    reset_gate = tf.math.sigmoid(reset_gate)  # [B, D]
-
-    # Create the candidate state
-    reset_state = tf.multiply(reset_gate, state)  # [B, D]
-    stacked = tf.concat([inputs, reset_state], axis=-1)  # [B, K + D]
-    candidate = tf.nn.tanh(tf.matmul(stacked, W_candidate) + b_candidate) # [B, D]
+    candidate = tf.nn.tanh(candidate)
 
     # Create the next state
     next_state = update_gate * state + (1.0 - update_gate) * candidate
     return next_state
 
 
-class SkipGRUCell(tf.compat.v1.nn.rnn_cell.RNNCell):
+class SkipUGRNNCell(tf.compat.v1.nn.rnn_cell.RNNCell):
 
-    def __init__(self, units: int, input_size: int, target: float, name: str):
+    def __init__(self, units: int, input_size: int, target: float, is_train: bool, name: str):
         self._units = units
         self._input_size = input_size
+        self._is_train = is_train
         self._target = target
+
+        init_skip_bias = np.log(target / (1 - target))
 
         # Make the trainable variables for this cell
         with tf.compat.v1.variable_scope(name):
@@ -84,21 +93,21 @@ class SkipGRUCell(tf.compat.v1.nn.rnn_cell.RNNCell):
                                                      shape=[1, 2 * units],
                                                      trainable=True)
         
-            self.W_candidate = tf.compat.v1.get_variable(name='W-candidate',
-                                                         initializer=tf.compat.v1.glorot_uniform_initializer(),
-                                                         shape=[input_size + units, units],
-                                                         trainable=True)
-            self.b_candidate = tf.compat.v1.get_variable(name='b-candidate',
-                                                         initializer=tf.compat.v1.glorot_uniform_initializer(),
-                                                         shape=[1, units],
-                                                         trainable=True)
+            #self.W_candidate = tf.compat.v1.get_variable(name='W-candidate',
+            #                                             initializer=tf.compat.v1.glorot_uniform_initializer(),
+            #                                             shape=[input_size + units, units],
+            #                                             trainable=True)
+            #self.b_candidate = tf.compat.v1.get_variable(name='b-candidate',
+            #                                             initializer=tf.compat.v1.glorot_uniform_initializer(),
+            #                                             shape=[1, units],
+            #                                             trainable=True)
 
             self.W_state = tf.compat.v1.get_variable(name='W-state',
                                                      initializer=tf.compat.v1.glorot_uniform_initializer(),
                                                      shape=[units, 1],
                                                      trainable=True)
             self.b_state = tf.compat.v1.get_variable(name='b-state',
-                                                     initializer=tf.compat.v1.glorot_uniform_initializer(),
+                                                     initializer=tf.constant_initializer(value=init_skip_bias),
                                                      shape=[1, 1],
                                                      trainable=True)
 
@@ -144,15 +153,14 @@ class SkipGRUCell(tf.compat.v1.nn.rnn_cell.RNNCell):
         scope = scope if scope is not None else type(self).__name__
         with tf.compat.v1.variable_scope(scope):
             # Apply the standard GRU update, [B, D]
-            next_cell_state = gru_transform(state=prev_state,
-                                            inputs=inputs,
-                                            W_gates=self.W_gates,
-                                            b_gates=self.b_gates,
-                                            W_candidate=self.W_candidate,
-                                            b_candidate=self.b_candidate)
+            next_cell_state = ugrnn_transform(state=prev_state,
+                                              inputs=inputs,
+                                              W_gates=self.W_gates,
+                                              b_gates=self.b_gates)
 
             # Apply a small amount of noise for regularization
-            next_cell_state = apply_noise(next_cell_state, scale=0.01)
+            #if self._is_train:
+            #    next_cell_state = apply_noise(next_cell_state, scale=0.001)
 
             # Apply the state update gate. This is the Skip portion.
             # We first compute the state update gate. This is a binary version of the cumulative state update prob.
@@ -193,7 +201,7 @@ class SkipRNN(NeuralNetwork):
 
     def batch_to_feed_dict(self, features: np.ndarray, epoch: int, is_train: bool) -> Dict[tf.compat.v1.placeholder, np.ndarray]:
         feed_dict = super().batch_to_feed_dict(features=features, epoch=epoch, is_train=is_train)
-    
+
         if (epoch >= self.warmup) or (self.loss_weight <= START_LOSS_WEIGHT):
             loss_weight = self.loss_weight
         else:
@@ -218,10 +226,11 @@ class SkipRNN(NeuralNetwork):
         inputs = self._placeholders[INPUTS]  # [B, T, D]
 
         # Create the RNN Cell
-        rnn_cell = SkipGRUCell(units=self._hypers['rnn_units'],
-                               input_size=self.input_shape[-1],
-                               target=self.target,
-                               name='rnn-cell')
+        rnn_cell = SkipUGRNNCell(units=self._hypers['rnn_units'],
+                                 input_size=self.input_shape[-1],
+                                 is_train=is_train,
+                                 target=self.target,
+                                 name='rnn-cell')
 
         initial_state = rnn_cell.get_initial_state(inputs=inputs,
                                                    batch_size=tf.shape(inputs)[0],
