@@ -80,7 +80,7 @@ class SkipUGRNNCell(tf.compat.v1.nn.rnn_cell.RNNCell):
         self._is_train = is_train
         self._target = target
 
-        init_skip_bias = np.log(target / (1 - target))
+        init_skip_bias = np.log(target / (1 - target)) if target < 1.0 else 10.0
 
         # Make the trainable variables for this cell
         with tf.compat.v1.variable_scope(name):
