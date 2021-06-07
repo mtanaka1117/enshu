@@ -269,11 +269,12 @@ class SkipRNN(NeuralNetwork):
 
         self._ops['states'] = rnn_output.state
 
+        self._ops['rnn_pred'] = rnn_pred
         self._ops[PREDICTION_OP] = predictions
         self._ops[SKIP_GATES] = skip_gates
 
     def make_loss(self):
-        prediction = self._ops[PREDICTION_OP]
+        prediction = self._ops['rnn_pred']
         expected = self._placeholders[INPUTS]
 
         squared_diff = tf.square(prediction - expected)
