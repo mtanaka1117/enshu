@@ -23,7 +23,7 @@ LOSS_WEIGHT = 'loss_weight'
 
 
 SkipRNNStateTuple = namedtuple('SkipUGRNNStateTuple', ['state', 'prev_input', 'cumulative_state_update'])
-SkipRNNOutputTuple = namedtuple('SkipUGRNNOutputTuple', ['output', 'state_update_gate', 'gate_value'])
+SkipRNNOutputTuple = namedtuple('SkipUGRNNOutputTuple', ['output', 'state', 'state_update_gate', 'gate_value'])
 
 
 @tf.custom_gradient
@@ -86,13 +86,23 @@ class SkipUGRNNCell(tf.compat.v1.nn.rnn_cell.RNNCell):
         with tf.compat.v1.variable_scope(name):
             self.W_gates = tf.compat.v1.get_variable(name='W-gates',
                                                      initializer=tf.compat.v1.glorot_uniform_initializer(),
-                                                     shape=[input_size + units, 2 * units],
+                                                     shape=[input_size + units, units],
                                                      trainable=True)
             self.b_gates = tf.compat.v1.get_variable(name='b-gates',
                                                      initializer=tf.compat.v1.glorot_uniform_initializer(),
-                                                     shape=[1, 2 * units],
+                                                     shape=[1, units],
                                                      trainable=True)
         
+            self.alpha = tf.compat.v1.get_variable(name='alpha',
+                                                   initializer=tf.compat.v1.glorot_uniform_initializer(),
+                                                   shape=[1, 1],
+                                                   trainable=True)
+
+            self.beta = tf.compat.v1.get_variable(name='beta',
+                                                  initializer=tf.compat.v1.glorot_uniform_initializer(),
+                                                  shape=[1, 1],
+                                                  trainable=True)
+
             #self.W_candidate = tf.compat.v1.get_variable(name='W-candidate',
             #                                             initializer=tf.compat.v1.glorot_uniform_initializer(),
             #                                             shape=[input_size + units, units],
@@ -117,14 +127,14 @@ class SkipUGRNNCell(tf.compat.v1.nn.rnn_cell.RNNCell):
 
     @property
     def output_size(self) -> SkipRNNOutputTuple:
-        return SkipRNNOutputTuple(self._input_size, 1, 1)
+        return SkipRNNOutputTuple(self._input_size, self._units, 1, 1)
 
     def get_initial_state(self, inputs: Optional[tf.Tensor], batch_size: Optional[int], dtype: Any) -> SkipRNNStateTuple:
         """
         Creates an initial state by setting the hidden state to zero and the update probability to 1.
         """
         initial_state = tf.compat.v1.get_variable(name='initial-hidden-state',
-                                                  initializer=tf.compat.v1.glorot_uniform_initializer(),
+                                                  initializer=tf.compat.v1.random_uniform_initializer(minval=-0.7, maxval=0.7),
                                                   shape=[1, self._units],
                                                   dtype=dtype,
                                                   trainable=True)
@@ -153,10 +163,18 @@ class SkipUGRNNCell(tf.compat.v1.nn.rnn_cell.RNNCell):
         scope = scope if scope is not None else type(self).__name__
         with tf.compat.v1.variable_scope(scope):
             # Apply the standard GRU update, [B, D]
-            next_cell_state = ugrnn_transform(state=prev_state,
-                                              inputs=inputs,
-                                              W_gates=self.W_gates,
-                                              b_gates=self.b_gates)
+            #next_cell_state = ugrnn_transform(state=prev_state,
+            #                                  inputs=inputs,
+            #                                  W_gates=self.W_gates,
+            #                                  b_gates=self.b_gates)
+
+            stacked = tf.concat([inputs, prev_state], axis=-1)  # [B, K + D]
+            candidate = tf.nn.tanh(tf.matmul(stacked, self.W_gates) + self.b_gates)  # [B, D]
+
+            alpha = tf.math.sigmoid(self.alpha)
+            beta = tf.math.sigmoid(self.beta)
+
+            next_cell_state = alpha * candidate + beta * prev_state
 
             # Apply a small amount of noise for regularization
             #if self._is_train:
@@ -176,7 +194,7 @@ class SkipUGRNNCell(tf.compat.v1.nn.rnn_cell.RNNCell):
             cum_state_update_prob = state_update_gate * delta_state_update_prob + (1 - state_update_gate) * cum_prob_candidate
 
             skip_state = SkipRNNStateTuple(next_state, next_input, cum_state_update_prob)
-            skip_output = SkipRNNOutputTuple(next_input, state_update_gate, delta_state_update_prob)
+            skip_output = SkipRNNOutputTuple(next_input, next_state, state_update_gate, delta_state_update_prob)
 
         return skip_output, skip_state
 
@@ -249,6 +267,8 @@ class SkipRNN(NeuralNetwork):
         # Interpolate the predictions, [B, T, D]
         predictions = batch_interpolate_predictions(rnn_pred, skip_gates)
 
+        self._ops['states'] = rnn_output.state
+
         self._ops[PREDICTION_OP] = predictions
         self._ops[SKIP_GATES] = skip_gates
 
@@ -279,7 +299,7 @@ class SkipRNN(NeuralNetwork):
 
         label_sizes: DefaultDict[int, List[int]] = defaultdict(list)
 
-        for gates, seq_inputs, label in zip(skip_gates, inputs, labels):
+        for i, (gates, seq_inputs, label) in enumerate(zip(skip_gates, inputs, labels)):
             collected_indices = [idx for idx in range(self.seq_length) if np.isclose(gates[idx], 1)]
             measurements = seq_inputs[collected_indices]
 
