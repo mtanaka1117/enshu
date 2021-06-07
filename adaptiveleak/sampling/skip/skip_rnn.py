@@ -26,27 +26,27 @@ SkipRNNStateTuple = namedtuple('SkipUGRNNStateTuple', ['state', 'prev_input', 'c
 SkipRNNOutputTuple = namedtuple('SkipUGRNNOutputTuple', ['output', 'state', 'state_update_gate', 'gate_value'])
 
 
-@tf.custom_gradient
-def binarize(x: tf.Tensor) -> tf.Tensor:
-
-    def grad(dy):
-        abs_x = tf.abs(x)
-        cond = tf.cast(abs_x < 0.5, dtype=dy.dtype)
-        factor = cond * (4 - 6 * abs_x) + (1 - cond)
-        return factor * dy
-
-    return tf.round(x), grad
-
-
-#def binarize(x: tf.Tensor, name: str = 'binarize') -> tf.Tensor:
-#    """
-#    Maps the values in the given tensor to {0, 1} using a rounding function. This function
-#    assigns the gradient to be the identity.
-#    """
-#    g = tf.compat.v1.get_default_graph()
+#@tf.custom_gradient
+#def binarize(x: tf.Tensor) -> tf.Tensor:
 #
-#    with g.gradient_override_map({'Round': 'Identity'}):
-#        return tf.round(x, name=name)
+#    def grad(dy):
+#        abs_x = tf.abs(x)
+#        cond = tf.cast(abs_x < 0.5, dtype=dy.dtype)
+#        factor = cond * (4 - 6 * abs_x) + (1 - cond)
+#        return factor * dy
+#
+#    return tf.round(x), grad
+
+
+def binarize(x: tf.Tensor, name: str = 'binarize') -> tf.Tensor:
+    """
+    Maps the values in the given tensor to {0, 1} using a rounding function. This function
+    assigns the gradient to be the identity.
+    """
+    g = tf.compat.v1.get_default_graph()
+
+    with g.gradient_override_map({'Round': 'Identity'}):
+        return tf.round(x, name=name)
 
 
 def ugrnn_transform(state: tf.Tensor,
@@ -86,22 +86,22 @@ class SkipUGRNNCell(tf.compat.v1.nn.rnn_cell.RNNCell):
         with tf.compat.v1.variable_scope(name):
             self.W_gates = tf.compat.v1.get_variable(name='W-gates',
                                                      initializer=tf.compat.v1.glorot_uniform_initializer(),
-                                                     shape=[input_size + units, units],
+                                                     shape=[input_size + units, units * 2],
                                                      trainable=True)
             self.b_gates = tf.compat.v1.get_variable(name='b-gates',
                                                      initializer=tf.compat.v1.glorot_uniform_initializer(),
-                                                     shape=[1, units],
+                                                     shape=[1, 2 * units],
                                                      trainable=True)
         
-            self.alpha = tf.compat.v1.get_variable(name='alpha',
-                                                   initializer=tf.compat.v1.glorot_uniform_initializer(),
-                                                   shape=[1, 1],
-                                                   trainable=True)
+           # self.alpha = tf.compat.v1.get_variable(name='alpha',
+           #                                        initializer=tf.compat.v1.glorot_uniform_initializer(),
+           #                                        shape=[1, 1],
+           #                                        trainable=True)
 
-            self.beta = tf.compat.v1.get_variable(name='beta',
-                                                  initializer=tf.compat.v1.glorot_uniform_initializer(),
-                                                  shape=[1, 1],
-                                                  trainable=True)
+           # self.beta = tf.compat.v1.get_variable(name='beta',
+           #                                       initializer=tf.compat.v1.glorot_uniform_initializer(),
+           #                                       shape=[1, 1],
+           #                                       trainable=True)
 
             #self.W_candidate = tf.compat.v1.get_variable(name='W-candidate',
             #                                             initializer=tf.compat.v1.glorot_uniform_initializer(),
@@ -163,18 +163,18 @@ class SkipUGRNNCell(tf.compat.v1.nn.rnn_cell.RNNCell):
         scope = scope if scope is not None else type(self).__name__
         with tf.compat.v1.variable_scope(scope):
             # Apply the standard GRU update, [B, D]
-            #next_cell_state = ugrnn_transform(state=prev_state,
-            #                                  inputs=inputs,
-            #                                  W_gates=self.W_gates,
-            #                                  b_gates=self.b_gates)
+            next_cell_state = ugrnn_transform(state=prev_state,
+                                              inputs=inputs,
+                                              W_gates=self.W_gates,
+                                              b_gates=self.b_gates)
 
-            stacked = tf.concat([inputs, prev_state], axis=-1)  # [B, K + D]
-            candidate = tf.nn.tanh(tf.matmul(stacked, self.W_gates) + self.b_gates)  # [B, D]
+            #stacked = tf.concat([inputs, prev_state], axis=-1)  # [B, K + D]
+            #candidate = tf.nn.tanh(tf.matmul(stacked, self.W_gates) + self.b_gates)  # [B, D]
 
-            alpha = tf.math.sigmoid(self.alpha)
-            beta = tf.math.sigmoid(self.beta)
+            #alpha = tf.math.sigmoid(self.alpha)
+            #beta = tf.math.sigmoid(self.beta)
 
-            next_cell_state = alpha * candidate + beta * prev_state
+            #next_cell_state = alpha * candidate + beta * prev_state
 
             # Apply a small amount of noise for regularization
             #if self._is_train:
