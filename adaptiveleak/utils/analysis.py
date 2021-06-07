@@ -52,9 +52,6 @@ def normalized_mae(y_true: np.ndarray, y_pred: np.ndarray) -> float:
     avg_error = np.average(errors, axis=0)
 
     # Compute the IQR for each feature
-    #third_quartile = np.percentile(y_true, 75, axis=0)
-    #first_quartile = np.percentile(y_true, 25, axis=0)
-    #iqr = third_quartile - first_quartile
     min_val = np.min(y_true)
     max_val = np.max(y_true)
     data_range = max_val - min_val

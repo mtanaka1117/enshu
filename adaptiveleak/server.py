@@ -58,19 +58,18 @@ def reconstruct_sequence(measurements: np.ndarray, collected_indices: List[int],
     seq_idx = list(range(seq_length))
 
     # Get the 'final' value using a linear interpolation on the last two values (if necessary)
-    if (len(measurements) >= 2) and (collected_indices[-1] < (seq_length - 1)):
-        feature_diff = measurements[-1] - measurements[-2]
-        time_diff = collected_indices[-1] - collected_indices[-2]
+    #if (len(measurements) >= 2) and (collected_indices[-1] < (seq_length - 1)):
+    #    feature_diff = measurements[-1] - measurements[-2]
+    #    time_diff = collected_indices[-1] - collected_indices[-2]
 
-        slope = feature_diff / time_diff
-        step = (seq_length - 1) - collected_indices[-2]
+    #    slope = feature_diff / time_diff
+    #    step = (seq_length - 1) - collected_indices[-2]
 
-        right = slope * step + measurements[-2]
-        right = np.expand_dims(right, axis=0)
+    #    right = slope * step + measurements[-2]
+    #    right = np.expand_dims(right, axis=0)
 
-        collected_indices.append(seq_length - 1)
-        measurements = np.concatenate([measurements, right], axis=0)
-
+    #    collected_indices.append(seq_length - 1)
+    #    measurements = np.concatenate([measurements, right], axis=0)
 
     for feature_idx in range(measurements.shape[1]):
         collected_features = measurements[:, feature_idx]  # [K]

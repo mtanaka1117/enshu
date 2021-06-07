@@ -419,26 +419,24 @@ class SkipRNN(AdaptivePolicy):
         self._W_gates = model_weights['rnn-cell/W-gates:0'].T
         self._b_gates = model_weights['rnn-cell/b-gates:0'].T
 
-        self._W_candidate = model_weights['rnn-cell/W-candidate:0'].T
-        self._b_candidate = model_weights['rnn-cell/b-candidate:0'].T
+        #self._W_candidate = model_weights['rnn-cell/W-candidate:0'].T
+        #self._b_candidate = model_weights['rnn-cell/b-candidate:0'].T
 
         self._W_state = model_weights['rnn-cell/W-state:0'].T
         self._b_state = model_weights['rnn-cell/b-state:0'].T
 
+        #self._alpha = sigmoid(model_weights['rnn-cell/alpha:0'])
+        #self._beta = sigmoid(model_weights['rnn-cell/beta:0'])
+
         # Unpack the normalization object
         scaler = read_pickle_gz(model_file)['metadata']['scaler']
         self._mean = np.expand_dims(scaler.mean_, axis=-1) # [K, 1]
-        self._var = np.expand_dims(scaler.var_, axis=-1)  # [K, 1]
+        self._scale = np.expand_dims(scaler.scale_, axis=-1)  # [K, 1]
 
         # Initialize the state
         self._state_size = self._W_state.shape[1]
 
-        if 'initial-hidden-state:0' in model_weights:
-            self._initial_state = model_weights['initial-hidden-state:0'].T
-            self._init_update_bias = 1
-        else:
-            self._initial_state = np.zeros(shape=(self._state_size, 1))
-            self._init_update_bias = 0
+        self._initial_state = model_weights['initial-hidden-state:0'].T
        
         self._state = self._initial_state
         self._cum_update_prob = 1.0  # Cumulative update prob
@@ -459,26 +457,28 @@ class SkipRNN(AdaptivePolicy):
             measurement = np.expand_dims(measurement, axis=-1)
 
         # Normalize the measurements
-        measurement = (measurement - self._mean) / self._var
+        measurement = (measurement - self._mean) / self._scale
 
-        # Compute the GRU gates
+        # Compute the Fast RNN Update
         stacked = np.concatenate([measurement, self._state], axis=0)  # [K + D, 1]
-        gates = self._W_gates.dot(stacked) + self._b_gates
+        #candidate = np.tanh(np.matmul(self._W_gates, stacked) + self._b_gates)  # [D, 1]
 
-        update_gate, reset_gate = gates[:self._state_size], gates[self._state_size:]
+        #self._state = self._alpha * candidate + self._beta * self._state
 
-        update_gate = sigmoid(update_gate + self._init_update_bias)
-        reset_gate = sigmoid(reset_gate)
+        gates = np.matmul(self._W_gates, stacked) + self._b_gates
+
+        update_gate, candidate = gates[:self._state_size], gates[self._state_size:]
+
+        update_gate = sigmoid(update_gate + 1)
+        candidate = np.tanh(candidate)
+        #reset_gate = sigmoid(reset_gate)
 
         # Compute the candidate state
-        stacked = np.concatenate([measurement, reset_gate * self._state], axis=0)
-        candidate = np.tanh(self._W_candidate.dot(stacked) + self._b_candidate)
+        #stacked = np.concatenate([measurement, reset_gate * self._state], axis=0)
+        #candidate = np.tanh(self._W_candidate.dot(stacked) + self._b_candidate)
 
         # Compute the next state
-        if self._init_update_bias == 0:
-            self._state = update_gate * candidate + (1.0 - update_gate) * self._state
-        else:
-            self._state = (1.0 - update_gate) * candidate + update_gate * self._state
+        self._state = (1.0 - update_gate) * candidate + update_gate * self._state
 
         # Compute the update probabilities
         self._update_prob = sigmoid(self._W_state.dot(self._state) + self._b_state)
@@ -710,15 +710,6 @@ class AdaptiveLinear(AdaptiveJitter):
 
         self._current_skip = max(min(self._current_skip, self._max_skip), 0)
 
-        #print('Current Window: {0}'.format(self._captured))
-        #print('Current Idx: {0}'.format(self._captured_idx))
-        #print('Projected: {0}'.format(projected))
-        #print('Diff: {0}'.format(feature_diff))
-        #print('Slope: {0}'.format(slope))
-        #print('Error: {0}, Threshold: {1}'.format(error, self._threshold))
-        #print('Next Skip: {0}'.format(self._current_skip))
-        #print('=========')
-
         # Update the sum values
         while len(self._captured) > self._window:
             self._captured.popleft()
@@ -777,7 +768,7 @@ class UniformPolicy(Policy):
                          seq_length=seq_length,
                          encryption_mode=encryption_mode,
                          should_compress=should_compress)
-        target_samples = int(math.ceil(target * seq_length))
+        target_samples = int(target * seq_length)
 
         skip = max(1.0 / target, 1)
         frac_part = skip - math.floor(skip)
