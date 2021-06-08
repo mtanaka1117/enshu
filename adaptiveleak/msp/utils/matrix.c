@@ -131,3 +131,33 @@ FixedPoint vector_diff_norm(struct Vector *vec1, struct Vector *vec2) {
 
     return norm;
 }
+
+
+struct Vector *matrix_vector_prod(struct Vector *result, struct Matrix *mat, struct Vector *vec, uint16_t precision) {
+    if ((result->size != mat->numRows) || (vec->size != mat->numCols)) {
+        return result;
+    }
+
+    uint16_t numRows = mat->numRows;
+    uint16_t numCols = mat->numCols;
+
+    uint16_t i, j;
+    uint16_t row, col;
+    FixedPoint prod, sum;
+
+    for (i = numRows; i > 0; i--) {
+        row = i - 1;
+        sum = 0;
+
+        for (j = numCols; j > 0; j--) {
+            col = j - 1;
+
+            prod = fp_mul(mat->data[MATRIX_INDEX(row, col, numCols)], vec->data[col], precision);
+            sum = fp_add(sum, prod);
+        }
+
+        result->data[row] = sum;
+    }
+
+    return result;
+}

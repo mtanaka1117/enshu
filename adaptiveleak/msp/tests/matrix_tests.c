@@ -37,6 +37,12 @@ int main(void) {
     test_diff_norm_ten();
     test_diff_norm_overflow();
     printf("\tPassed Vector Diff Norm Tests.\n");
+
+    printf("==== Testing Matrix Vector Products ====\n");
+    test_mat_vec_prod_3_4();
+    test_mat_vec_prod_6_5();
+    printf("\tPassed Matrix Vector Products Tests.\n");
+
 }
 
 
@@ -283,6 +289,44 @@ void test_absolute_diff_ten(void) {
 
     vector_absolute_diff(&vec1, &vec1, &vec2);
     assert(vector_equal(&expected, &vec1));
+}
+
+
+/**
+ * MATRIX VECTOR PRODUCT TESTS
+ */
+void test_mat_vec_prod_3_4(void) {
+    FixedPoint vecData[4] = { -144,849,-79,943 };
+    struct Vector vec = { vecData, 4 }; 
+
+    FixedPoint matData[12] = { -47,313,400,78,1634,-1729,79,1045,-964,560,-217,-1414 };
+    struct Matrix matrix = { matData, 3, 4 };    
+ 
+    FixedPoint expectedData[3] = { 305,-709,-688 };
+    struct Vector expected = { expectedData, 3 };
+
+    FixedPoint resultData[3];
+    struct Vector result = { resultData, 3 };
+
+    matrix_vector_prod(&result, &matrix, &vec, 10);
+    assert(vector_equal(&expected, &result));
+}
+
+void test_mat_vec_prod_6_5(void) {
+    FixedPoint vecData[5] = { -4251,-291,-2725,2308,1890 };
+    struct Vector vec = { vecData, 5 };
+
+    FixedPoint matData[30] = { 2315,-2046,-1244,3895,4922,-2941,-3425,-665,1555,-2198,-3269,-4696,-2424,2442,-3266,909,-2356,-4795,-985,874,-4942,2219,-543,-1137,-2615,-4407,-4632,2648,-321,196 };
+    struct Matrix matrix = { matData, 6, 5 };    
+ 
+    FixedPoint expectedData[6] = { 6070,7197,10414,4522,6968,6099 };
+    struct Vector expected = { expectedData, 6 };
+
+    FixedPoint resultData[6];
+    struct Vector result = { resultData, 6 };
+
+    matrix_vector_prod(&result, &matrix, &vec, 11);
+    assert(vector_equal(&expected, &result));
 }
 
 

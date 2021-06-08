@@ -31,6 +31,9 @@ void test_absolute_diff_ten(void);
 
 void test_set_four(void);
 
+void test_mat_vec_prod_3_4(void);
+void test_mat_vec_prod_6_5(void);
+
 uint8_t vector_equal(struct Vector *expected, struct Vector *given);
 
 #endif
