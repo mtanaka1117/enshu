@@ -16,31 +16,78 @@ FixedPoint fp_mul(FixedPoint x, FixedPoint y, uint16_t precision) {
 }
 
 
+FixedPoint fp_neg(FixedPoint x) {
+    return -1 * x;
+}
+
+
 FixedPoint fp_abs(FixedPoint x) {
     return x * ((x > 0) - (x < 0));
 }
 
 
-FixedPoint fp_norm(FixedPoint *array, uint16_t length) {
-    uint16_t i, j;
+FixedPoint fp32_mul(FixedPoint x, FixedPoint y, uint16_t precision) {
+    int32_t xLarge = (int32_t) x;
+    int32_t yLarge = (int32_t) y;
+    int32_t result = (x * y) >> precision;
+    return (FixedPoint) result;
+}
 
-    FixedPoint arrayValue;
-    FixedPoint norm = 0;
+int16_t fp_tanh(int16_t x, uint16_t precision) {
+    /**
+     * Approximates tanh using a polynomial.
+     */
+    uint8_t shouldInvertSign = 0;
+    if (x < 0) {
+        x = fp_neg(x);
+        shouldInvertSign = 1;
+    }
+    
+    FixedPoint fourth = 1 << (precision - 2);
+    FixedPoint half = 1 << (precision - 1);
+    FixedPoint one = 1 << precision;
+    FixedPoint two = 1 << (precision + 1);
 
-    for (i = length; i > 0; i--) {
-        arrayValue = array[i - 1];
+    // Approximate tanh(x) using a piece-wise linear function
+    FixedPoint result = one;
+    if (x <= fourth) {
+        result = x;
+    } else if (x <= 3 * fourth) {
+        result = 3 * (x >> 2) + 5 * (1 << (precision - 6));
+    } else if (x <= (one + fourth)) {
+        result = (x >> 1) + fourth;
+    } else if (x <= (two + fourth)) {
+        result = (x >> 3) + (half + fourth - (1 << (precision - 5)));
 
-        // Protect against overflow
-        if ((INT16_MAX - norm) < arrayValue) {
-            return INT16_MAX;
+        if (result > one) {
+            result = one;
         }
+    }
+    
+    if (shouldInvertSign) {
+        return fp_neg(result);
+    }
+    return result;
+}
 
-        // Compute the absolute value of the array element
-        arrayValue = fp_abs(arrayValue);
 
-        // Add value into the running norm
-        norm = fp_add(norm, arrayValue);
+int16_t fp_sigmoid(int16_t x, uint16_t precision) {
+    /**
+     * Approximates the sigmoid function using tanh.
+     */
+    uint8_t should_invert_sign = 0;
+    if (x < 0) {
+        x = fp_neg(x);
+        should_invert_sign = 1;
     }
 
-    return norm;
+    FixedPoint one = 1 << precision;
+    FixedPoint tanh = fp_tanh(x >> 1, precision);
+    FixedPoint result = fp_add(tanh, one) >> 1;
+
+    if (should_invert_sign) {
+        result = one - result;
+    }
+
+    return result;
 }

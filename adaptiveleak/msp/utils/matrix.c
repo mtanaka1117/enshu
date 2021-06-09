@@ -37,7 +37,7 @@ struct Vector *vector_mul(struct Vector *result, struct Vector *vec1, struct Vec
 }
 
 
-struct Vector *vector_gated_add(struct Vector *result, struct Vector *vec1, struct Vector *vec2, FixedPoint gate, uint16_t precision) {
+struct Vector *vector_gated_add_scalar(struct Vector *result, struct Vector *vec1, struct Vector *vec2, FixedPoint gate, uint16_t precision) {
     /**
      * Returns a vector with gate * vec1 + (1 - gate) * vec2
      */
@@ -54,6 +54,35 @@ struct Vector *vector_gated_add(struct Vector *result, struct Vector *vec1, stru
         j = i - 1;
         
         temp1 = fp_mul(vec1->data[j], gate, precision);
+        temp2 = fp_mul(vec2->data[j], oneMinusGate, precision);
+        result->data[j] = fp_add(temp1, temp2);
+    }
+
+    return result;
+}
+
+
+struct Vector *vector_gated_add(struct Vector *result, struct Vector *vec1, struct Vector *vec2, struct Vector *gate, uint16_t precision) {
+    /**
+     * Returns a vector with gate * vec1 + (1 - gate) * vec2
+     */
+    if ((vec1->size != vec2->size) || (vec1->size != result->size) || (vec1->size != gate->size)) {
+        return result;
+    }
+
+    uint16_t i, j;
+    FixedPoint temp1, temp2;
+
+    FixedPoint one = 1 << precision;
+    FixedPoint oneMinusGate, gateValue;
+
+    for (i = vec1->size; i > 0; i--) {
+        j = i - 1;
+        
+        gateValue = gate->data[j];
+        oneMinusGate = fp_sub(one, gateValue);
+
+        temp1 = fp_mul(vec1->data[j], gateValue, precision);
         temp2 = fp_mul(vec2->data[j], oneMinusGate, precision);
         result->data[j] = fp_add(temp1, temp2);
     }
@@ -157,6 +186,77 @@ struct Vector *matrix_vector_prod(struct Vector *result, struct Matrix *mat, str
         }
 
         result->data[row] = sum;
+    }
+
+    return result;
+}
+
+
+FixedPoint vector_dot_prod(struct Vector *vec1, struct Vector *vec2, uint16_t precision) {
+    if (vec1->size != vec2->size) {
+        return 0;
+    }
+
+    FixedPoint result = 0;
+
+    uint16_t i, j;
+    for (i = vec1->size; i > 0; i--) {
+        j = i - 1;
+        result = fp_add(result, fp_mul(vec1->data[j], vec2->data[j], precision));
+    }
+
+    return result;
+}
+
+
+struct Vector *vector_apply(struct Vector *result, struct Vector *vec, FixedPoint (*fn)(FixedPoint, uint16_t), uint16_t precision) {
+    if (vec->size != result->size) {
+        return result;
+    }
+
+    uint16_t i, j;
+    for (i = vec->size; i > 0; i--) {
+        j = i - 1;
+        result->data[j] = fn(vec->data[j], precision);
+    }
+
+    return result;
+}
+
+
+struct Vector *vector_stack(struct Vector *result, struct Vector *first, struct Vector *second) {
+    if (result->size != first->size + second->size) {
+        return result;
+    }
+
+    uint16_t i, j;
+    for (i = first->size; i > 0; i--) {
+        j = i - 1;
+        result->data[j] = first->data[j];
+    }
+
+    uint16_t offset = first->size;
+    for (i = second->size; i > 0; i--) {
+        j = i - 1;
+        result->data[j + offset] = second->data[j];
+    }
+
+    return result;
+}
+
+
+struct Vector *vector_scale(struct Vector *result, struct Vector *vec, struct Vector *mean, struct Vector *scale, uint16_t precision) {
+    if ((result->size != vec->size) || (result->size != mean->size) || (result->size != scale->size)) {
+        return result;
+    }
+
+    uint16_t i, j;
+    FixedPoint diff;
+
+    for (i = result->size; i > 0; i--) {
+        j = i - 1;
+        diff = fp_sub(vec->data[j], mean->data[j]);
+        result->data[j] = fp32_mul(diff, scale->data[j], precision);
     }
 
     return result;

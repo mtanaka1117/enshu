@@ -16,10 +16,10 @@ int main(void) {
     test_mul_ten();
     printf("\tPassed Vector Multiply Tests.\n");
 
-    printf("==== Testing Vector Gated Add ====\n");
-    test_gated_add_four();
-    test_gated_add_ten();
-    printf("\tPassed Vector Gated Add Tests.\n");
+    printf("==== Testing Vector-Scalar Gated Add ====\n");
+    test_gated_add_scalar_four();
+    test_gated_add_scalar_ten();
+    printf("\tPassed Vector-Scaler Gated Add Tests.\n");
 
     printf("==== Testing Vector Norm ====\n");
     test_norm_four();
@@ -43,6 +43,24 @@ int main(void) {
     test_mat_vec_prod_6_5();
     printf("\tPassed Matrix Vector Products Tests.\n");
 
+    printf("==== Testing Matrix Vector Products ====\n");
+    test_dot_prod_4();
+    test_dot_prod_6();
+    printf("\tPassed Matrix Vector Products Tests.\n");
+
+    printf("==== Testing Vector Stacking ====\n");
+    test_stack_1_10();
+    test_stack_6_6();
+    printf("\tPassed Vector Stacking.\n");
+
+    printf("==== Testing Vector Scaling ====\n");
+    test_scale_6();
+    printf("\tPassed Vector Scaling.\n");
+
+    printf("==== Testing Vector Apply ====\n");
+    test_apply_tanh();
+    test_apply_sigmoid();
+    printf("\tPassed Vector Apply.\n");
 }
 
 
@@ -139,7 +157,7 @@ void test_mul_ten(void) {
 /**
  * Vector Gated Add Tests
  */
-void test_gated_add_four(void) {
+void test_gated_add_scalar_four(void) {
     uint16_t precision = 10;
 
     FixedPoint data1[4] = { 513,-1660,835 };
@@ -153,13 +171,13 @@ void test_gated_add_four(void) {
 
     FixedPoint gate = 256;
 
-    vector_gated_add(&vec1, &vec1, &vec2, gate, precision);
+    vector_gated_add_scalar(&vec1, &vec1, &vec2, gate, precision);
 
     assert(vector_equal(&expected, &vec1));
 }
 
 
-void test_gated_add_ten(void) {
+void test_gated_add_scalar_ten(void) {
     uint16_t precision = 8;
 
     FixedPoint data1[10] = { -909,1561,363,931,-258,-241,1077,-173,1665,839 };
@@ -173,7 +191,7 @@ void test_gated_add_ten(void) {
 
     FixedPoint gate = 192;
 
-    vector_gated_add(&vec1, &vec1, &vec2, gate, precision);
+    vector_gated_add_scalar(&vec1, &vec1, &vec2, gate, precision);
 
     assert(vector_equal(&expected, &vec1));
 }
@@ -327,6 +345,124 @@ void test_mat_vec_prod_6_5(void) {
 
     matrix_vector_prod(&result, &matrix, &vec, 11);
     assert(vector_equal(&expected, &result));
+}
+
+
+/**
+ * VECTOR DOT PRODUCT TESTS
+ */
+void test_dot_prod_4(void) {
+    FixedPoint vec1Data[4] = { -3423,4707,2468,-3056 };
+    struct Vector vec1 = { vec1Data, 4 };
+
+    FixedPoint vec2Data[4] = { 2466,-4430,1701,278 };
+    struct Vector vec2 = { vec2Data, 4 };
+
+    FixedPoint result = vector_dot_prod(&vec1, &vec2, 10);
+    assert(result == -25339);
+}
+
+
+void test_dot_prod_6(void) {
+    FixedPoint vec1Data[6] = { 999,-920,1778,1284,-881,-841 };
+    struct Vector vec1 = { vec1Data, 6 };
+
+    FixedPoint vec2Data[6] ={ -2519,-878,-1434,4544,-2751,-4086 };
+    struct Vector vec2 = { vec2Data, 6 };
+
+    FixedPoint result = vector_dot_prod(&vec1, &vec2, 11);
+    assert(result == 3628);
+}
+
+
+
+/**
+ * VECTOR STACKING TESTS
+ */
+void test_stack_1_10(void) {
+    FixedPoint vec1Data[1] = { 2315 };
+    struct Vector vec1 = { vec1Data, 1 };
+
+    FixedPoint vec2Data[10] = { -2046,-1244,3895,4922,-2941,-3425,-665,1555,-2198,-3269 };
+    struct Vector vec2 = { vec2Data, 10 };
+
+    FixedPoint resultData[11];
+    struct Vector result = { resultData, 11 };
+
+    FixedPoint expectedData[11] = { 2315,-2046,-1244,3895,4922,-2941,-3425,-665,1555,-2198,-3269 };
+    struct Vector expected = { expectedData, 11 };
+
+    vector_stack(&result, &vec1, &vec2);
+    assert(vector_equal(&expected, &result));
+}
+
+
+void test_stack_6_6(void) {
+    FixedPoint vec1Data[6] = { 2315,-2046,-1244,3895,4922,-2941 };
+    struct Vector vec1 = { vec1Data, 6 };
+
+    FixedPoint vec2Data[6] = { -3425,-665,1555,-2198,-3269,35 };
+    struct Vector vec2 = { vec2Data, 6 };
+
+    FixedPoint resultData[12];
+    struct Vector result = { resultData, 12 };
+
+    FixedPoint expectedData[12] = { 2315,-2046,-1244,3895,4922,-2941,-3425,-665,1555,-2198,-3269,35 };
+    struct Vector expected = { expectedData, 12 };
+
+    vector_stack(&result, &vec1, &vec2);
+    assert(vector_equal(&expected, &result));
+}
+
+/**
+ * VECTOR SCALING TESTS
+ */
+void test_scale_6(void) {
+    FixedPoint vecData[6] = { -3995,619,-883,-4957,3213,3183 };
+    struct Vector vec = { vecData, 6 };
+
+    FixedPoint meanData[6] = { 2675,4915,-802,2527,-4585,1745 };
+    struct Vector mean = { meanData, 6 };
+
+    FixedPoint scaleData[6] = { 2214,4593,878,4964,3618,-1508 };
+    struct Vector scale = { scaleData, 6 };
+
+    FixedPoint expectedData[6] = { -7211,-9635,-35,-18140,13775,-1059 };
+    struct Vector expected = { expectedData, 6 };
+
+    vector_scale(&vec, &vec, &mean, &scale, 11);
+    assert(vector_equal(&expected, &vec));
+}
+
+
+/**
+ * VECTOR APPLY TESTS
+ */
+void test_apply_tanh(void) {
+    uint16_t precision = 10;
+        
+    FixedPoint vecData[6] = { 0,512,-512,1024,2040,4000 };
+    struct Vector vec = { vecData, 6 };
+
+    FixedPoint expectedData[6] = { 0,464,-464,768,991,1024 };
+    struct Vector expected = { expectedData, 6 };
+
+    vector_apply(&vec, &vec, &fp_tanh, precision);
+    assert(vector_equal(&expected, &vec));
+}
+
+
+void test_apply_sigmoid(void) {
+    uint16_t precision = 10;
+        
+    FixedPoint vecData[7] = { 0,512,-512,1024,2040,5000,-5000 };
+    struct Vector vec = { vecData, 7 };
+
+    FixedPoint expectedData[7] = { 512,640,384,744,895,1024,0 };
+    struct Vector expected = { expectedData, 7 };
+
+    vector_apply(&vec, &vec, &fp_sigmoid, precision);
+    assert(vector_equal(&expected, &vec));
 }
 
 
