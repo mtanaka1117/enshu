@@ -14,7 +14,7 @@ from typing import Optional, Any, Dict, Tuple
 from adaptiveleak.utils.constants import SMALL_NUMBER
 from adaptiveleak.server import reconstruct_sequence
 from neural_network import NeuralNetwork, PREDICTION_OP, LOSS_OP, INPUTS
-from tfutils import apply_noise, batch_interpolate_predictions
+from tfutils import apply_noise, batch_interpolate_predictions, linear_sigmoid, linear_tanh
 
 
 START_LOSS_WEIGHT = 0.01
@@ -64,8 +64,11 @@ def ugrnn_transform(state: tf.Tensor,
     update_gate, candidate = tf.split(gates, num_or_size_splits=2, axis=-1)
 
     # Apply the activation functions
-    update_gate = tf.math.sigmoid(update_gate + 1)  # [B, D]
-    candidate = tf.nn.tanh(candidate)
+    #update_gate = tf.math.sigmoid(update_gate + 1)  # [B, D]
+    update_gate = linear_sigmoid(update_gate + 1)
+
+    #candidate = tf.nn.tanh(candidate)
+    candidate = linear_tanh(candidate)
 
     # Create the next state
     next_state = update_gate * state + (1.0 - update_gate) * candidate
@@ -177,8 +180,8 @@ class SkipUGRNNCell(tf.compat.v1.nn.rnn_cell.RNNCell):
             #next_cell_state = alpha * candidate + beta * prev_state
 
             # Apply a small amount of noise for regularization
-            #if self._is_train:
-            #    next_cell_state = apply_noise(next_cell_state, scale=0.001)
+            if self._is_train:
+                next_cell_state = apply_noise(next_cell_state, scale=0.001)
 
             # Apply the state update gate. This is the Skip portion.
             # We first compute the state update gate. This is a binary version of the cumulative state update prob.
@@ -242,6 +245,7 @@ class SkipRNN(NeuralNetwork):
 
     def make_graph(self, is_train: bool):
         inputs = self._placeholders[INPUTS]  # [B, T, D]
+        inputs = apply_noise(inputs, scale=0.001)
 
         # Create the RNN Cell
         rnn_cell = SkipUGRNNCell(units=self._hypers['rnn_units'],

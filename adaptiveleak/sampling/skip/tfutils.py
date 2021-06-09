@@ -11,6 +11,26 @@ def apply_noise(inputs: tf.Tensor, scale: float) -> tf.Tensor:
     return tf.add(inputs, noise)
 
 
+def linear_tanh(x: tf.Tensor):
+    return 2 * linear_sigmoid(2 * x) - 1
+
+
+def linear_sigmoid(x: tf.Tensor):
+    cond1 = tf.stop_gradient(tf.cast(tf.less(x, -3), dtype=x.dtype))
+    cond2 = tf.stop_gradient(tf.cast(tf.logical_and(tf.greater_equal(x, -3), tf.less(x, -1)), dtype=x.dtype))
+    cond3 = tf.stop_gradient(tf.cast(tf.logical_and(tf.greater_equal(x, -1), tf.less(x, 1)), dtype=x.dtype))
+    cond4 = tf.stop_gradient(tf.cast(tf.logical_and(tf.greater_equal(x, 1), tf.less_equal(x, 3)), dtype=x.dtype))
+    cond5 = tf.stop_gradient(tf.cast(tf.greater(x, 3), dtype=x.dtype))
+
+    part1 = 0
+    part2 = 0.125 * x + 0.375
+    part3 = 0.25 * x + 0.5
+    part4 = 0.125 * x + 0.625
+    part5 = 1
+
+    result = (part1 * cond1) + (part2 * cond2) + (part3 * cond3) + (part4 * cond4) + (part5 * cond5)
+    return result
+
 def interpolate_predictions(skip_predictions: tf.Tensor, update_gates: tf.Tensor) -> tf.Tensor:
     """
     Gets the collected indices from the given Skip RNN update gates.
@@ -109,16 +129,25 @@ def batch_interpolate_predictions(skip_predictions: tf.Tensor, update_gates: tf.
 #input_array = [[[8], [2], [2], [6], [6], [7]], [[5], [5], [4], [4], [4], [4]]]
 #update_gates = [[1, 1, 0, 1, 0, 1], [1, 0, 1, 0, 0, 0]]
 #
+#inputs = [[0.5, 0.12, -1.75, 100]]
+#
 #with tf.compat.v1.Session(graph=tf.Graph()) as sess:
 #
 #
-#    input_ph = tf.compat.v1.placeholder(shape=(None, 6, 1),
+#    input_ph = tf.compat.v1.placeholder(shape=(None, 4),
 #                                        dtype=tf.float32,
 #                                        name='inputs')
 #
-#    gates_ph = tf.compat.v1.placeholder(shape=(None, 6),
-#                                        dtype=tf.float32,
-#                                        name='gates')
+#    weight_mat = tf.compat.v1.get_variable(shape=[4, 5],
+#                                           initializer=tf.compat.v1.glorot_uniform_initializer(),
+#                                           dtype=tf.float32,
+#                                           name='weights')
+#
+#
+#
+#    #gates_ph = tf.compat.v1.placeholder(shape=(None, 6),
+#    #                                    dtype=tf.float32,
+#    #                                    name='gates')
 #
 #
 #    #skip_predictions = tf.constant([[8, 0], [2, 2], [2, 2], [6, 6], [6, 6], [7, 7]], dtype=tf.float32)
@@ -130,11 +159,15 @@ def batch_interpolate_predictions(skip_predictions: tf.Tensor, update_gates: tf.
 #    
 #    #update_gates = tf.constant([1, 1, 0, 1, 0, 0], dtype=tf.float32)
 #
-#    output = batch_interpolate_predictions(input_ph, gates_ph)
+#    #output = batch_interpolate_predictions(input_ph, gates_ph)
 #    #output = interpolate_predictions(skip_predictions, update_gates)
 #
+#    transformed = tf.matmul(input_ph, weight_mat)
+#    output, cond1, cond2, cond3, cond4, cond5 = linear_sigmoid(transformed)
+#    grad = tf.gradients(output, weight_mat)
+#
 #    sess.run(tf.compat.v1.global_variables_initializer())
-#    result = sess.run(output, feed_dict={input_ph: input_array, gates_ph: update_gates})
+#    result = sess.run([transformed, cond1, cond2, cond3, cond4, cond5, weight_mat], feed_dict={input_ph: inputs})
 #
 #    print(result)
-#
+
