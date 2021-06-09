@@ -16,8 +16,13 @@ int main(void) {
     test_mul_ten();
     printf("\tPassed Vector Multiply Tests.\n");
 
+    printf("==== Testing Vector Gated Add ====\n");
+    test_gated_add_three();
+    test_gated_add_ten();
+    printf("\tPassed Vector Gated Add Tests.\n");
+
     printf("==== Testing Vector-Scalar Gated Add ====\n");
-    test_gated_add_scalar_four();
+    test_gated_add_scalar_three();
     test_gated_add_scalar_ten();
     printf("\tPassed Vector-Scaler Gated Add Tests.\n");
 
@@ -155,19 +160,64 @@ void test_mul_ten(void) {
 
 
 /**
- * Vector Gated Add Tests
+ * VECTOR GATED ADD TESTS
  */
-void test_gated_add_scalar_four(void) {
+void test_gated_add_three(void) {
     uint16_t precision = 10;
 
-    FixedPoint data1[4] = { 513,-1660,835 };
-    struct Vector vec1 = { data1, 4 };
+    FixedPoint data1[3] = { 513,-1660,835 };
+    struct Vector vec1 = { data1, 3 };
 
-    FixedPoint data2[4] = { 1555,1880,1644 };
-    struct Vector vec2 = { data2, 4 };
+    FixedPoint data2[3] = { 1555,1880,1644 };
+    struct Vector vec2 = { data2, 3 };
 
-    FixedPoint expectedData[4] = { 1294,995,1441 };
-    struct Vector expected = { expectedData, 4 };
+    FixedPoint gateData[3] = { 832,993,17 };
+    struct Vector gate = { gateData, 3 };
+
+    FixedPoint expectedData[3] = { 707,-1554,1629 };
+    struct Vector expected = { expectedData, 3 };
+
+    vector_gated_add(&vec1, &vec1, &vec2, &gate, precision);
+
+    assert(vector_equal(&expected, &vec1));
+}
+
+
+void test_gated_add_ten(void) {
+    uint16_t precision = 9;
+
+    FixedPoint data1[10] = { 1342,-3268,1750,1870,4524,-1686,-1815,2724,-4046,-2958 };
+    struct Vector vec1 = { data1, 10 };
+
+    FixedPoint data2[10] = { -545,565,1286,3642,-3893,2573,4847,2785,1439,-3208 };
+    struct Vector vec2 = { data2, 10 };
+
+    FixedPoint gateData[10] = { 207,373,84,139,171,362,207,344,286,306 };
+    struct Vector gate = { gateData, 10 };
+
+    FixedPoint expectedData[10] = { 217,-2228,1362,3160,-1083,-440,2153,2743,-1626,-3059 };
+    struct Vector expected = { expectedData, 10 };
+
+    vector_gated_add(&vec1, &vec1, &vec2, &gate, precision);
+
+    assert(vector_equal(&expected, &vec1));
+}
+
+
+/**
+ * VECTOR GATES SCALAR ADD TESTS
+ */
+void test_gated_add_scalar_three(void) {
+    uint16_t precision = 10;
+
+    FixedPoint data1[3] = { 513,-1660,835 };
+    struct Vector vec1 = { data1, 3 };
+
+    FixedPoint data2[3] = { 1555,1880,1644 };
+    struct Vector vec2 = { data2, 3 };
+
+    FixedPoint expectedData[3] = { 1294,995,1441 };
+    struct Vector expected = { expectedData, 3 };
 
     FixedPoint gate = 256;
 
@@ -309,18 +359,17 @@ void test_absolute_diff_ten(void) {
     assert(vector_equal(&expected, &vec1));
 }
 
-
 /**
  * MATRIX VECTOR PRODUCT TESTS
  */
 void test_mat_vec_prod_3_4(void) {
-    FixedPoint vecData[4] = { -144,849,-79,943 };
+    FixedPoint vecData[4] = { -838,-3669,2469,4650 };
     struct Vector vec = { vecData, 4 }; 
 
-    FixedPoint matData[12] = { -47,313,400,78,1634,-1729,79,1045,-964,560,-217,-1414 };
-    struct Matrix matrix = { matData, 3, 4 };    
+    FixedPoint matData[12] = { 1647,2710,-1735,-3532,706,-2512,-2117,3306,81,1143,-1358,-4733 };
+    struct Matrix matrix = { matData, 4, 3 };    
  
-    FixedPoint expectedData[3] = { 305,-709,-688 };
+    FixedPoint expectedData[3] = { 11392,-2944,-10879 };
     struct Vector expected = { expectedData, 3 };
 
     FixedPoint resultData[3];
@@ -331,19 +380,19 @@ void test_mat_vec_prod_3_4(void) {
 }
 
 void test_mat_vec_prod_6_5(void) {
-    FixedPoint vecData[5] = { -4251,-291,-2725,2308,1890 };
+    FixedPoint vecData[5] = { 1427,-550,23,-753,-4619 };
     struct Vector vec = { vecData, 5 };
 
-    FixedPoint matData[30] = { 2315,-2046,-1244,3895,4922,-2941,-3425,-665,1555,-2198,-3269,-4696,-2424,2442,-3266,909,-2356,-4795,-985,874,-4942,2219,-543,-1137,-2615,-4407,-4632,2648,-321,196 };
-    struct Matrix matrix = { matData, 6, 5 };    
+    FixedPoint matData[30] = { 524,-2263,3261,4050,3494,-1901,-524,-2004,4108,-1761,2714,-1095,311,-4356,4028,-1030,510,202,-169,4853,-3662,-4349,2569,-523,-4478,-4031,-4768,-100,4860,-139 };
+    struct Matrix matrix = { matData, 5, 6 };    
  
-    FixedPoint expectedData[6] = { 6070,7197,10414,4522,6968,6099 };
+    FixedPoint expectedData[6] = { 21340,12437,26626,10213,-20391,-1048 };
     struct Vector expected = { expectedData, 6 };
 
     FixedPoint resultData[6];
     struct Vector result = { resultData, 6 };
 
-    matrix_vector_prod(&result, &matrix, &vec, 11);
+    matrix_vector_prod(&result, &matrix, &vec, 10);
     assert(vector_equal(&expected, &result));
 }
 

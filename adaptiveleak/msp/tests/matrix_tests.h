@@ -15,8 +15,11 @@ void test_add_ten(void);
 void test_mul_four(void);
 void test_mul_ten(void);
 
-void test_gated_add_scalar_four(void);
+void test_gated_add_scalar_three(void);
 void test_gated_add_scalar_ten(void);
+
+void test_gated_add_three(void);
+void test_gated_add_ten(void);
 
 void test_diff_norm_four(void);
 void test_diff_norm_ten(void);

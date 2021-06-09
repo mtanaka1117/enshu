@@ -163,7 +163,10 @@ FixedPoint vector_diff_norm(struct Vector *vec1, struct Vector *vec2) {
 
 
 struct Vector *matrix_vector_prod(struct Vector *result, struct Matrix *mat, struct Vector *vec, uint16_t precision) {
-    if ((result->size != mat->numRows) || (vec->size != mat->numCols)) {
+    /**
+     * Computes the product v^T * M
+     */
+    if ((result->size != mat->numCols) || (vec->size != mat->numRows)) {
         return result;
     }
 
@@ -174,18 +177,18 @@ struct Vector *matrix_vector_prod(struct Vector *result, struct Matrix *mat, str
     uint16_t row, col;
     FixedPoint prod, sum;
 
-    for (i = numRows; i > 0; i--) {
-        row = i - 1;
+    for (i = numCols; i > 0; i--) {
+        col = i - 1;
         sum = 0;
 
-        for (j = numCols; j > 0; j--) {
-            col = j - 1;
+        for (j = numRows; j > 0; j--) {
+            row = j - 1;
 
-            prod = fp_mul(mat->data[MATRIX_INDEX(row, col, numCols)], vec->data[col], precision);
+            prod = fp_mul(mat->data[MATRIX_INDEX(row, col, numCols)], vec->data[row], precision);
             sum = fp_add(sum, prod);
         }
 
-        result->data[row] = sum;
+        result->data[col] = sum;
     }
 
     return result;
