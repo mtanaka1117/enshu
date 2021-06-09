@@ -72,6 +72,7 @@ def ugrnn_transform(state: tf.Tensor,
 
     # Create the next state
     next_state = update_gate * state + (1.0 - update_gate) * candidate
+
     return next_state
 
 
@@ -192,7 +193,11 @@ class SkipUGRNNCell(tf.compat.v1.nn.rnn_cell.RNNCell):
             next_input = state_update_gate * inputs + (1 - state_update_gate) * prev_input
 
             # Compute the next state update probability (clipped into the range [0, 1])
-            delta_state_update_prob = tf.math.sigmoid(tf.matmul(next_state, self.W_state) + self.b_state)  # [B, 1]
+            state_update = tf.matmul(next_state, self.W_state) + self.b_state
+            delta_state_update_prob = linear_sigmoid(state_update)
+
+            #delta_state_update_prob = tf.math.sigmoid(tf.matmul(next_state, self.W_state) + self.b_state)  # [B, 1]
+            
             cum_prob_candidate = prev_cum_state_update_prob + tf.minimum(delta_state_update_prob, 1.0 - prev_cum_state_update_prob)
             cum_state_update_prob = state_update_gate * delta_state_update_prob + (1 - state_update_gate) * cum_prob_candidate
 
