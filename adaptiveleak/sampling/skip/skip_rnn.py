@@ -181,8 +181,8 @@ class SkipUGRNNCell(tf.compat.v1.nn.rnn_cell.RNNCell):
             #next_cell_state = alpha * candidate + beta * prev_state
 
             # Apply a small amount of noise for regularization
-            if self._is_train:
-                next_cell_state = apply_noise(next_cell_state, scale=0.001)
+            #if self._is_train:
+            #    next_cell_state = apply_noise(next_cell_state, scale=0.001)
 
             # Apply the state update gate. This is the Skip portion.
             # We first compute the state update gate. This is a binary version of the cumulative state update prob.
@@ -250,7 +250,6 @@ class SkipRNN(NeuralNetwork):
 
     def make_graph(self, is_train: bool):
         inputs = self._placeholders[INPUTS]  # [B, T, D]
-        inputs = apply_noise(inputs, scale=0.001)
 
         # Create the RNN Cell
         rnn_cell = SkipUGRNNCell(units=self._hypers['rnn_units'],
