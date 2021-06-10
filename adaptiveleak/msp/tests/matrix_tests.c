@@ -60,11 +60,13 @@ int main(void) {
 
     printf("==== Testing Vector Scaling ====\n");
     test_scale_6();
+    test_scale_6_down();
+    test_scale_10_up();
     printf("\tPassed Vector Scaling.\n");
 
     printf("==== Testing Vector Apply ====\n");
-    test_apply_tanh();
     test_apply_sigmoid();
+    test_apply_tanh();
     printf("\tPassed Vector Apply.\n");
 }
 
@@ -479,7 +481,42 @@ void test_scale_6(void) {
     FixedPoint expectedData[6] = { -7211,-9635,-35,-18140,13775,-1059 };
     struct Vector expected = { expectedData, 6 };
 
-    vector_scale(&vec, &vec, &mean, &scale, 11);
+    vector_scale(&vec, &vec, &mean, &scale, 11, 11);
+    assert(vector_equal(&expected, &vec));
+}
+
+void test_scale_6_down(void) {
+    FixedPoint vecData[6] = { -3995,619,-883,-4957,3213,3183 };
+    struct Vector vec = { vecData, 6 };
+
+    FixedPoint meanData[6] = { 2675,4915,-802,2527,-4585,1745 };
+    struct Vector mean = { meanData, 6 };
+
+    FixedPoint scaleData[6] = { 2214,4593,878,4964,3618,-1508 };
+    struct Vector scale = { scaleData, 6 };
+
+    FixedPoint expectedData[6] = { -1803,-2409,-9,-4535,3443,-265 };
+    struct Vector expected = { expectedData, 6 };
+
+    vector_scale(&vec, &vec, &mean, &scale, 11, 9);
+    assert(vector_equal(&expected, &vec));
+}
+
+
+void test_scale_10_up(void) {
+    FixedPoint vecData[10] = { 910,425,-292,718,-712,-599,126,-134,-502,-214 };
+    struct Vector vec = { vecData, 10 };
+
+    FixedPoint meanData[10] = { -58,-228,-370,459,575,63,-683,-66,-941,-428 };
+    struct Vector mean = { meanData, 10 };
+
+    FixedPoint scaleData[10] = { 585,218,419,53,350,68,692,132,877,679 };
+    struct Vector scale = { scaleData, 10 };
+
+    FixedPoint expectedData[10] = { 8848,2224,504,208,-7040,-704,8744,-144,6008,2264 };
+    struct Vector expected = { expectedData, 10 };
+
+    vector_scale(&vec, &vec, &mean, &scale, 9, 12);
     assert(vector_equal(&expected, &vec));
 }
 
@@ -490,10 +527,10 @@ void test_scale_6(void) {
 void test_apply_tanh(void) {
     uint16_t precision = 10;
         
-    FixedPoint vecData[6] = { 0,512,-512,1024,2040,4000 };
+    FixedPoint vecData[6] = { 0,512,-512,1024,2040,-4000 };
     struct Vector vec = { vecData, 6 };
 
-    FixedPoint expectedData[6] = { 0,464,-464,768,991,1024 };
+    FixedPoint expectedData[6] = { 0,512,-512,768,1024,-1024 };
     struct Vector expected = { expectedData, 6 };
 
     vector_apply(&vec, &vec, &fp_tanh, precision);
@@ -507,7 +544,7 @@ void test_apply_sigmoid(void) {
     FixedPoint vecData[7] = { 0,512,-512,1024,2040,5000,-5000 };
     struct Vector vec = { vecData, 7 };
 
-    FixedPoint expectedData[7] = { 512,640,384,744,895,1024,0 };
+    FixedPoint expectedData[7] = { 512,640,384,768,895,1024,0 };
     struct Vector expected = { expectedData, 7 };
 
     vector_apply(&vec, &vec, &fp_sigmoid, precision);

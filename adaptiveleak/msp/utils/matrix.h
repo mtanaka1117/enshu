@@ -33,7 +33,8 @@ struct Vector *matrix_vector_prod(struct Vector *result, struct Matrix *mat, str
 FixedPoint vector_dot_prod(struct Vector *vec1, struct Vector *vec2, uint16_t precision);
 
 struct Vector *vector_stack(struct Vector *result, struct Vector *first, struct Vector *second);
-struct Vector *vector_scale(struct Vector *result, struct Vector *vec, struct Vector *mean, struct Vector *scale, uint16_t precision);
+struct Vector *vector_scale(struct Vector *result, struct Vector *vec, struct Vector *mean, struct Vector *scale, uint16_t inPrecision, uint16_t outPrecision);
+void vector_copy(struct Vector *dst, struct Vector *src);
 struct Vector *vector_apply(struct Vector *result, struct Vector *vec, FixedPoint (*fn)(FixedPoint, uint16_t), uint16_t precision);
 
 #endif

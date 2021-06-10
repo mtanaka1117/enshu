@@ -99,6 +99,19 @@ void vector_set(struct Vector *vec, FixedPoint value) {
 }
 
 
+void vector_copy(struct Vector *dst, struct Vector *src) {
+    if (dst->size != src->size) {
+        return;
+    }
+
+    uint16_t i, j;
+    for (i = dst->size; i > 0; i--) {
+        j = i - 1;
+        dst->data[j] = src->data[j];
+    }
+}
+
+
 struct Vector *vector_absolute_diff(struct Vector *result, struct Vector *vec1, struct Vector *vec2) {
     if ((vec1->size != vec2->size) || (result->size != vec1->size)) {
         return result;
@@ -248,18 +261,28 @@ struct Vector *vector_stack(struct Vector *result, struct Vector *first, struct 
 }
 
 
-struct Vector *vector_scale(struct Vector *result, struct Vector *vec, struct Vector *mean, struct Vector *scale, uint16_t precision) {
+struct Vector *vector_scale(struct Vector *result, struct Vector *vec, struct Vector *mean, struct Vector *scale, uint16_t inPrecision, uint16_t outPrecision) {
     if ((result->size != vec->size) || (result->size != mean->size) || (result->size != scale->size)) {
         return result;
     }
 
+    uint8_t shouldShiftRight = (inPrecision > outPrecision);
+    uint16_t shiftAmount = inPrecision - outPrecision;
+    shiftAmount = shouldShiftRight * shiftAmount + (1 - shouldShiftRight) * (-1 * shiftAmount);
+
     uint16_t i, j;
-    FixedPoint diff;
+    FixedPoint diff, normalized;
 
     for (i = result->size; i > 0; i--) {
         j = i - 1;
         diff = fp_sub(vec->data[j], mean->data[j]);
-        result->data[j] = fp32_mul(diff, scale->data[j], precision);
+        normalized = fp32_mul(diff, scale->data[j], inPrecision);
+
+        if (shouldShiftRight) {
+            result->data[j] = normalized >> shiftAmount;
+        } else {
+            result->data[j] = normalized << shiftAmount;
+        }
     }
 
     return result;

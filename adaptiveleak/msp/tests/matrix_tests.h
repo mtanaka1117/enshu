@@ -44,6 +44,8 @@ void test_stack_1_10(void);
 void test_stack_6_6(void);
 
 void test_scale_6(void);
+void test_scale_6_down(void);
+void test_scale_10_up(void);
 
 void test_apply_sigmoid(void);
 void test_apply_tanh(void);

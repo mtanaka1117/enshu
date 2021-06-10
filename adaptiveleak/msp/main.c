@@ -1,7 +1,7 @@
 #include "main.h"
 
 #define MAX_NUM_SAMPLES 10
-#define BUFFER_SIZE 2000
+#define BUFFER_SIZE 5000
 
 static FixedPoint DATA_BUFFER[SEQ_LENGTH * NUM_FEATURES];
 static struct Vector featureVectors[SEQ_LENGTH];
@@ -47,6 +47,13 @@ int main(int argc, char *argv[]) {
     struct Vector dev = { devData, NUM_FEATURES };
 
     deviation_policy_init(&policy, MAX_SKIP, THRESHOLD, ALPHA, BETA, &mean, &dev);
+    #elif defined(IS_SKIP_RNN)
+    struct SkipRNNPolicy policy;
+
+    FixedPoint stateData[STATE_SIZE];
+    struct Vector state = { stateData, STATE_SIZE };
+
+    skip_rnn_policy_init(&policy, &W_CANDIDATE, &B_CANDIDATE, &W_UPDATE, &B_UPDATE, &W_STATE, B_STATE, &state, &INITIAL_STATE, &MEAN, &SCALE, RNN_PRECISION);
     #endif
 
     // Indices to load data into feature vector array
@@ -55,6 +62,8 @@ int main(int argc, char *argv[]) {
 
     uint32_t collectCount = 0;
     uint32_t totalCount = 0;
+    uint32_t count = 0;
+    uint32_t idx = 0;
 
     uint8_t shouldCollect = 0;
 
@@ -90,7 +99,11 @@ int main(int argc, char *argv[]) {
         prevFeatures = &ZERO_FEATURES;
         #elif defined(IS_ADAPTIVE_DEVIATION)
         deviation_reset(&policy);
+        #elif defined(IS_SKIP_RNN)
+        skip_rnn_reset(&policy, &INITIAL_STATE);
         #endif
+
+        count = 0;
 
         // Iterate through the elements and select elements to keep.
         for (i = 0; i < SEQ_LENGTH; i++) {
@@ -100,24 +113,33 @@ int main(int argc, char *argv[]) {
             shouldCollect = heuristic_should_collect(&policy, i);
             #elif defined(IS_ADAPTIVE_DEVIATION)
             shouldCollect = deviation_should_collect(&policy, i);
+            #elif defined(IS_SKIP_RNN)
+            shouldCollect = skip_rnn_should_collect(&policy, i);
             #endif
 
             if (shouldCollect) {
                 collectCount++;
+                count++;
 
                 #ifdef IS_ADAPTIVE_HEURISTIC
                 heuristic_update(&policy, featureVectors + i, prevFeatures);
                 prevFeatures = featureVectors + i;
                 #elif defined(IS_ADAPTIVE_DEVIATION)
                 deviation_update(&policy, featureVectors + i, DEFAULT_PRECISION);
+                #elif defined(IS_SKIP_RNN)
+                skip_rnn_update(&policy, featureVectors + i, DEFAULT_PRECISION);
                 #endif
             }
 
             totalCount++;
         }
+
+        printf("%d ", count);
+        idx++;
     }
 
     fclose(fin);
+    printf("\n");
 
     float rate = ((float) collectCount) / ((float) totalCount);
     printf("Collection Rate: %d / %d (%f)\n", collectCount, totalCount, rate);

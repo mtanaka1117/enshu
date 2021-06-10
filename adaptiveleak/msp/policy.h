@@ -30,6 +30,22 @@ struct DeviationPolicy {
     struct Vector *dev;
 };
 
+struct SkipRNNPolicy {
+    FixedPoint updateProb;
+    FixedPoint cumUpdateProb;
+    struct Matrix *wCandidate;
+    struct Vector *bCandidate;
+    struct Matrix *wUpdate;
+    struct Vector *bUpdate;
+    struct Vector *wState;
+    FixedPoint bState;
+    FixedPoint threshold;
+    struct Vector *state;
+    struct Vector *mean;
+    struct Vector *scale;
+    uint16_t precision;
+};
+
 // Uniform Policy Operations
 void uniform_policy_init(struct UniformPolicy *policy, const uint16_t *collectIndices, uint16_t numIndices);
 uint8_t uniform_should_collect(struct UniformPolicy *policy, uint16_t seqIdx);
@@ -47,5 +63,12 @@ void deviation_policy_init(struct DeviationPolicy *policy, uint16_t maxSkip, Fix
 uint8_t deviation_should_collect(struct DeviationPolicy *policy, uint16_t seqIdx);
 void deviation_update(struct DeviationPolicy *policy, struct Vector *curr, uint16_t precision);
 void deviation_reset(struct DeviationPolicy *policy);
+
+
+// Skip RNN Policy Operations
+void skip_rnn_policy_init(struct SkipRNNPolicy *policy, struct Matrix *wCandidate, struct Vector *bCandidate, struct Matrix *wUpdate, struct Vector *bUpdate, struct Vector *wState, FixedPoint bState, struct Vector *state, struct Vector *initialState, struct Vector *mean, struct Vector *scale, uint16_t precision);
+uint8_t skip_rnn_should_collect(struct SkipRNNPolicy *policy, uint16_t seqIdx);
+void skip_rnn_update(struct SkipRNNPolicy *policy, struct Vector *curr, uint16_t featurePrecision);
+void skip_rnn_reset(struct SkipRNNPolicy *policy, struct Vector *initialState);
 
 #endif
