@@ -1,23 +1,13 @@
 #include "main.h"
 
-#define MAX_NUM_SAMPLES 10
-#define BUFFER_SIZE 5000
-
 static FixedPoint DATA_BUFFER[SEQ_LENGTH * NUM_FEATURES];
 static struct Vector featureVectors[SEQ_LENGTH];
 
-static FixedPoint ZERO_BUFFER[NUM_FEATURES] = { 0 };
+static FixedPoint ZERO_BUFFER[NUM_FEATURES];
 static struct Vector ZERO_FEATURES = { ZERO_BUFFER, NUM_FEATURES };
 
 
-int main(int argc, char *argv[]) {
-    if (argc < 2) {
-        printf("Must provide an input file.\n");
-        return 0;
-    }
-
-    // Create the input buffer for file reading
-    char buffer[BUFFER_SIZE];
+int main(void) {
     char *feature;
     FixedPoint featureVal;
 
@@ -27,6 +17,22 @@ int main(int argc, char *argv[]) {
         featureVectors[i].data = DATA_BUFFER + (NUM_FEATURES * i);
         featureVectors[i].size = NUM_FEATURES;
     }
+
+    for (i = 0; i < NUM_FEATURES; i++) {
+        ZERO_BUFFER[i] = 0;
+    }
+
+    // Make the bitmap for this sequence
+    uint16_t numBytes = (SEQ_LENGTH / BITS_PER_BYTE);
+    if ((SEQ_LENGTH % BITS_PER_BYTE) > 0) {
+        numBytes += 1;
+    }
+
+    uint8_t collectedBuffer[numBytes];
+    struct BitMap collectedIndices = { collectedBuffer, numBytes };
+
+    uint16_t numEncodedBytes = 0;
+    uint8_t outputBuffer[1024];
 
     // Make the policy
     #ifdef IS_UNIFORM
@@ -56,9 +62,9 @@ int main(int argc, char *argv[]) {
     skip_rnn_policy_init(&policy, &W_CANDIDATE, &B_CANDIDATE, &W_UPDATE, &B_UPDATE, &W_STATE, B_STATE, &state, &INITIAL_STATE, &MEAN, &SCALE, RNN_PRECISION);
     #endif
 
-    // Indices to load data into feature vector array
-    uint16_t sampleIdx;
-    uint16_t featureIdx;
+    // Indices to sample data
+    uint16_t seqIdx;
+    uint16_t elemIdx;
 
     uint32_t collectCount = 0;
     uint32_t totalCount = 0;
@@ -66,31 +72,11 @@ int main(int argc, char *argv[]) {
     uint32_t idx = 0;
 
     uint8_t shouldCollect = 0;
+    uint8_t didCollect = 1;
 
-    // Open the input file
-    FILE *fin = fopen(argv[1], "r");
-
-    while (fgets(buffer, BUFFER_SIZE, fin) != NULL) {
-
-        // Read all sequence elements from the file
-        featureIdx = 0;
-        sampleIdx = 0;
-
-        feature = strtok(buffer, ",");
-        while (feature != NULL) {
-            featureVal = atoi(feature);
-
-            featureVectors[sampleIdx].data[featureIdx] = featureVal;
-
-            feature = strtok(NULL, ",");
-
-            featureIdx++;
-
-            if (featureIdx == NUM_FEATURES) {
-                featureIdx = 0;
-                sampleIdx++;
-            }
-        }
+    for (seqIdx = 0; seqIdx < MAX_NUM_SEQ; seqIdx++) {
+        // Clear the collected bit map
+        clear_bitmap(&collectedIndices);
 
         #ifdef IS_UNIFORM
         uniform_reset(&policy);
@@ -106,39 +92,62 @@ int main(int argc, char *argv[]) {
         count = 0;
 
         // Iterate through the elements and select elements to keep.
-        for (i = 0; i < SEQ_LENGTH; i++) {
+        for (elemIdx = 0; elemIdx < SEQ_LENGTH; elemIdx++) {
             #ifdef IS_UNIFORM
-            shouldCollect = uniform_should_collect(&policy, i);
+            shouldCollect = uniform_should_collect(&policy, elemIdx);
             #elif defined(IS_ADAPTIVE_HEURISTIC)
-            shouldCollect = heuristic_should_collect(&policy, i);
+            shouldCollect = heuristic_should_collect(&policy, elemIdx);
             #elif defined(IS_ADAPTIVE_DEVIATION)
-            shouldCollect = deviation_should_collect(&policy, i);
+            shouldCollect = deviation_should_collect(&policy, elemIdx);
             #elif defined(IS_SKIP_RNN)
-            shouldCollect = skip_rnn_should_collect(&policy, i);
+            shouldCollect = skip_rnn_should_collect(&policy, elemIdx);
             #endif
 
             if (shouldCollect) {
                 collectCount++;
                 count++;
 
+                // Collect the data
+                didCollect = get_measurement((featureVectors + elemIdx)->data, seqIdx, elemIdx, NUM_FEATURES, SEQ_LENGTH);
+
+                for (i = 0; i < NUM_FEATURES; i++) {
+                    printf("%d ", featureVectors[elemIdx].data[i]);
+                }
+                printf(",");
+
+                if (!didCollect) {
+                    printf("ERROR. Could not collect data at Seq %d, Element %d\n", seqIdx, elemIdx);
+                    break;
+                }
+
+                // Record the collection of this element.
+                set_bit(elemIdx, &collectedIndices);
+
                 #ifdef IS_ADAPTIVE_HEURISTIC
-                heuristic_update(&policy, featureVectors + i, prevFeatures);
-                prevFeatures = featureVectors + i;
+                heuristic_update(&policy, featureVectors + elemIdx, prevFeatures);
+                prevFeatures = featureVectors + elemIdx;
                 #elif defined(IS_ADAPTIVE_DEVIATION)
-                deviation_update(&policy, featureVectors + i, DEFAULT_PRECISION);
+                deviation_update(&policy, featureVectors + elemIdx, DEFAULT_PRECISION);
                 #elif defined(IS_SKIP_RNN)
-                skip_rnn_update(&policy, featureVectors + i, DEFAULT_PRECISION);
+                skip_rnn_update(&policy, featureVectors + elemIdx, DEFAULT_PRECISION);
                 #endif
             }
 
             totalCount++;
         }
 
-        printf("%d ", count);
-        idx++;
+        if (!didCollect) {
+            break;
+        }
+
+        // Encode the collected elements.
+        numEncodedBytes = encode_standard(outputBuffer, featureVectors, &collectedIndices, NUM_FEATURES, SEQ_LENGTH);
+        print_message(outputBuffer, numEncodedBytes);
+
+        //printf("%d ", count);
+        printf("\n");
     }
 
-    fclose(fin);
     printf("\n");
 
     float rate = ((float) collectCount) / ((float) totalCount);
@@ -146,3 +155,14 @@ int main(int argc, char *argv[]) {
 
     return 0;
 }
+
+
+void print_message(uint8_t *buffer, uint16_t numBytes) {
+    uint16_t i;
+    for (i = 0; i < numBytes; i++) {
+        printf("\\x%02x", buffer[i]);
+    }
+    printf("\n");
+}
+
+

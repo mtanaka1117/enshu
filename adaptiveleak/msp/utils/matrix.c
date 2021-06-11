@@ -1,6 +1,32 @@
 #include "matrix.h"
 
 
+#ifdef IS_MSP
+#include "DSPLib.h"
+
+// For MSP implementations, we allocate memory in the LEA RAM.
+// This memory is used when executing Matrix multiplications.
+DSPLIB_DATA(MULTIPLY_BUFFER, 4);
+static FixedPoint MULTIPLY_BUFFER[1800];
+
+FixedPoint *dma_load(FixedPoint *result, FixedPoint *data, uint16_t n) {
+    /**
+     * Loads the first n elements of the data array into the result array using
+     * DMA.
+     */
+    // Configure DMA channel 0
+    __data20_write_long((uintptr_t) &DMA0SA, (uintptr_t) data);   // Source block address
+    __data20_write_long((uintptr_t) &DMA0DA, (uintptr_t) result); // Destination single address
+    DMA0SZ = n;                                      // Block size
+    DMA0CTL = DMADT_5 | DMASRCINCR_3 | DMADSTINCR_3; // Rpt, inc
+    DMA0CTL |= DMAEN;                                // Enable DMA0
+    DMA0CTL |= DMAREQ;
+
+    return result;
+}
+#endif
+
+
 struct Vector *vector_add(struct Vector *result, struct Vector *vec1, struct Vector *vec2) {
     /**
      * Adds vec1 and vec2 in an element-wise manner.
@@ -70,25 +96,53 @@ struct Vector *vector_gated_add(struct Vector *result, struct Vector *vec1, stru
         return result;
     }
 
-    uint16_t i, j;
-    FixedPoint temp1, temp2;
+    volatile FixedPoint temp1;
+    volatile FixedPoint temp2;
 
-    FixedPoint one = 1 << precision;
-    FixedPoint oneMinusGate, gateValue;
+    const FixedPoint one = 1 << precision;
+    volatile FixedPoint oneMinusGate;
+    volatile FixedPoint gateValue;
 
-    for (i = vec1->size; i > 0; i--) {
-        j = i - 1;
-        
-        gateValue = gate->data[j];
+    uint16_t i;
+    for (i = 0; i < vec1->size; i++) {
+        gateValue = gate->data[i];
         oneMinusGate = fp_sub(one, gateValue);
 
-        temp1 = fp_mul(vec1->data[j], gateValue, precision);
-        temp2 = fp_mul(vec2->data[j], oneMinusGate, precision);
-        result->data[j] = fp_add(temp1, temp2);
+        temp1 = fp_mul(vec1->data[i], gateValue, precision);
+        temp2 = fp_mul(vec2->data[i], oneMinusGate, precision);
+        result->data[i] = fp_add(temp1, temp2);
     }
 
     return result;
 }
+
+//struct Vector *vector_gated_add(struct Vector *result, struct Vector *vec1, struct Vector *vec2, struct Vector *gate, uint16_t precision) {
+//    /**
+//     * Returns a vector with gate * vec1 + (1 - gate) * vec2
+//     */
+//    if ((vec1->size != vec2->size) || (vec1->size != result->size) || (vec1->size != gate->size)) {
+//        return result;
+//    }
+//
+//    uint16_t i, j;
+//    FixedPoint temp1, temp2;
+//
+//    FixedPoint one = 1 << precision;
+//    FixedPoint oneMinusGate, gateValue;
+//
+//    for (i = vec1->size; i > 0; i--) {
+//        j = i - 1;
+//        
+//        gateValue = gate->data[j];
+//        oneMinusGate = fp_sub(one, gateValue);
+//
+//        temp1 = fp_mul(vec1->data[j], gateValue, precision);
+//        temp2 = fp_mul(vec2->data[j], oneMinusGate, precision);
+//        result->data[j] = fp_add(temp1, temp2);
+//    }
+//
+//    return result;
+//}
 
 
 void vector_set(struct Vector *vec, FixedPoint value) {
@@ -186,6 +240,49 @@ struct Vector *matrix_vector_prod(struct Vector *result, struct Matrix *mat, str
     uint16_t numRows = mat->numRows;
     uint16_t numCols = mat->numCols;
 
+    #ifdef IS_MSP
+    // First transfer the input matrices to the LEA RAM segment using DMA
+    uint16_t offset = 0;
+    FixedPoint *vecData = dma_load(MULTIPLY_BUFFER, vec->data, numRows);
+    offset += numRows * 2;  // Ensure we have room for 2 columns, as the LEA requires "even" dimensions
+
+    FixedPoint *matData = dma_load(MULTIPLY_BUFFER + offset, mat->data, numRows * numCols);
+    offset += numRows * numCols;
+
+    FixedPoint *resultData = MULTIPLY_BUFFER + offset;  // Temporary buffer (in LEA RAM) for the result
+
+    // When using the MSP430, we use the LEA for Matrix multiplications. Based on profiling,
+    // the LEA can take up to 5x fewer compute cycles than a standard implementation.
+    msp_status status;
+    msp_matrix_mpy_q15_params mulParams;
+
+    // Initialze LEA metadata
+    mulParams.srcARows = 2;
+    mulParams.srcACols = numRows;
+    mulParams.srcBRows = numRows;
+    mulParams.srcBCols = numCols;
+
+    // Perform Matrix multiplication using the LEA
+    status = msp_matrix_mpy_q15(&mulParams, vecData, matData, resultData);
+    msp_checkStatus(status);
+
+    // Convert back to the original fixed-point precision. The LEA assumes 15 fractional bits.
+    msp_matrix_shift_q15_params shiftParams;
+    shiftParams.rows = 2;
+    shiftParams.cols = numCols;
+    shiftParams.shift = 15 - precision;
+
+    // Perform element-wise shift using the LEA
+    if (shiftParams.shift > 0) {
+        status = msp_matrix_shift_q15(&shiftParams, resultData, resultData);
+        msp_checkStatus(status);
+    }
+
+    // Load result back into the given result Matrix. We omit
+    // any padding elements in this transfer.
+    dma_load(result->data, resultData, numCols);
+
+    #else
     uint16_t i, j;
     uint16_t row, col;
     FixedPoint prod, sum;
@@ -203,6 +300,7 @@ struct Vector *matrix_vector_prod(struct Vector *result, struct Matrix *mat, str
 
         result->data[col] = sum;
     }
+    #endif
 
     return result;
 }

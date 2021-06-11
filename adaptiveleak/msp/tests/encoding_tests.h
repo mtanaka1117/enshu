@@ -5,6 +5,7 @@
 
 #include "../utils/encoding.h"
 #include "../utils/bitmap.h"
+#include "../utils/matrix.h"
 
 #ifndef ENCODING_TESTS_H_
 #define ENCODING_TESTS_H_
@@ -15,6 +16,7 @@ void test_collected_indices_ten();
 void test_collected_indices_23();
 
 // Standard Encoding Tests
-void test_standard_encode_three();
+void test_standard_encode_four();
+void test_standard_encode_ten();
 
 #endif

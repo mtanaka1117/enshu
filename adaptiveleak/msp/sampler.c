@@ -12,7 +12,12 @@ uint8_t get_measurement(FixedPoint *result, uint16_t seqNum, uint16_t elemNum, u
     uint16_t i, j;
     for (i = numFeatures; i > 0; i--) {
         j = i - 1;
+
+        #ifdef IS_MSP
+        result[j] = __data20_read_short((unsigned long int) (DATASET + dataIdx + j));
+        #else
         result[j] = DATASET[dataIdx + j];
+        #endif
     }
 
     return 1;
