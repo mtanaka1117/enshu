@@ -61,3 +61,9 @@ def normalized_mae(y_true: np.ndarray, y_pred: np.ndarray) -> float:
 
     # Return the unweighted average error over all features
     return float(np.average(normalized_errors))
+
+
+def geometric_mean(array: np.ndarray) -> float:
+    assert len(array.shape) == 1, 'Must provide a 1d array'
+    prod = np.prod(array)
+    return float(np.power(prod, (1.0 / array.shape[0])))

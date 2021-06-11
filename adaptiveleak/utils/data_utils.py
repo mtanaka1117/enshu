@@ -36,6 +36,26 @@ def sigmoid(x: np.ndarray) -> np.ndarray:
     return 1.0 / (1.0 + np.exp(-1 * x))
 
 
+def linear_sigmoid(x: np.ndarray) -> np.ndarray:
+    cond1 = (x < -3).astype(float)
+    cond2 = np.logical_and(x >= -3, x < -1).astype(float)
+    cond3 = np.logical_and(x >= -1, x < 1).astype(float)
+    cond4 = np.logical_and(x >= 1, x <= 3).astype(float)
+    cond5 = (x > 3).astype(float)
+
+    part1 = 0
+    part2 = 0.125 * x + 0.375
+    part3 = 0.25 * x + 0.5
+    part4 = 0.125 * x + 0.625
+    part5 = 1
+
+    return (part1 * cond1) + (part2 * cond2) + (part3 * cond3) + (part4 * cond4) + (part5 * cond5)
+
+
+def linear_tanh(x: np.ndarray) -> np.ndarray:
+    return 2 * linear_sigmoid(2 * x) - 1
+
+
 def to_fixed_point(x: float, precision: int, width: int) -> int:
     assert width >= 1, 'Must have a non-negative width'
 

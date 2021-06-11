@@ -1,19 +1,18 @@
 import numpy as np
-import sklearn.metrics as metrics
 import os
 from argparse import ArgumentParser
 from collections import defaultdict, namedtuple
 from sklearn.preprocessing import StandardScaler
-from sklearn.neural_network import MLPClassifier
-from sklearn.ensemble import AdaBoostClassifier
 from sklearn.model_selection import KFold
-from sklearn.svm import SVC
-from typing import Any, Dict, Tuple, List
+from sklearn.metrics import accuracy_score
+from typing import Any, Dict, Tuple, List, DefaultDict
 
-from adaptiveleak.classifiers.mlp import MLP
-from adaptiveleak.utils.file_utils import read_json_gz, save_json_gz
+from classifier import AttackClassifier
+from adaptiveleak.utils.analysis import geometric_mean
+from adaptiveleak.utils.file_utils import read_json_gz, save_json_gz, iterate_dir, make_dir
 
 
+NUM_EPOCHS = 1
 AttackResult = namedtuple('AttackResult', ['train_accuracy', 'num_train', 'test_accuracy', 'num_test', 'most_freq_accuracy'])
 
 
@@ -52,7 +51,7 @@ def create_dataset(message_sizes: List[int], labels: List[int], window_size: int
 
         for _ in range(num_to_create):
             raw_sizes = rand.choice(sizes, size=window_size)  # [D]
-            features = np.array([np.average(raw_sizes), np.median(raw_sizes), np.std(raw_sizes), np.max(raw_sizes), np.min(raw_sizes)])
+            features = [np.average(raw_sizes), np.median(raw_sizes), np.std(raw_sizes), np.max(raw_sizes), np.min(raw_sizes), geometric_mean(raw_sizes)]
 
             inputs.append(np.expand_dims(features, axis=0))
             output.append(label)
@@ -60,7 +59,7 @@ def create_dataset(message_sizes: List[int], labels: List[int], window_size: int
     return np.vstack(inputs), np.vstack(output).reshape(-1)
 
 
-def fit_attack_model(message_sizes: List[int], labels: List[int], window_size: int, num_samples: int, train_frac: float, val_frac: float):
+def fit_attack_model(message_sizes: List[int], labels: List[int], window_size: int, num_samples: int, train_frac: float, val_frac: float, name: str, save_folder: str):
     """
     Fits the attacker model which predicts labels from message sizes.
 
@@ -117,12 +116,11 @@ def fit_attack_model(message_sizes: List[int], labels: List[int], window_size: i
     val_inputs = scaler.transform(val_inputs)
     test_inputs = scaler.transform(test_inputs)
 
-    clf = MLP(batch_size=16, hidden_units=64)
-    # clf = MLPClassifier(hidden_layer_sizes=[32], alpha=0.1, max_iter=10000, random_state=rand)
+    clf = AttackClassifier(name=name)
     
     most_freq_label = np.bincount(train_outputs, minlength=np.amax(train_outputs)).argmax()
     most_freq_labels = [most_freq_label for _ in test_outputs]
-    most_freq_acc = metrics.accuracy_score(y_true=test_outputs, y_pred=most_freq_labels)
+    most_freq_acc = accuracy_score(y_true=test_outputs, y_pred=most_freq_labels)
 
     print('Most Freq Accuracy: {0:.5f}'.format(most_freq_acc))
 
@@ -130,11 +128,11 @@ def fit_attack_model(message_sizes: List[int], labels: List[int], window_size: i
             train_labels=train_outputs,
             val_inputs=val_inputs,
             val_labels=val_outputs,
-            num_epochs=1,
-            save_folder='attack_models')
+            num_epochs=NUM_EPOCHS,
+            save_folder=save_folder)
 
     # Load the best model
-    clf.restore('attack_models')
+    clf.restore(save_folder=save_folder)
 
     train_accuracy = clf.accuracy(train_inputs, train_outputs)
     val_accuracy = clf.accuracy(val_inputs, val_outputs)
@@ -156,34 +154,38 @@ def fit_attack_model(message_sizes: List[int], labels: List[int], window_size: i
 
 if __name__ == '__main__':
     parser = ArgumentParser()
-    parser.add_argument('--policy-files', type=str, required=True, nargs='+')
+    parser.add_argument('--policy', type=str, required=True)
+    parser.add_argument('--encoding', type=str, required=True, choices=['standard', 'group'])
+    parser.add_argument('--dataset', type=str, required=True)
+    parser.add_argument('--date', type=str, required=True)
     parser.add_argument('--window-size', type=int, required=True)
     parser.add_argument('--num-samples', type=int, required=True)
     args = parser.parse_args()
 
-    policy_files: List[str] = []
-    for policy_file in args.policy_files:
+    policy_name = '{0}_{1}'.format(args.policy, args.encoding)
+    policy_folder = os.path.join('..', 'saved_models', args.dataset, args.date, policy_name)
 
-        if os.path.isdir(policy_file):
-            file_names = [name for name in os.listdir(policy_file) if name.endswith('.json.gz')]
-            policy_files.extend((os.path.join(policy_file, name) for name in file_names))
-        else:
-            policy_files.append(policy_file)
+    save_folder = os.path.join(policy_folder, 'attack_models')
+    make_dir(save_folder)
 
-    for policy_file in sorted(policy_files):
-        print('==========')
-        print('Starting {0}'.format(policy_file))
-        print('==========')
+    for path in iterate_dir(policy_folder, '.*json.gz'):
+    
+        print('===== STARTING {0} ====='.format(path))
+
+        policy_result = read_json_gz(path)
         
-        policy_result = read_json_gz(policy_file)
+        model_name = os.path.basename(path)
+        model_name = model_name.split('.')[0]
 
         attack_result = fit_attack_model(message_sizes=policy_result['num_bytes'],
-                                        labels=policy_result['labels'],
-                                        window_size=args.window_size,
-                                        train_frac=0.7,
-                                        val_frac=0.15,
-                                        num_samples=args.num_samples)
+                                         labels=policy_result['labels'],
+                                         window_size=args.window_size,
+                                         train_frac=0.7,
+                                         val_frac=0.15,
+                                         num_samples=args.num_samples,
+                                         name=model_name,
+                                         save_folder=save_folder)
 
         # Save the attack result
         policy_result['attack'] = attack_result
-        save_json_gz(policy_result, policy_file)
+        save_json_gz(policy_result, path)
