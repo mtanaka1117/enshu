@@ -2,7 +2,7 @@ import numpy as np
 import os
 import tensorflow.keras as keras
 
-from sklearn.metrics import accuracy_score
+from sklearn.metrics import accuracy_score, f1_score
 from typing import Any, List
 
 
@@ -40,7 +40,6 @@ class AttackClassifier:
     @property
     def metadata_file_name(self) -> str:
         return '{0}_metadata.pkl.gz'.format(self.name)
-
 
     def build(self, num_features: int, num_classes: int) -> keras.models.Model:
         # Create the input layer
@@ -156,3 +155,17 @@ class AttackClassifier:
         assert len(labels.shape) == 1, 'Labels must be a 1d array'
         predictions = self.predict(inputs)  # [N]
         return accuracy_score(y_pred=predictions, y_true=labels)
+
+    def macro_f1(self, inputs: np.ndarray, labels: np.ndarray) -> float:
+        """
+        Computes the accuracy of the given model on the provided data.
+
+        Args:
+            inputs: A [N, D] array of input features
+            labels: A [N] array of output features
+        Returns:
+            The accuracy on the given dataset
+        """
+        assert len(labels.shape) == 1, 'Labels must be a 1d array'
+        predictions = self.predict(inputs)  # [N]
+        return f1_score(y_pred=predictions, y_true=labels, average='macro')

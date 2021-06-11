@@ -137,6 +137,7 @@ def fit_attack_model(message_sizes: List[int], labels: List[int], window_size: i
     train_accuracy = clf.accuracy(train_inputs, train_outputs)
     val_accuracy = clf.accuracy(val_inputs, val_outputs)
     test_accuracy = clf.accuracy(test_inputs, test_outputs)
+    test_macro_f1 = clf.macro_f1(test_inputs, test_outputs)
 
     print('Train Accuracy: {0:.5f} ({1})'.format(train_accuracy, len(train_inputs)))
     print('Val Accuracy: {0:.5f} ({1})'.format(val_accuracy, len(val_inputs)))
@@ -146,6 +147,7 @@ def fit_attack_model(message_sizes: List[int], labels: List[int], window_size: i
     return dict(train_accuracy=train_accuracy,
                 val_accuracy=val_accuracy,
                 test_accuracy=test_accuracy,
+                test_macro_f1=test_macro_f1,
                 num_train=len(train_inputs),
                 num_val=len(val_inputs),
                 num_test=len(test_inputs),
