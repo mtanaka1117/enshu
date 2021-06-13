@@ -11,7 +11,7 @@ from adaptiveleak.utils.constants import BITS_PER_BYTE, MIN_WIDTH, SMALL_NUMBER,
 from adaptiveleak.utils.constants import MIN_SHIFT_GROUPS
 from adaptiveleak.utils.data_utils import get_group_widths, get_num_groups, calculate_bytes, pad_to_length, sigmoid
 from adaptiveleak.utils.data_utils import prune_sequence, get_max_collected, calculate_grouped_bytes, linear_extrapolate
-from adaptiveleak.utils.data_utils import balance_group_size, set_widths, select_range_shifts_array, num_bits_for_value
+from adaptiveleak.utils.data_utils import balance_group_size, set_widths, select_range_shifts_array, num_bits_for_value, linear_sigmoid, linear_tanh
 from adaptiveleak.utils.shifting import merge_shift_groups
 from adaptiveleak.utils.message import encode_standard_measurements, decode_standard_measurements
 from adaptiveleak.utils.message import encode_grouped_measurements, decode_grouped_measurements
@@ -20,7 +20,7 @@ from adaptiveleak.utils.encryption import AES_BLOCK_SIZE, EncryptionMode, CHACHA
 from adaptiveleak.utils.file_utils import read_json, read_pickle_gz
 
 
-MARGIN = 0.0
+MARGIN = 0.005
 MAX_ITER = 100
 
 
@@ -283,6 +283,7 @@ class AdaptivePolicy(Policy):
 class AdaptiveHeuristic(AdaptivePolicy):
 
     def should_collect(self, seq_idx: int) -> bool:
+
         if self._sample_skip > 0:
             self._sample_skip -= 1
             return False
@@ -290,8 +291,15 @@ class AdaptiveHeuristic(AdaptivePolicy):
         return True
 
     def collect(self, measurement: np.ndarray):
+        if len(self._estimate.shape) == 2 and len(measurement.shape) == 1:
+            self._estimate = np.squeeze(self._estimate, axis=-1)
+
         diff = np.sum(np.abs(self._estimate - measurement))
+        #print('Estimate: {0}, Measurement: {1}'.format(self._estimate, measurement))
+
         self._estimate = measurement
+
+        #print('Diff: {0}, Threshold: {1}, Current Skip: {2}'.format(diff, self._threshold, self._current_skip))
 
         if diff >= self._threshold:
             self._current_skip = 0
@@ -330,8 +338,8 @@ class AdaptiveLiteSense(AdaptivePolicy):
         self._alpha = 0.7
         self._beta = 0.7
 
-        self._mean = np.zeros(shape=(num_features, 1))  # [D, 1]
-        self._dev = np.zeros(shape=(num_features, 1))
+        self._mean = np.zeros(shape=(num_features, ))  # [D]
+        self._dev = np.zeros(shape=(num_features, ))
 
     def should_collect(self, seq_idx: int) -> bool:
         if (seq_idx == 0) or (self._sample_skip >= self._current_skip):
@@ -360,8 +368,8 @@ class AdaptiveLiteSense(AdaptivePolicy):
 
     def reset(self):
         super().reset()
-        self._mean = np.zeros(shape=(self.num_features, 1))  # [D, 1]
-        self._dev = np.zeros(shape=(self.num_features, 1))
+        self._mean = np.zeros(shape=(self.num_features, ))  # [D, 1]
+        self._dev = np.zeros(shape=(self.num_features, ))
 
     def __str__(self) -> str:
         return 'adaptive_litesense_{0}'.format(self._encoding_mode.name.lower())
@@ -374,6 +382,8 @@ class AdaptiveDeviation(AdaptiveLiteSense):
         self._dev = (1.0 - self._beta) * self._dev + self._beta * np.abs(self._mean - measurement)
 
         norm = np.sum(self._dev)
+
+        #print('Mean: {0}, Dev: {1}, Norm: {2}, Measurement: {3}'.format(self._mean, self._dev, norm, measurement))
 
         if norm > self._threshold:
             self._current_skip = max(int(self._current_skip / 2), 0) 
@@ -419,14 +429,8 @@ class SkipRNN(AdaptivePolicy):
         self._W_gates = model_weights['rnn-cell/W-gates:0'].T
         self._b_gates = model_weights['rnn-cell/b-gates:0'].T
 
-        #self._W_candidate = model_weights['rnn-cell/W-candidate:0'].T
-        #self._b_candidate = model_weights['rnn-cell/b-candidate:0'].T
-
         self._W_state = model_weights['rnn-cell/W-state:0'].T
         self._b_state = model_weights['rnn-cell/b-state:0'].T
-
-        #self._alpha = sigmoid(model_weights['rnn-cell/alpha:0'])
-        #self._beta = sigmoid(model_weights['rnn-cell/beta:0'])
 
         # Unpack the normalization object
         scaler = read_pickle_gz(model_file)['metadata']['scaler']
@@ -442,7 +446,11 @@ class SkipRNN(AdaptivePolicy):
         self._cum_update_prob = 1.0  # Cumulative update prob
         self._update_prob = 0.0  # Update prob from the previous step (avoid re-computation)
 
+        self._seq_idx = 0
+
     def should_collect(self, seq_idx: int) -> bool:
+        self._seq_idx += 1
+
         if (self._cum_update_prob >= self._threshold):
             self._cum_update_prob = 0.0            
             return True
@@ -459,35 +467,28 @@ class SkipRNN(AdaptivePolicy):
         # Normalize the measurements
         measurement = (measurement - self._mean) / self._scale
 
-        # Compute the Fast RNN Update
+        # Compute the UGRNN Update
         stacked = np.concatenate([measurement, self._state], axis=0)  # [K + D, 1]
-        #candidate = np.tanh(np.matmul(self._W_gates, stacked) + self._b_gates)  # [D, 1]
-
-        #self._state = self._alpha * candidate + self._beta * self._state
-
         gates = np.matmul(self._W_gates, stacked) + self._b_gates
 
         update_gate, candidate = gates[:self._state_size], gates[self._state_size:]
 
         update_gate = sigmoid(update_gate + 1)
         candidate = np.tanh(candidate)
-        #reset_gate = sigmoid(reset_gate)
-
-        # Compute the candidate state
-        #stacked = np.concatenate([measurement, reset_gate * self._state], axis=0)
-        #candidate = np.tanh(self._W_candidate.dot(stacked) + self._b_candidate)
-
+        
         # Compute the next state
         self._state = (1.0 - update_gate) * candidate + update_gate * self._state
 
         # Compute the update probabilities
-        self._update_prob = sigmoid(self._W_state.dot(self._state) + self._b_state)
+        update_prob = self._W_state.dot(self._state) + self._b_state
+        self._update_prob = sigmoid(update_prob)
         self._cum_update_prob = self._update_prob
 
     def reset(self):
         self._state = self._initial_state
         self._cum_update_prob = 1.0  # Cumulative update prob
         self._update_prob = 0.0  # Update prob from the previous step (avoid re-computation)
+        self._seq_idx = 0
 
     def __str__(self) -> str:
         return 'skip_rnn_{0}'.format(self._encoding_mode.name.lower())
@@ -742,7 +743,7 @@ class RandomPolicy(Policy):
     def should_collect(self, seq_idx: int) -> bool:
         r = self._rand.uniform()
 
-        if r < self._target or seq_idx == 0:
+        if r < (self._target + MARGIN) or seq_idx == 0:
             return True
 
         return False
@@ -768,7 +769,7 @@ class UniformPolicy(Policy):
                          seq_length=seq_length,
                          encryption_mode=encryption_mode,
                          should_compress=should_compress)
-        target_samples = int(target * seq_length)
+        target_samples = int((target + MARGIN) * seq_length)
 
         skip = max(1.0 / target, 1)
         frac_part = skip - math.floor(skip)
