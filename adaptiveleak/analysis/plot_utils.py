@@ -23,8 +23,8 @@ COLORS = {
     'adaptive_heuristic_group': '#08519c',
     'adaptive_deviation_standard': '#c2a5cf',
     'adaptive_deviation_group': '#7b3294',
-    'adaptive_jitter_standard': '#dfc27d',
-    'adaptive_jitter_group': '#a6611a'
+    'skip_rnn_standard': '#dfc27d',
+    'skip_rnn_group': '#a6611a'
 }
 
 DATASET_NAMES = {
@@ -35,7 +35,8 @@ DATASET_NAMES = {
     'tiselac': 'Tiselac',
     'haptics': 'Haptics',
     'eog': 'EOG',
-    'trajectories': 'Characters'
+    'trajectories': 'Characters',
+    'mnist': 'MNIST'
 }
 
 
@@ -52,29 +53,38 @@ def geometric_mean(x: List[float]) -> float:
     return np.power(x_prod, 1.0 / len(x))
 
 
-def extract_results(folder: str, field: str, aggregate_mode: Optional[str]) -> Tuple[str, Dict[float, Any]]:
+def extract_results(folder: str, field: str, aggregate_mode: Optional[str], default_value: Any = 0.0) -> Tuple[str, Dict[float, Any]]:
 
     result: Dict[float, float] = dict()
 
+    name = ''
+
     for file_name in sorted(os.listdir(folder)):
         path = os.path.join(folder, file_name)
+
+        if not path.endswith('.json.gz'):
+            continue
+
         serialized = read_json_gz(path)
 
         target = serialized['policy']['target']
         name = serialized['policy']['name']
 
-        if aggregate_mode is None:
-            value = serialized[field]
-        elif aggregate_mode == 'avg':
-            value = np.average(serialized[field])
-        elif aggregate_mode == 'median':
-            value = np.median(serialized[field])
-        elif aggregate_mode == 'max':
-            value = np.max(serialized[field])
-        elif aggregate_mode == 'geom':
-            value = geometric_mean(serialized[field])
+        if field not in serialized:
+            value = default_value
         else:
-            raise ValueError('Unknown aggregation mode: {0}'.format(aggregate_mode))
+            if aggregate_mode is None:
+                value = serialized[field]
+            elif aggregate_mode == 'avg':
+                value = np.average(serialized[field])
+            elif aggregate_mode == 'median':
+                value = np.median(serialized[field])
+            elif aggregate_mode == 'max':
+                value = np.max(serialized[field])
+            elif aggregate_mode == 'geom':
+                value = geometric_mean(serialized[field])
+            else:
+                raise ValueError('Unknown aggregation mode: {0}'.format(aggregate_mode))
 
         result[target] = value
 

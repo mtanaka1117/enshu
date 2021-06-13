@@ -51,7 +51,7 @@ if __name__ == '__main__':
     parser.add_argument('--output-file', type=str)
     args = parser.parse_args()
 
-    extract_fn = partial(extract_results, field='attack', aggregate_mode=None)
+    extract_fn = partial(extract_results, field='attack', aggregate_mode=None, default_value=dict(test_accuracy=0.0))
     policy_folders = iterate_policy_folders(args.dates, dataset=args.dataset)
 
     sim_results = {name: res for name, res in map(extract_fn, policy_folders)}
