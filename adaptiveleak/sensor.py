@@ -8,6 +8,7 @@ from typing import Optional
 
 from adaptiveleak.policies import make_policy, run_policy, Policy
 from adaptiveleak.utils.constants import LENGTH_BYTES, LENGTH_ORDER
+from adaptiveleak.utils.data_utils import array_to_fp, array_to_float
 from adaptiveleak.utils.encryption import encrypt, EncryptionMode, add_hmac
 from adaptiveleak.utils.loading import load_data
 from adaptiveleak.utils.file_utils import read_json, read_pickle_gz, save_pickle_gz
@@ -115,6 +116,10 @@ if __name__ == '__main__':
                          encryption_mode=encryption_mode,
                          encoding=args.encoding,
                          should_compress=args.should_compress)
+
+    # Pre-Quantize the data, as this is how the MCU reads the data
+    quantized = array_to_fp(inputs, width=policy.width, precision=policy.precision)
+    inputs = array_to_float(quantized, precision=policy.precision)
 
     # Run the sensor
     sensor = Sensor(server_host='localhost', server_port=args.port)
