@@ -34,6 +34,21 @@ FixedPoint fp32_mul(FixedPoint x, FixedPoint y, uint16_t precision) {
 }
 
 
+FixedPoint fp_convert(FixedPoint x, uint16_t oldPrecision, uint16_t newPrecision, uint16_t newWidth) {
+    int16_t diff = oldPrecision - newPrecision;
+
+    FixedPoint result;
+    if (diff >= 0) {
+        result = x >> diff;    
+    } else {
+        result = x << diff;
+    }
+
+    uint16_t mask = (1 << newWidth) - 1;
+    return result & mask;
+}
+
+
 
 //FixedPoint fp_sigmoid(FixedPoint x, uint16_t precision) {
 //    /**

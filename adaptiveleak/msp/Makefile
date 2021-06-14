@@ -11,5 +11,12 @@ encoding_tests: utils/constants.h utils/fixed_point.h utils/bitmap.h utils/matri
 
 matrix_tests: utils/constants.h utils/fixed_point.h utils/matrix.h tests/matrix_tests.h utils/fixed_point.c utils/matrix.c tests/matrix_tests.c
 	$(CC) -o matrix_tests utils/fixed_point.c utils/matrix.c tests/matrix_tests.c
+
+packing_tests: utils/constants.h utils/fixed_point.h utils/packing.h tests/packing_tests.h utils/fixed_point.c utils/packing.c tests/packing_tests.c
+	$(CC) -o packing_tests utils/fixed_point.c utils/packing.c tests/packing_tests.c
+
+range_tests: utils/constants.h utils/fixed_point.h utils/range_shifting.h tests/range_shifting_tests.h utils/fixed_point.c utils/range_shifting.c tests/range_shifting_tests.c
+	$(CC) -o range_tests utils/fixed_point.c utils/range_shifting.c tests/range_shifting_tests.c
+
 clean: 
-	rm -f *.o policy matrix_tests encoding_tests *.dSYM
+	rm -f *.o policy matrix_tests encoding_tests packing_tests range_tests *.dSYM
