@@ -196,7 +196,7 @@ class AdaptivePolicy(Policy):
 
             # Compute the target number of data bytes
             target_data_bytes = target_bytes - metadata_bytes
-            target_data_bits = (target_data_bytes - MAX_SHIFT_GROUPS) * self.width
+            target_data_bits = (target_data_bytes - MAX_SHIFT_GROUPS) * BITS_PER_BYTE
 
             # Estimate the maximum number of measurements we can collect
             max_features = int(target_data_bits / MIN_WIDTH)
@@ -247,8 +247,6 @@ class AdaptivePolicy(Policy):
                                                  group_sizes=group_sizes,
                                                  non_fractional=self.non_fractional,
                                                  seq_length=self.seq_length)
-
-            diff = (target_bytes - CHACHA_NONCE_LEN) - len(encoded)
 
             if self.encryption_mode == EncryptionMode.STREAM:
                 return pad_to_length(encoded, length=target_bytes - CHACHA_NONCE_LEN)
@@ -422,7 +420,8 @@ class SkipRNN(AdaptivePolicy):
                          should_compress=should_compress)
 
         # Fetch the parameters
-        model_file = os.path.join('saved_models', dataset_name, 'skip_rnn', 'skip-rnn-{0}.pkl.gz'.format(int(target * 100)))
+        dir_name = os.path.dirname(__file__)
+        model_file = os.path.join(dir_name, 'saved_models', dataset_name, 'skip_rnn', 'skip-rnn-{0}.pkl.gz'.format(int(target * 100)))
         model_weights = read_pickle_gz(model_file)['trainable_vars']
 
         # Unpack the model parameters

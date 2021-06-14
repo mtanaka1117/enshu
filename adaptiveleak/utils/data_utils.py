@@ -468,17 +468,13 @@ def set_widths(group_sizes: List[int], target_bytes: int, start_width: int) -> L
     if start_width >= MAX_WIDTH:
         return widths
 
-    # Select the iteration order based on the group size
-    # to favor adding bits to larger groups
-    group_order = np.argsort(group_sizes)
-
     counter = 0
     has_improved = True
     while (has_improved and counter < MAX_ITER):
 
         has_improved = False
 
-        for idx in reversed(group_order):
+        for idx in range(len(group_sizes)):
             if (widths[idx] == MAX_WIDTH):
                 continue
 
