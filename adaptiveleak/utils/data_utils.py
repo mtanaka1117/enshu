@@ -705,15 +705,16 @@ def prune_sequence(measurements: np.ndarray, collected_indices: List[int], max_c
     if num_collected <= max_collected:
         return measurements, collected_indices
 
-    # Compute the two-step differences in measurements
-    first = measurements[:-2]  # [L - 2, D]
-    last = measurements[2:]  # [L - 2, D]
-    measurement_diff = np.sum(np.abs(last - first), axis=-1) # [L - 2]
+    # Compute the differences in measurements
+    first = measurements[:-1]  # [L - 1, D]
+    last = measurements[1:]  # [L - 1, D]
+    measurement_diff = np.sum(np.abs(last - first), axis=-1).astype(int)  # [L - 1]
 
     # Compute the two-step differences in indices
-    idx_diff = np.array([(collected_indices[i+2] - collected_indices[i]) for i in range(len(collected_indices) - 2)])  # [L - 2]
+    idx_diff = np.array([(collected_indices[i+1] - collected_indices[i]) for i in range(len(collected_indices) - 1)])  # [L - 1]
     
-    scores = measurement_diff + (0.125 * idx_diff)
+    scores = measurement_diff + (0.125 * idx_diff)  # [L - 1]
+    scores = scores[:-1]  # [L - 2]
 
     num_to_prune = len(measurements) - max_collected
 
