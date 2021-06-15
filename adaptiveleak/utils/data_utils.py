@@ -708,30 +708,19 @@ def prune_sequence(measurements: np.ndarray, collected_indices: List[int], max_c
     # Compute the two-step differences in measurements
     first = measurements[:-2]  # [L - 2, D]
     last = measurements[2:]  # [L - 2, D]
-    measurement_diff = last - first 
+    measurement_diff = np.sum(np.abs(last - first), axis=-1) # [L - 2]
 
     # Compute the two-step differences in indices
-    idx_two_diff = np.array([(collected_indices[i+2] - collected_indices[i]) for i in range(len(collected_indices) - 2)])  # [L - 2]
-    idx_two_diff = np.expand_dims(idx_two_diff, axis=-1)  # [L - 2, 1]
-
-    slopes = measurement_diff / idx_two_diff  # [L - 2, D]
-
-    # Re-interpolate the middle values
-    idx_one_diff = np.array([collected_indices[i+1] - collected_indices[i] for i in range(len(collected_indices) - 2)])  # [L - 2]
-    idx_one_diff = np.expand_dims(idx_one_diff, axis=-1)  # [L - 2, 1]
-
-    interpolated = first + slopes * idx_one_diff  # [L - 2, D]
-
-    # Compare interpolated values to the observed measurements
-    true = measurements[1:-1]  # [L - 2, D]
-    error = np.sum(np.abs(true - interpolated), axis=-1)  # [L - 2]
+    idx_diff = np.array([(collected_indices[i+2] - collected_indices[i]) for i in range(len(collected_indices) - 2)])  # [L - 2]
+    
+    scores = measurement_diff + (0.125 * idx_diff)
 
     num_to_prune = len(measurements) - max_collected
 
-    if num_to_prune >= len(error):
-        to_remove_set = set(i + 1 for i in range(len(error)))
+    if num_to_prune >= len(scores):
+        to_remove_set = set(i + 1 for i in range(len(scores)))
     else:
-        idx_to_prune = np.argpartition(error, num_to_prune)[0:num_to_prune]
+        idx_to_prune = np.argpartition(scores, num_to_prune)[0:num_to_prune]
         idx_to_prune += 1
 
         # Remove the given elements from the measurements and collected lists
@@ -743,53 +732,6 @@ def prune_sequence(measurements: np.ndarray, collected_indices: List[int], max_c
     pruned_indices = [collected_indices[i] for i in idx_to_keep]
 
     return pruned_measurements, pruned_indices
-
-    ## Make a list of the current indices in the measurements array
-    #idx_list = list(range(len(measurements)))
-
-    ## Compute the consecutive differences
-    #first = measurements[:-1]  # [L - 1, D]
-    #last = measurements[1:]  # [L - 1, D]
-    #diffs_array = np.sum(np.abs(last - first), axis=-1)  # [L - 1] array of consecutive differences
-    #diffs = diffs_array.tolist()
-
-    ## Compute the differences between consecutive indices
-    #idx_diffs = [(collected_indices[i+1] - collected_indices[i]) for i in range(1, len(collected_indices) - 1)]  # [L - 2]
-    #idx_diffs.append(seq_length - collected_indices[-1])  # Append 'distance' to the end of the sequence
-
-    #while len(idx_list) > max_collected:
-    #    # Scale the differences by the index differences. Conceptually, these values
-    #    # measure the additional error caused by replacing one measurement by the previous
-    #    # for the next X steps.
-    #    scaled_diffs = [error * idx for error, idx in zip(diffs, idx_diffs)]
-    #    
-    #    # Remove the index with the smallest scaled difference
-    #    min_error_idx = np.argmin(scaled_diffs)
-
-    #    idx_list.pop(min_error_idx + 1)
-
-    #    # Remove index from the error lists
-    #    diffs.pop(min_error_idx)
-    #    idx_diffs.pop(min_error_idx)
-
-    #    # Update the measurement differences
-    #    if min_error_idx < len(idx_list) - 1:
-    #        curr_idx = idx_list[min_error_idx + 1]
-    #        curr = measurements[curr_idx]  # [D]
-
-    #        prev_idx = idx_list[min_error_idx]
-    #        prev = measurements[prev_idx]  # [D]
-
-    #        diffs[min_error_idx] = np.sum(np.abs(curr - prev))
-
-    #        # Update the index difference
-    #        next_idx = collected_indices[idx_list[min_error_idx + 2]] if min_error_idx < (len(idx_list) - 2) else seq_length
-    #        idx_diffs[min_error_idx] = next_idx - collected_indices[curr_idx]
-
-    #updated_indices = [collected_indices[i] for i in idx_list]
-    #updated_measurements = measurements[idx_list]
-
-    #return updated_measurements, updated_indices
 
 
 def create_groups(measurements: np.ndarray, max_num_groups: int, max_group_size: int) -> List[np.ndarray]:
