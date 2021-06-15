@@ -6,12 +6,31 @@ int main(void) {
     test_collected_indices_three();
     test_collected_indices_ten();
     test_collected_indices_23();
+    test_collected_indices_ten_unset();
     printf("\tPassed Collected Indices Tests.\n");
 
     printf("==== Test Standard Encoding ====\n");
     test_standard_encode_four();
     test_standard_encode_ten();
     printf("\tPassed Standard Encoding Tests.\n");
+
+    printf("==== Test Block Rounding ====\n");
+    test_rounding_equal();
+    test_rounding_five();
+    test_rounding_ten();
+    printf("\tPassed Block Rounding Tests.\n");
+
+    printf("==== Test Group Message Length Estimation ====\n");
+    test_group_length_block_1();
+    printf("\tPassed Group Message Length Estimation.\n");
+
+    printf("==== Test Group Width Setting ====\n");
+    test_set_widths_3();
+    test_set_widths_4();
+    test_set_widths_5();
+    printf("\tPassed Group Width Setting.\n");
+
+    return 0;
 }
 
 void test_collected_indices_three() {
@@ -68,6 +87,31 @@ void test_collected_indices_23() {
     assert(bitmap.bytes[0] == 49);
     assert(bitmap.bytes[1] == 147);
     assert(bitmap.bytes[2] == 118);
+}
+
+
+void test_collected_indices_ten_unset() {
+    uint8_t buffer[2];
+    struct BitMap bitmap = { buffer, 2 };
+    clear_bitmap(&bitmap);
+
+    uint16_t numCollected = 5;
+    uint16_t collectedIndices[5] = { 0, 4, 5, 8, 9 };
+
+    uint16_t i = 0;
+    for (; i < numCollected; i++) {
+        set_bit(collectedIndices[i], &bitmap);
+    }
+
+    assert(bitmap.numBytes == 2);
+    assert(bitmap.bytes[0] == 49);
+    assert(bitmap.bytes[1] == 3);
+
+    unset_bit(collectedIndices[4], &bitmap);
+    assert(bitmap.bytes[1] == 0x01);
+
+    unset_bit(collectedIndices[1], &bitmap);
+    assert(bitmap.bytes[0] == 0x21);
 }
 
 
@@ -147,3 +191,84 @@ void test_standard_encode_ten() {
         assert(encoded[i] == expected[i]);
     }
 }
+
+
+void test_rounding_equal(void) {
+    assert(round_to_aes_block(AES_BLOCK_SIZE) == AES_BLOCK_SIZE);
+    assert(round_to_aes_block(2 * AES_BLOCK_SIZE) == (2 * AES_BLOCK_SIZE));
+    assert(round_to_aes_block(7 * AES_BLOCK_SIZE) == (7 * AES_BLOCK_SIZE));
+}
+
+
+void test_rounding_five(void) {
+    assert(round_to_aes_block(5) == AES_BLOCK_SIZE);
+    assert(round_to_aes_block(25) == (2 * AES_BLOCK_SIZE));
+    assert(round_to_aes_block(105) == (7 * AES_BLOCK_SIZE));
+}
+
+
+void test_rounding_ten(void) {
+    assert(round_to_aes_block(10) == AES_BLOCK_SIZE);
+    assert(round_to_aes_block(30) == (2 * AES_BLOCK_SIZE));
+    assert(round_to_aes_block(110) == (7 * AES_BLOCK_SIZE));
+}
+
+
+void test_group_length_block_1(void) {
+    uint8_t groupWidths[2] = { 6, 7 };
+    uint16_t numGroups = 2;
+
+    uint16_t length = calculate_grouped_size(groupWidths, 4, 3, 10, 6, numGroups, 1);
+    assert(length == 32);
+}
+
+
+void test_set_widths_3(void) {
+    uint16_t groupSizes[3] = { 20, 12, 15 };
+    uint8_t numGroups = 3;
+    uint16_t targetBytes = 39;
+    uint16_t startWidth = 5;
+
+    uint8_t result[3];
+    set_group_widths(result, groupSizes, numGroups, targetBytes, startWidth);
+
+    assert(result[0] == 7);
+    assert(result[1] == 6);
+    assert(result[2] == 6);
+}
+
+
+void test_set_widths_4(void) {
+    uint16_t groupSizes[4] = { 150, 12, 15, 7 };
+    uint8_t numGroups = 4;
+    uint16_t targetBytes = 129;
+    uint16_t startWidth = 5;
+
+    uint8_t result[4];
+    set_group_widths(result, groupSizes, numGroups, targetBytes, startWidth);
+
+    assert(result[0] == 5);
+    assert(result[1] == 8);
+    assert(result[2] == 8);
+    assert(result[3] == 9);
+}
+
+
+void test_set_widths_5(void) {
+    uint16_t groupSizes[5] = { 8, 150, 12, 15, 7 };
+    uint8_t numGroups = 5;
+    uint16_t targetBytes = 137;
+    uint16_t startWidth = 5;
+
+    uint8_t result[5];
+    set_group_widths(result, groupSizes, numGroups, targetBytes, startWidth);
+
+    assert(result[0] == 9);
+    assert(result[1] == 5);
+    assert(result[2] == 8);
+    assert(result[3] == 8);
+    assert(result[4] == 8);
+}
+
+
+

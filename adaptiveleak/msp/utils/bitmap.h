@@ -11,6 +11,7 @@ struct BitMap {
 };
 
 void set_bit(uint16_t index, struct BitMap *bitmap);
+void unset_bit(uint16_t index, struct BitMap *bitmap);
 void clear_bitmap(struct BitMap *bitmap);
 
 #endif
