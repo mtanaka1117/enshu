@@ -7,7 +7,7 @@ uint16_t min(uint16_t x, uint16_t y) {
 }
 
 
-uint16_t pack(uint8_t *output, uint16_t *values, uint8_t bitWidth, uint16_t numValues) {
+uint16_t pack(uint8_t *output, int16_t *values, uint8_t bitWidth, uint16_t numValues) {
     /**
      * Packs the given features into the output byte array using the given bit width per feature.
      */
@@ -28,11 +28,14 @@ uint16_t pack(uint8_t *output, uint16_t *values, uint8_t bitWidth, uint16_t numV
 
     uint8_t numBits = 0;
     uint8_t usedBits = 0;
+    uint32_t offset = 1 << (bitWidth - 1);
+    uint16_t mask = ~(1 << bitWidth);
 
     uint16_t byteIdx, valIdx;
 
     for (valIdx = 0; valIdx < numValues; valIdx++) {
-        value = values[valIdx];
+        value = (uint16_t) (((uint32_t) values[valIdx]) + offset);
+        value &= mask;
 
         for (byteIdx = 0; byteIdx < bytesPerVal; byteIdx++) {
             currentByte = (value >> (byteIdx * BITS_PER_BYTE)) & 0xFF;

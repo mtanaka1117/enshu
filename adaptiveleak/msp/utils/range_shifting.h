@@ -1,5 +1,6 @@
 #include <stdint.h>
 #include "fixed_point.h"
+#include "math.h"
 
 #ifndef RANGE_SHIFTING_H_
 #define RANGE_SHIFTING_H_

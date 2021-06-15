@@ -6,12 +6,6 @@ uint16_t LOWEST_SCORES[MAX_PRUNING_SIZE];
 uint16_t LOWEST_IDX[MAX_PRUNING_SIZE];
 
 
-uint16_t max(uint16_t x, uint16_t y) {
-    uint8_t comp = (x < y);
-    return (comp * y) + ((1 - comp) * x);
-}
-
-
 uint16_t insertSorted(uint16_t score, uint16_t idx, uint16_t *lowestScores, uint16_t *lowestIdx, uint16_t currentLength, uint16_t maxLength) {
     if (currentLength < maxLength) {
         lowestScores[currentLength] = score;

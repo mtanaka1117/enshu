@@ -1,71 +1,49 @@
 #include "encoding.h"
 
 
-uint16_t encode_standard(uint8_t *output, struct Vector *featureVectors, struct BitMap *collectedIndices, uint16_t numFeatures, uint16_t seqLength) {
+int8_t RESULT_SHIFTS[MAX_NUM_GROUPS];
+uint16_t RESULT_COUNTS[MAX_NUM_GROUPS];
+uint8_t GROUP_WIDTHS[MAX_NUM_GROUPS];
 
-    // Write the collected index bitmap to the output buffer
-    uint16_t outputIdx = 0;
 
+uint16_t encode_collected_indices(uint8_t *output, struct BitMap *collectedIndices, uint16_t outputIdx) {
     uint16_t i;
     uint16_t numBytes = collectedIndices->numBytes;
     for (i = numBytes; i > 0; i--) {
         output[outputIdx] = collectedIndices->bytes[outputIdx];
         outputIdx++;
-    }
-
-    // Write the encoded features to the output array in 16 bit quantities
-    uint16_t seqIdx = 0;  // Assumes that we always collect the first sequence element
-    uint16_t byteIdx = 0;
-    uint16_t bitIdx = 0;
-    uint8_t shouldWrap = 0;
-    uint8_t currentBit = 0;
-    uint8_t currentByte = 0;
-
-    struct Vector currentVector;
-    uint16_t value;
-
-    while (seqIdx < seqLength) {
-       
-        currentVector = featureVectors[seqIdx];
-
-        for (i = 0; i < numFeatures; i++) {
-            value = (uint16_t) (((int32_t) currentVector.data[i]) + TWO_BYTE_OFFSET);
-
-            output[outputIdx] = (value & BYTE_MASK);
-            output[outputIdx + 1] = (value >> BITS_PER_BYTE) & BYTE_MASK;
-            outputIdx += 2;
-        }
-
-        // Advance the featureIdx to the next collected index
-        do {
-            bitIdx++;
-            shouldWrap = bitIdx >= BITS_PER_BYTE;
-            bitIdx = bitIdx * (1 - shouldWrap);
-
-            byteIdx += shouldWrap;
-
-            currentByte = collectedIndices->bytes[byteIdx];
-            currentBit = (currentByte >> bitIdx) & 1;
-
-            seqIdx++; 
-        } while ((seqIdx < seqLength) && !currentBit);
     }
 
     return outputIdx;
 }
 
 
-uint16_t encode_group(uint8_t *output, struct Vector *featureVectors, struct BitMap *collectedIndices, uint16_t numFeatures, uint16_t seqLength) {
+uint16_t encode_shifts(uint8_t *output, int8_t *shifts, uint8_t *widths, uint16_t *counts, uint8_t countBits, uint8_t numGroups, uint16_t outputIdx) {
+    // Include the number of groups
+    output[outputIdx] = numGroups;
+    outputIdx++;
+
+    uint8_t i;
+    for (i = 0; i < numGroups; i++) {
+        output[outputIdx] = ((widths[i] & WIDTH_MASK) << NUM_SHIFT_BITS) | (shifts[i] & SHIFT_MASK);
+        outputIdx++;
+    }
+    
+    uint16_t packedBytes = pack(output + outputIdx, (int16_t *) counts, countBits, numGroups);
+    outputIdx += packedBytes;
+
+    output[outputIdx] = countBits;
+    outputIdx++;
+
+    return outputIdx;
+}
+
+
+uint16_t encode_standard(uint8_t *output, struct Vector *featureVectors, struct BitMap *collectedIndices, uint16_t numFeatures, uint16_t seqLength) {
 
     // Write the collected index bitmap to the output buffer
     uint16_t outputIdx = 0;
-
-    uint16_t i;
-    uint16_t numBytes = collectedIndices->numBytes;
-    for (i = numBytes; i > 0; i--) {
-        output[outputIdx] = collectedIndices->bytes[outputIdx];
-        outputIdx++;
-    }
+    outputIdx = encode_collected_indices(output, collectedIndices, outputIdx);
 
     // Write the encoded features to the output array in 16 bit quantities
     uint16_t seqIdx = 0;  // Assumes that we always collect the first sequence element
@@ -76,7 +54,7 @@ uint16_t encode_group(uint8_t *output, struct Vector *featureVectors, struct Bit
     uint8_t currentByte = 0;
 
     struct Vector currentVector;
-    uint16_t value;
+    uint16_t value, i;
 
     while (seqIdx < seqLength) {
        
@@ -116,9 +94,149 @@ uint16_t get_num_bytes(uint16_t numBits) {
 }
 
 
-uint16_t min(uint16_t x, uint16_t y) {
-    uint8_t comp = x <= y;
-    return (comp * x) + ((1 - comp) * y);
+uint16_t encode_group(uint8_t *output,
+                      struct Vector *featureVectors,
+                      struct BitMap *collectedIndices,
+                      uint16_t numCollected,
+                      uint16_t numFeatures,
+                      uint16_t seqLength,
+                      uint16_t targetBytes,
+                      uint16_t precision,
+                      FixedPoint *tempBuffer,
+                      int8_t *shiftBuffer,
+                      uint8_t isBlock) {
+    // Estimate the meta-data associates with stable group encoding
+    uint16_t sizeWidth = 0;
+    uint16_t tempLength = seqLength;
+    while (tempLength > 0) {
+        tempLength = tempLength >> 1;
+        sizeWidth++;
+    }
+
+    uint16_t sizeBytes = get_num_bytes(sizeWidth * MAX_NUM_GROUPS);
+    uint16_t maskBytes = get_num_bytes(seqLength);
+    uint16_t metadataBytes = maskBytes + sizeBytes + MAX_NUM_GROUPS + 1;
+
+    if (isBlock) {
+        metadataBytes += AES_BLOCK_SIZE;
+    } else {
+        metadataBytes += CHACHA_NONCE_LEN;
+    }
+
+    // Compute the target number of data bytes
+    uint16_t targetDataBytes = targetBytes - metadataBytes;
+    uint16_t targetDataBits = (targetDataBytes - MAX_NUM_GROUPS) << 3;
+
+    // Estimate the maximum number of measurements we can collect
+    uint16_t maxFeatures = targetDataBits / MIN_WIDTH;
+    uint16_t maxCollected = maxFeatures / numFeatures;
+
+    if (numCollected < maxCollected) {
+        prune_sequence(featureVectors, collectedIndices, numCollected, maxCollected, seqLength, precision);
+        numCollected = maxCollected;
+    }
+    
+    // Write the collected features in transpose fashion into the temp buffer
+    uint16_t seqIdx = 0;  // Assumes that we always collect the first sequence element
+    uint16_t byteIdx = 0;
+    uint16_t bitIdx = 0;
+    uint8_t shouldWrap = 0;
+    uint8_t currentBit = 0;
+    uint8_t currentByte = 0;
+
+    struct Vector currentVector;
+    uint16_t featureIdx, i;
+    uint16_t collectedIdx = 0;
+
+    while (seqIdx < seqLength) {
+       
+        currentVector = featureVectors[seqIdx];
+
+        for (i = 0; i < numFeatures; i++) {
+            featureIdx = i * numCollected + collectedIdx;
+            tempBuffer[featureIdx] = currentVector.data[i];
+        }
+
+        // Advance the featureIdx to the next collected index
+        do {
+            bitIdx++;
+            shouldWrap = bitIdx >= BITS_PER_BYTE;
+            bitIdx = bitIdx * (1 - shouldWrap);
+
+            byteIdx += shouldWrap;
+
+            currentByte = collectedIndices->bytes[byteIdx];
+            currentBit = (currentByte >> bitIdx) & 1;
+
+            seqIdx++; 
+        } while ((seqIdx < seqLength) && !currentBit);
+
+        collectedIdx++;
+    }
+
+    // Get the range shifts
+    uint16_t count = numCollected * numFeatures;
+    uint16_t minWidth = targetDataBits / (numFeatures * numCollected);
+    get_range_shifts_array(shiftBuffer, tempBuffer, precision, minWidth, NUM_SHIFT_BITS, count);
+
+    // Run-Length Encode the range shifts
+    uint16_t numGroups = create_shift_groups(RESULT_SHIFTS, RESULT_COUNTS, shiftBuffer, count, MAX_NUM_GROUPS); 
+
+    // Re-calculate the meta-data size based on the given number of shift groups
+    metadataBytes -= sizeBytes;
+
+    uint16_t maxSize = 0;
+    uint16_t s;
+    for (i = 0; i < numGroups; i++) {
+        s = RESULT_COUNTS[i];
+        if (s > maxSize) {
+            maxSize = s;
+        }
+    }
+
+    sizeWidth = 0;
+    uint16_t tempSize = maxSize;
+    while (tempSize > 0) {
+        tempSize = tempSize >> 1;
+        sizeWidth++;
+    }
+
+    sizeBytes = get_num_bytes(sizeWidth * numGroups);
+    metadataBytes += sizeBytes;
+    targetDataBytes = targetBytes - metadataBytes;
+
+    // Set the group widths
+    set_group_widths(GROUP_WIDTHS, RESULT_COUNTS, numGroups, targetDataBytes, minWidth);
+
+    // Write the collected index bitmap to the output buffer
+    uint16_t outputIdx = 0;
+    outputIdx = encode_collected_indices(output, collectedIndices, outputIdx);
+
+    // Write the shift and width values
+    outputIdx = encode_shifts(output, RESULT_SHIFTS, GROUP_WIDTHS, RESULT_COUNTS, sizeWidth, numGroups, outputIdx);
+
+    // Write the encoded feature values
+    uint16_t nonFractional = 16 - precision;
+    uint16_t groupSize, groupPrecision, groupWidth, groupShift;
+    featureIdx = 0;
+
+    for (i = 0; i < numGroups ; i++) {
+        groupSize = RESULT_COUNTS[i];
+        groupWidth = GROUP_WIDTHS[i];
+        groupShift = RESULT_SHIFTS[i];
+        groupPrecision = groupWidth - nonFractional - groupShift;
+
+        if ((featureIdx + groupSize) > count) {
+            groupSize = count - featureIdx;
+        }
+
+        fp_convert_array(tempBuffer, precision, groupPrecision, groupWidth, featureIdx, groupSize);
+        outputIdx += pack(output, tempBuffer + featureIdx, groupWidth, groupSize);
+
+        featureIdx += groupSize;
+    }
+
+    return outputIdx;
 }
 
 
@@ -133,7 +251,7 @@ void set_group_widths(uint8_t *result, uint16_t *groupSizes, uint8_t numGroups, 
     }
 
     uint16_t size, candidateBytes, diff, width;
-    uint16_t counter = 1000;
+    uint16_t counter = MAX_WIDTH - MIN_WIDTH;
     uint8_t hasImproved = 1;
 
     while (hasImproved && (counter > 0)) {
@@ -163,7 +281,6 @@ void set_group_widths(uint8_t *result, uint16_t *groupSizes, uint8_t numGroups, 
 }
 
 
-
 uint16_t calculate_grouped_size(uint8_t *groupWidths, uint16_t numCollected, uint16_t numFeatures, uint16_t seqLength, uint16_t groupSize, uint16_t numGroups, uint8_t isBlock) {
     uint16_t totalBytes = 0;
     uint16_t numSoFar = 0;
@@ -173,7 +290,7 @@ uint16_t calculate_grouped_size(uint8_t *groupWidths, uint16_t numCollected, uin
 
     uint16_t i;
     for (i = 0; i < numGroups; i++) {
-        numElements = min(groupSize, totalFeatures - numSoFar);
+        numElements = min16u(groupSize, totalFeatures - numSoFar);
         numBits = groupWidths[i] * numElements;
         numBytes = get_num_bytes(numBits);
 

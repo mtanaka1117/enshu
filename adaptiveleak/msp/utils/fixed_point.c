@@ -49,6 +49,14 @@ FixedPoint fp_convert(FixedPoint x, uint16_t oldPrecision, uint16_t newPrecision
 }
 
 
+void fp_convert_array(FixedPoint *array, uint16_t oldPrecision, uint16_t newPrecision, uint16_t newWidth, uint16_t startIdx, uint16_t length) {
+    uint16_t i;
+    for (i = startIdx; i < startIdx + length; i++) {
+        array[i] = fp_convert(array[i], oldPrecision, newPrecision, newWidth);
+    }
+}
+
+
 
 //FixedPoint fp_sigmoid(FixedPoint x, uint16_t precision) {
 //    /**

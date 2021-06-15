@@ -4,23 +4,12 @@
 static struct ShiftGroup UNION_FIND[150];
 
 
-uint8_t maxZero(uint8_t x) {
-    return (uint8_t) ((x > 0) * x);
-}
-
-
-int8_t max(int8_t x, int8_t y) {
-    int8_t comp = x > y;
-    return (comp * x) + (1 - comp) * y;
-}
-
-
 int8_t get_range_shift(FixedPoint value, uint8_t currentPrecision, uint8_t newWidth, uint8_t numShiftBits) {
     const int8_t nonFractional = 16 - currentPrecision;
     const uint8_t shiftOffset = (1 << (numShiftBits - 1));
     const uint16_t widthMask = (1 << newWidth) - 1;
     const uint16_t maxFp = (1 << (newWidth - 1)) - 1;
-    const uint8_t newPrecision = maxZero(newWidth - nonFractional);
+    const uint8_t newPrecision = maxZero8u(newWidth - nonFractional);
 
     volatile int8_t shift;
     volatile int8_t shiftedPrecision;
@@ -133,7 +122,7 @@ void merge(struct ShiftGroup *g1, struct ShiftGroup *g2, struct ShiftGroup *unio
     }
 
     right->parent = left->idx;
-    left->shift = max(left->shift, right->shift);
+    left->shift = max8(left->shift, right->shift);
     left->nextParent = right->nextParent;
     left->count = left->count + right->count;
 
