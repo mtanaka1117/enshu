@@ -12,35 +12,33 @@ uint16_t max(uint16_t x, uint16_t y) {
 }
 
 
-uint16_t insertSorted(uint16_t score, uint16_t idx, uint16_t *lowestScores, uint16_t *lowestIdx, uint16_t currentMax, uint16_t *currentLength, uint16_t maxLength) {
-    uint16_t length = *currentLength;
-
-    if (length < maxLength) {
-        lowestScores[length] = score;
-        lowestIdx[length] = idx;
-        *currentLength += 1;
+uint16_t insertSorted(uint16_t score, uint16_t idx, uint16_t *lowestScores, uint16_t *lowestIdx, uint16_t currentLength, uint16_t maxLength) {
+    if (currentLength < maxLength) {
+        lowestScores[currentLength] = score;
+        lowestIdx[currentLength] = idx;
+        return 1;
     } else {
         // Find the maximum element
         uint16_t maxScore = 0;
         uint16_t maxIdx = 0;
 
-        uint16_t i, score;
+        uint16_t i, s;
         for (i = 0; i < maxLength; i++) {
-            score = lowestScores[i];
-            if (score > maxScore) {
-                maxScore = score;
+            s = lowestScores[i];
+            if (s > maxScore) {
+                maxScore = s;
                 maxIdx = i;
             }
         }
 
-        lowestScores[maxIdx] = score;
-        lowestIdx[maxIdx] = idx;
+        if (score < maxScore) {
+            lowestScores[maxIdx] = score;
+            lowestIdx[maxIdx] = idx;
+        }
+
+        return 0;
     }
-
-    return max(score, currentMax);
 }
-
-
 
 
 void prune_sequence(struct Vector *measurements, struct BitMap *collectedIndices, uint16_t numCollected, uint16_t maxCollected, uint16_t seqLength, uint16_t precision) {
@@ -59,7 +57,6 @@ void prune_sequence(struct Vector *measurements, struct BitMap *collectedIndices
 
     uint16_t numToPrune = numCollected - maxCollected;
     uint16_t currentLength = 0;
-    uint16_t currentMax = 0;
 
     while (seqIdx < seqLength) {
         if (seqIdx > 0) {
@@ -68,9 +65,7 @@ void prune_sequence(struct Vector *measurements, struct BitMap *collectedIndices
             idxDiff = (seqIdx - prevIdx) >> 3;
             score = norm + idxDiff;
 
-            if (score < currentMax) {
-                insertSorted(score, seqIdx, LOWEST_SCORES, LOWEST_IDX, currentMax, &currentLength, numToPrune);
-            }
+            currentLength += insertSorted(score, seqIdx, LOWEST_SCORES, LOWEST_IDX, currentLength, numToPrune);
         }
 
         prevIdx = seqIdx;

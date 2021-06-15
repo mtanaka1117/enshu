@@ -30,6 +30,11 @@ int main(void) {
     test_set_widths_5();
     printf("\tPassed Group Width Setting.\n");
 
+    printf("==== Testing Measurement Pruning ====\n");
+    test_pruning_4_1();
+    test_pruning_4_2();
+    printf("\tPassed Pruning Tests.\n");
+
     return 0;
 }
 
@@ -271,4 +276,59 @@ void test_set_widths_5(void) {
 }
 
 
+void test_pruning_4_1(void) {
+    uint16_t seqLength = 6;
+    struct Vector measurements[6];
 
+    uint16_t precision = 10;
+    FixedPoint one = 1 << precision;
+    FixedPoint two = 1 << (precision + 1);
+    FixedPoint half = 1 << (precision - 1);
+
+    FixedPoint features[12] = { one, two, -one, half, 0, 0, -one - half, one, 0, 0, two, one };
+    uint16_t i;
+    for (i = 0; i < seqLength; i++) {
+        measurements[i].size = 2;
+        measurements[i].data = features + (i * 2);
+    }
+
+    uint8_t collectedBuffer[1] = { 0 };
+    struct BitMap collectedIdx = { collectedBuffer, 1 };
+    set_bit(0, &collectedIdx);
+    set_bit(1, &collectedIdx);
+    set_bit(3, &collectedIdx);
+    set_bit(5, &collectedIdx);
+
+    assert(collectedIdx.bytes[0] == 0x2B);
+    prune_sequence(measurements, &collectedIdx, 4, 3, seqLength, precision);
+    assert(collectedIdx.bytes[0] == 0x23);
+}
+
+
+void test_pruning_4_2(void) {
+    uint16_t seqLength = 6;
+    struct Vector measurements[6];
+
+    uint16_t precision = 10;
+    FixedPoint one = 1 << precision;
+    FixedPoint two = 1 << (precision + 1);
+    FixedPoint half = 1 << (precision - 1);
+
+    FixedPoint features[12] = { one, two, -one, half, 0, 0, -one - half, one, 0, 0, two, one };
+    uint16_t i;
+    for (i = 0; i < seqLength; i++) {
+        measurements[i].size = 2;
+        measurements[i].data = features + (i * 2);
+    }
+
+    uint8_t collectedBuffer[1] = { 0 };
+    struct BitMap collectedIdx = { collectedBuffer, 1 };
+    set_bit(0, &collectedIdx);
+    set_bit(1, &collectedIdx);
+    set_bit(3, &collectedIdx);
+    set_bit(5, &collectedIdx);
+
+    assert(collectedIdx.bytes[0] == 0x2B);
+    prune_sequence(measurements, &collectedIdx, 4, 2, seqLength, precision);
+    assert(collectedIdx.bytes[0] == 0x21);
+}
