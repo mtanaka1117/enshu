@@ -10,6 +10,7 @@
 
 void test_range_125_13(void);
 void test_range_225_13(void);
+void test_range_shift_large(void);
 void test_range_neg125_13(void);
 void test_range_1125_10(void);
 void test_range_9125_10(void);

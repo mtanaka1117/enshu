@@ -5,10 +5,14 @@ static struct ShiftGroup UNION_FIND[150];
 
 
 int8_t get_range_shift(FixedPoint value, uint8_t currentPrecision, uint8_t newWidth, uint8_t numShiftBits) {
+    if (newWidth == 16) {
+        return 0;
+    }
+
     const int8_t nonFractional = 16 - currentPrecision;
     const uint8_t shiftOffset = (1 << (numShiftBits - 1));
-    const uint16_t widthMask = (1 << newWidth) - 1;
-    const uint16_t maxFp = (1 << (newWidth - 1)) - 1;
+    const uint16_t widthMask = (1 << (newWidth - 1)) - 1;  // Mask out all non-data bits (including the sign bit)
+    const uint16_t signBit = 1 << newWidth;
     const uint8_t newPrecision = maxZero8u(newWidth - nonFractional);
 
     volatile int8_t shift;
@@ -30,18 +34,21 @@ int8_t get_range_shift(FixedPoint value, uint8_t currentPrecision, uint8_t newWi
         conversionShift = currentPrecision - shiftedPrecision;
 
         if (conversionShift > 0) {
-            shiftedValue = absValue >> conversionShift;
+            shiftedValue = (absValue >> conversionShift) & widthMask;
+            shiftedValue = shiftedValue << conversionShift;
         } else {
             conversionShift *= -1;
-            shiftedValue = absValue << conversionShift;
+            shiftedValue = (absValue << conversionShift) & widthMask;
+            shiftedValue = shiftedValue >> conversionShift;
         }
 
-        error = fp_sub(maxFp, shiftedValue);
+
+        error = fp_sub(absValue, shiftedValue);
 
         if (error >= 0) {
             error = fp_abs(error);
 
-            if (error < bestError) {
+            if (error <= bestError) {
                 bestError = error;
                 bestShift = shift;
             }

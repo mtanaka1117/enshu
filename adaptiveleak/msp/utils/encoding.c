@@ -131,7 +131,7 @@ uint16_t encode_group(uint8_t *output,
     uint16_t maxFeatures = targetDataBits / MIN_WIDTH;
     uint16_t maxCollected = maxFeatures / numFeatures;
 
-    if (numCollected < maxCollected) {
+    if (numCollected > maxCollected) {
         prune_sequence(featureVectors, collectedIndices, numCollected, maxCollected, seqLength, precision);
         numCollected = maxCollected;
     }
@@ -177,6 +177,8 @@ uint16_t encode_group(uint8_t *output,
     // Get the range shifts
     uint16_t count = numCollected * numFeatures;
     uint16_t minWidth = targetDataBits / (numFeatures * numCollected);
+    minWidth = min16u(minWidth, MAX_WIDTH);
+
     get_range_shifts_array(shiftBuffer, tempBuffer, precision, minWidth, NUM_SHIFT_BITS, count);
 
     // Run-Length Encode the range shifts

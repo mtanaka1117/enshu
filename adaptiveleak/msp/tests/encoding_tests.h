@@ -40,4 +40,7 @@ void test_set_widths_5(void);
 void test_pruning_4_1(void);
 void test_pruning_4_2(void);
 
+// Test Group Encoding
+void test_group_encode_four(void);
+
 #endif

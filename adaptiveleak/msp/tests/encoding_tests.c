@@ -35,6 +35,10 @@ int main(void) {
     test_pruning_4_2();
     printf("\tPassed Pruning Tests.\n");
 
+    printf("==== Testing Group Encoding ====\n");
+    test_group_encode_four();
+    printf("\tPassed Group Encoding Tests.\n");
+
     return 0;
 }
 
@@ -331,4 +335,48 @@ void test_pruning_4_2(void) {
     assert(collectedIdx.bytes[0] == 0x2B);
     prune_sequence(measurements, &collectedIdx, 4, 2, seqLength, precision);
     assert(collectedIdx.bytes[0] == 0x21);
+}
+
+
+
+void test_group_encode_four() {
+    uint16_t seqLength = 4;
+    uint16_t numFeatures = 3;
+
+    uint8_t buffer[1];
+    struct BitMap bitmap = { buffer, 1 };
+    clear_bitmap(&bitmap);
+
+    uint16_t numCollected = 2;
+    uint16_t collectedIndices[2] = { 0, 2 };
+
+    uint16_t i = 0;
+    for (; i < numCollected; i++) {
+        set_bit(collectedIndices[i], &bitmap);
+    }
+
+    // 3 features per vector, 2 collected vectors
+    struct Vector collectedFeatures[4];
+    FixedPoint features[6] = { 23111, -3040, -28386, 5672, -4823, -32679 };
+
+    collectedFeatures[0].data = features;
+    collectedFeatures[0].size = numFeatures;
+
+    collectedFeatures[2].data = features + numFeatures;
+    collectedFeatures[2].size = numFeatures;
+
+    uint16_t targetBytes = 48;
+    FixedPoint tempBuffer[12];
+    int8_t shiftBuffer[12];
+
+    uint8_t encoded[32];
+    uint16_t numBytes = encode_group(encoded, collectedFeatures, &bitmap, numCollected, numFeatures, seqLength, targetBytes, 10, tempBuffer, shiftBuffer, 1);
+
+    uint8_t expected[13] = { 0x05, 0x47, 0xDA, 0x20, 0x74, 0x1E, 0x11, 0x28, 0x96, 0x29, 0x6D, 0x59, 0x00 };
+
+    assert(numBytes == 13);
+
+    for (uint16_t i = 0; i < 13; i++) {
+        assert(encoded[i] == expected[i]);
+    }
 }

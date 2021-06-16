@@ -1,5 +1,6 @@
 #include "math.h"
 
+
 uint16_t min16u(uint16_t x, uint16_t y) {
     uint8_t comp = x <= y;
     return (comp * x) + ((1 - comp) * y);
