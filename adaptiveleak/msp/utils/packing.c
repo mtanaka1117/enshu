@@ -63,7 +63,7 @@ uint16_t pack(uint8_t *output, int16_t *values, uint8_t bitWidth, uint16_t numVa
             if (consumedBits > BITS_PER_BYTE) {
                 consumedBits -= BITS_PER_BYTE;
                 output[outputIdx++] = current;
-                current = currentByte >> usedBits;
+                current = (currentByte >> usedBits) & 0xFF;
             }
         }
     }

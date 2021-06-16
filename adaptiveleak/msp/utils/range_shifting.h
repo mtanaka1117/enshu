@@ -5,6 +5,8 @@
 #ifndef RANGE_SHIFTING_H_
 #define RANGE_SHIFTING_H_
 
+    #define CONV_MASK 0x7FFF
+
     struct ShiftGroup {
         uint16_t idx;
         int16_t parent;

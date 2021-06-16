@@ -20,20 +20,20 @@ uint16_t encode_collected_indices(uint8_t *output, struct BitMap *collectedIndic
 
 uint16_t encode_shifts(uint8_t *output, int8_t *shifts, uint8_t *widths, uint16_t *counts, uint8_t countBits, uint8_t numGroups, uint16_t outputIdx) {
     // Include the number of groups
-    output[outputIdx] = numGroups;
+    //output[outputIdx] = numGroups;
+    //outputIdx++;
+
+    output[outputIdx] = ((numGroups << 4) & 0xF0) | (countBits & 0xF);
     outputIdx++;
 
-    uint8_t i;
-    for (i = 0; i < numGroups; i++) {
-        output[outputIdx] = ((widths[i] & WIDTH_MASK) << NUM_SHIFT_BITS) | (shifts[i] & SHIFT_MASK);
-        outputIdx++;
-    }
-    
     uint16_t packedBytes = pack(output + outputIdx, (int16_t *) counts, countBits, numGroups, 0);
     outputIdx += packedBytes;
 
-    output[outputIdx] = countBits;
-    outputIdx++;
+    uint8_t i;
+    for (i = 0; i < numGroups; i++) {
+        output[outputIdx] = ((widths[i] & WIDTH_MASK) << NUM_SHIFT_BITS) | ((shifts[i] + SHIFT_OFFSET) & SHIFT_MASK);
+        outputIdx++;
+    }
 
     return outputIdx;
 }

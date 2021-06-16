@@ -42,5 +42,7 @@ void test_pruning_4_2(void);
 
 // Test Group Encoding
 void test_group_encode_four(void);
+void test_group_encode_four_pruning(void);
+void test_group_encode_four_truncate(void);
 
 #endif

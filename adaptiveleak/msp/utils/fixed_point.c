@@ -41,6 +41,7 @@ FixedPoint fp_convert(FixedPoint x, uint16_t oldPrecision, uint16_t newPrecision
     if (diff >= 0) {
         result = x >> diff;    
     } else {
+        diff *= -1;
         result = x << diff;
     }
 

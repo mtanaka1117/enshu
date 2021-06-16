@@ -10,10 +10,10 @@ int8_t get_range_shift(FixedPoint value, uint8_t currentPrecision, uint8_t newWi
     }
 
     const int8_t nonFractional = 16 - currentPrecision;
-    const uint8_t shiftOffset = (1 << (numShiftBits - 1));
+    const uint8_t shiftOffset = (1 << (numShiftBits - 1)) + 1;
     const uint16_t widthMask = (1 << (newWidth - 1)) - 1;  // Mask out all non-data bits (including the sign bit)
     const uint16_t signBit = 1 << newWidth;
-    const uint8_t newPrecision = maxZero8u(newWidth - nonFractional);
+    const int8_t newPrecision = newWidth - nonFractional;
 
     volatile int8_t shift;
     volatile int8_t shiftedPrecision;
@@ -42,7 +42,7 @@ int8_t get_range_shift(FixedPoint value, uint8_t currentPrecision, uint8_t newWi
             shiftedValue = shiftedValue >> conversionShift;
         }
 
-
+        shiftedValue &= CONV_MASK;  // Prevent negative values
         error = fp_sub(absValue, shiftedValue);
 
         if (error >= 0) {

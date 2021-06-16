@@ -9,6 +9,7 @@ int main(void) {
     test_range_1125_10();
     test_range_9125_10();
     test_range_shift_large();
+    test_range_shift_large_2();
     test_range_shifts_array();
     printf("\tPassed Shifting Tests.\n");
 
@@ -80,7 +81,7 @@ void test_range_1125_10(void) {
     FixedPoint value = (1 << currentPrecision) + (1 << (currentPrecision - 3));  // 1.125
 
     int8_t shift = get_range_shift(value, currentPrecision, newWidth, numShiftBits);
-    assert(shift == -3);
+    assert(shift == -4);
 }
 
 
@@ -103,6 +104,20 @@ void test_range_shift_large(void) {
 
     int8_t shift = get_range_shift(value, currentPrecision, newWidth, numShiftBits);
     assert(shift == 0);
+}
+
+
+void test_range_shift_large_2(void) {
+    uint16_t prec = 10;
+    uint8_t newWidth = 4;
+    uint8_t numBits = 3;
+    
+    assert(get_range_shift(0x5A47, prec, newWidth, numBits) == 0);
+    assert(get_range_shift(-0x0BE0, prec, newWidth, numBits) == -3);
+    assert(get_range_shift(-0x6EE2, prec, newWidth, numBits) == 0);
+    assert(get_range_shift(0x1628, prec, newWidth, numBits) == -2);
+    assert(get_range_shift(-0x12D7, prec, newWidth, numBits) == -2);
+    assert(get_range_shift(-0x7FA7, prec, newWidth, numBits) == 0);
 }
 
 

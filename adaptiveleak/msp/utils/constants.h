@@ -10,6 +10,7 @@
 #define MAX_NUM_GROUPS 6
 
 #define NUM_SHIFT_BITS 3
+#define SHIFT_OFFSET 4
 #define SHIFT_MASK 0x7
 #define WIDTH_MASK 0x1F
 
