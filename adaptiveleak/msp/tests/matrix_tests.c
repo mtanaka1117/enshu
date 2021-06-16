@@ -65,8 +65,8 @@ int main(void) {
     printf("\tPassed Vector Scaling.\n");
 
     printf("==== Testing Vector Apply ====\n");
-    test_apply_sigmoid();
     test_apply_tanh();
+    test_apply_sigmoid();
     printf("\tPassed Vector Apply.\n");
 }
 
@@ -530,7 +530,7 @@ void test_apply_tanh(void) {
     FixedPoint vecData[6] = { 0,512,-512,1024,2040,-4000 };
     struct Vector vec = { vecData, 6 };
 
-    FixedPoint expectedData[6] = { 0,512,-512,768,1024,-1024 };
+    FixedPoint expectedData[6] = { 0,464,-464,768,991,-1024 };
     struct Vector expected = { expectedData, 6 };
 
     vector_apply(&vec, &vec, &fp_tanh, precision);
@@ -544,7 +544,7 @@ void test_apply_sigmoid(void) {
     FixedPoint vecData[7] = { 0,512,-512,1024,2040,5000,-5000 };
     struct Vector vec = { vecData, 7 };
 
-    FixedPoint expectedData[7] = { 512,640,384,768,895,1024,0 };
+    FixedPoint expectedData[7] = { 512,640,384,744,895,1024,0 };
     struct Vector expected = { expectedData, 7 };
 
     vector_apply(&vec, &vec, &fp_sigmoid, precision);
