@@ -8,9 +8,12 @@ int main(void) {
     test_range_neg125_13();
     test_range_1125_10();
     test_range_9125_10();
+    test_range_shift_int();
     test_range_shift_large();
     test_range_shift_large_2();
     test_range_shifts_array();
+    test_range_shifts_array_activity();
+    test_range_shifts_array_tiselac();
     printf("\tPassed Shifting Tests.\n");
 
     printf("===== Testing Fixed Point Conversion =====\n");
@@ -96,6 +99,17 @@ void test_range_9125_10(void) {
 }
 
 
+void test_range_shift_int(void) {
+    uint8_t currentPrecision = 0;
+    uint8_t newWidth = 5;
+    uint8_t numShiftBits = 5;
+    FixedPoint value = 248;
+
+    int8_t shift = get_range_shift(value, currentPrecision, newWidth, numShiftBits);
+    assert(shift == -7);
+}
+
+
 void test_range_shift_large(void) {
     uint8_t currentPrecision = 10;
     uint8_t newWidth = 15;
@@ -140,6 +154,43 @@ void test_range_shifts_array(void) {
     assert(shifts[2] == -1);
     assert(shifts[3] == -1);
 }
+
+
+void test_range_shifts_array_activity(void) {
+    uint8_t currentPrecision = 13;
+    uint8_t newWidth = 9;
+    uint8_t numShiftBits = 3;
+
+    FixedPoint values[10] = { 8363,-1024,865,-23,-35,23,8397,-1024,831,-3 };
+    int8_t shifts[10];
+    get_range_shifts_array(shifts, values, currentPrecision, newWidth, numShiftBits, 10);
+
+    int8_t expected[10] = { -1,-4,-4,-4,-4,-4,-1,-4,-4,-4 };
+
+    uint16_t i;
+    for (i = 0; i < 10; i++) {
+        assert(shifts[i] == expected[i]);
+    }
+}
+
+
+void test_range_shifts_array_tiselac(void) {
+    uint8_t currentPrecision = 0;
+    uint8_t newWidth = 5;
+    uint8_t numShiftBits = 4;
+
+    FixedPoint values[15] = { 168,170,229,220,327,248,173,195,-137,596,170,173,233,226,330 };
+    int8_t shifts[15];
+    get_range_shifts_array(shifts, values, currentPrecision, newWidth, numShiftBits, 15);
+
+    int8_t expected[15] = { -7,-7,-7,-7,-6,-7,-7,-7,-7,-5,-7,-7,-7,-7,-6 };
+
+    uint16_t i;
+    for (i = 0; i < 15; i++) {
+        assert(shifts[i] == expected[i]);
+    }
+}
+
 
 
 void test_convert_1_10(void) {
