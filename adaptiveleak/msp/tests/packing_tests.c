@@ -18,7 +18,7 @@ void test_packing_2_4(void) {
     uint16_t numValues = 2;
     uint8_t output[1];
     
-    uint16_t numBytes = pack(output, features, bitWidth, numValues);
+    uint16_t numBytes = pack(output, features, bitWidth, numValues, 1);
     assert(numBytes == 1);
     assert(output[0] == 0xA9);
 }
@@ -30,7 +30,7 @@ void test_packing_3_4(void) {
     uint16_t numValues = 3;
     uint8_t output[2];
     
-    uint16_t numBytes = pack(output, features, bitWidth, numValues);
+    uint16_t numBytes = pack(output, features, bitWidth, numValues, 1);
     assert(numBytes == 2);
     assert(output[0] == 0xA9);
     assert(output[1] == 0xB);
@@ -43,7 +43,7 @@ void test_packing_2_5(void) {
     uint16_t numValues = 2;
     uint8_t output[2];
     
-    uint16_t numBytes = pack(output, features, bitWidth, numValues);
+    uint16_t numBytes = pack(output, features, bitWidth, numValues, 1);
     assert(numBytes == 2);
     assert(output[0] == 0x33);
     assert(output[1] == 0x3);
@@ -56,7 +56,7 @@ void test_packing_2_10(void) {
     uint16_t numValues = 2;
     uint8_t output[3];
 
-    uint16_t numBytes = pack(output, features, bitWidth, numValues);
+    uint16_t numBytes = pack(output, features, bitWidth, numValues, 1);
     assert(numBytes == 3);
     assert(output[0] == 0x45);
     assert(output[1] == 0xEF);
@@ -70,7 +70,7 @@ void test_packing_3_8(void) {
     uint16_t numValues = 3;
     uint8_t output[3];
 
-    uint16_t numBytes = pack(output, features, bitWidth, numValues);
+    uint16_t numBytes = pack(output, features, bitWidth, numValues, 1);
     assert(numBytes == 3);
     assert(output[0] == 0xF2);
     assert(output[1] == 0x09);
@@ -84,7 +84,7 @@ void test_packing_4_16(void) {
     uint16_t numValues = 4;
     uint8_t output[8];
 
-    uint16_t numBytes = pack(output, features, bitWidth, numValues);
+    uint16_t numBytes = pack(output, features, bitWidth, numValues, 1);
     assert(numBytes == 8);
     assert(output[0] == 0xCC);
     assert(output[1] == 0x6D);

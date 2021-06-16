@@ -29,7 +29,7 @@ uint16_t encode_shifts(uint8_t *output, int8_t *shifts, uint8_t *widths, uint16_
         outputIdx++;
     }
     
-    uint16_t packedBytes = pack(output + outputIdx, (int16_t *) counts, countBits, numGroups);
+    uint16_t packedBytes = pack(output + outputIdx, (int16_t *) counts, countBits, numGroups, 0);
     outputIdx += packedBytes;
 
     output[outputIdx] = countBits;
@@ -233,7 +233,7 @@ uint16_t encode_group(uint8_t *output,
         }
 
         fp_convert_array(tempBuffer, precision, groupPrecision, groupWidth, featureIdx, groupSize);
-        outputIdx += pack(output, tempBuffer + featureIdx, groupWidth, groupSize);
+        outputIdx += pack(output + outputIdx, tempBuffer + featureIdx, groupWidth, groupSize, 1);
 
         featureIdx += groupSize;
     }

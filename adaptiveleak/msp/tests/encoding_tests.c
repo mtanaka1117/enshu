@@ -372,11 +372,11 @@ void test_group_encode_four() {
     uint8_t encoded[32];
     uint16_t numBytes = encode_group(encoded, collectedFeatures, &bitmap, numCollected, numFeatures, seqLength, targetBytes, 10, tempBuffer, shiftBuffer, 1);
 
-    uint8_t expected[13] = { 0x05, 0x47, 0xDA, 0x20, 0x74, 0x1E, 0x11, 0x28, 0x96, 0x29, 0x6D, 0x59, 0x00 };
+    uint8_t expected[17] = { 0x05, 0x01, 0x80, 0x06, 0x03, 0x47, 0xDA, 0x28, 0x96, 0x20, 0x74, 0x29, 0x6D, 0x1E, 0x11, 0x59, 0x00 };
 
-    assert(numBytes == 13);
+    assert(numBytes == 17);
 
-    for (uint16_t i = 0; i < 13; i++) {
+    for (uint16_t i = 0; i < 17; i++) {
         assert(encoded[i] == expected[i]);
     }
 }
