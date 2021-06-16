@@ -28,6 +28,7 @@ void test_convert_neg_1_10(void);
 void test_rle_4(void);
 void test_rle_5(void);
 void test_rle_6(void);
+void test_rle_large(void);
 
 void test_union_find_simple(void);
 

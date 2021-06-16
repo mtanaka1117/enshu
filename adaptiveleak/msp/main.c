@@ -6,6 +6,12 @@ static struct Vector featureVectors[SEQ_LENGTH];
 static FixedPoint ZERO_BUFFER[NUM_FEATURES];
 static struct Vector ZERO_FEATURES = { ZERO_BUFFER, NUM_FEATURES };
 
+#ifdef IS_GROUP_ENCODED
+static FixedPoint FEATURE_BUFFER[SEQ_LENGTH * NUM_FEATURES];
+static int8_t SHIFT_BUFFER[SEQ_LENGTH * NUM_FEATURES];
+static uint16_t COUNT_BUFFER[SEQ_LENGTH * NUM_FEATURES];
+#endif
+
 
 int main(void) {
     char *feature;
@@ -74,7 +80,7 @@ int main(void) {
     uint8_t shouldCollect = 0;
     uint8_t didCollect = 1;
 
-    for (seqIdx = 0; seqIdx < MAX_NUM_SEQ; seqIdx++) {
+    for (seqIdx = 0; seqIdx < 1; seqIdx++) {
         // Clear the collected bit map
         clear_bitmap(&collectedIndices);
 
@@ -141,7 +147,13 @@ int main(void) {
         }
 
         // Encode the collected elements.
+        #ifdef IS_STANDARD_ENCODED
         numEncodedBytes = encode_standard(outputBuffer, featureVectors, &collectedIndices, NUM_FEATURES, SEQ_LENGTH);
+        #elif defined(IS_GROUP_ENCODED)
+        numEncodedBytes = encode_group(outputBuffer, featureVectors, &collectedIndices, count, NUM_FEATURES, SEQ_LENGTH, TARGET_BYTES, DEFAULT_PRECISION, FEATURE_BUFFER, SHIFT_BUFFER, COUNT_BUFFER, 1);
+        printf("HERE\n");
+        #endif
+
         print_message(outputBuffer, numEncodedBytes);
 
         //printf("%d ", count);
@@ -163,6 +175,7 @@ void print_message(uint8_t *buffer, uint16_t numBytes) {
         printf("\\x%02x", buffer[i]);
     }
     printf("\n");
+    printf("Num Bytes: %d\n", numBytes);
 }
 
 

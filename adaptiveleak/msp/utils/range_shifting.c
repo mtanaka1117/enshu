@@ -1,7 +1,7 @@
 #include "range_shifting.h"
 
 
-static struct ShiftGroup UNION_FIND[150];
+static struct ShiftGroup UNION_FIND[100];
 
 
 int8_t get_range_shift(FixedPoint value, uint8_t currentPrecision, uint8_t newWidth, uint8_t numShiftBits) {

@@ -369,9 +369,10 @@ void test_group_encode_four() {
     uint16_t targetBytes = 48;
     FixedPoint tempBuffer[12];
     int8_t shiftBuffer[12];
+    uint16_t countBuffer[12];
 
     uint8_t encoded[32];
-    uint16_t numBytes = encode_group(encoded, collectedFeatures, &bitmap, numCollected, numFeatures, seqLength, targetBytes, 10, tempBuffer, shiftBuffer, 1);
+    uint16_t numBytes = encode_group(encoded, collectedFeatures, &bitmap, numCollected, numFeatures, seqLength, targetBytes, 10, tempBuffer, shiftBuffer, countBuffer, 1);
 
     uint8_t expected[16] = { 0x05,0x13,0x06,0x84,0x47,0xda,0x28,0x96,0x20,0x74,0x29,0x6d,0x1e,0x11,0x59,0x00 };
     assert(numBytes == 16);
@@ -411,9 +412,10 @@ void test_group_encode_four_pruning() {
     uint16_t targetBytes = 36;
     FixedPoint tempBuffer[12];
     int8_t shiftBuffer[12];
+    uint16_t countBuffer[12];
 
     uint8_t encoded[20];
-    uint16_t numBytes = encode_group(encoded, collectedFeatures, &bitmap, numCollected, numFeatures, seqLength, targetBytes, 10, tempBuffer, shiftBuffer, 1);
+    uint16_t numBytes = encode_group(encoded, collectedFeatures, &bitmap, numCollected, numFeatures, seqLength, targetBytes, 10, tempBuffer, shiftBuffer, countBuffer, 1);
 
     uint8_t expected[11] = { 0x01,0x22,0x06,0x84,0x82,0x47,0xda,0x59,0x00,0xa0,0xd8 };
     assert(numBytes == 11);
@@ -456,9 +458,10 @@ void test_group_encode_four_truncate() {
     uint16_t targetBytes = 42;
     FixedPoint tempBuffer[21];
     int8_t shiftBuffer[21];
+    uint16_t countBuffer[21];
 
     uint8_t encoded[26];
-    uint16_t numBytes = encode_group(encoded, collectedFeatures, &bitmap, numCollected, numFeatures, seqLength, targetBytes, 10, tempBuffer, shiftBuffer, 1);
+    uint16_t numBytes = encode_group(encoded, collectedFeatures, &bitmap, numCollected, numFeatures, seqLength, targetBytes, 10, tempBuffer, shiftBuffer, countBuffer, 1);
 
     uint8_t expected[24] = { 0x25,0x43,0x4c,0x06,0x74,0x81,0x84,0x6a,0x92,0xF6,0x11,0x21,0x69,0x5b,0x00,0x00,0x21,0x58,0x00,0x14,0x9b,0xd2,0x50,0x6c };
     

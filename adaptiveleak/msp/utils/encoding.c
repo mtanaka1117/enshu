@@ -1,8 +1,6 @@
 #include "encoding.h"
 
 
-int8_t RESULT_SHIFTS[MAX_NUM_GROUPS];
-uint16_t RESULT_COUNTS[MAX_NUM_GROUPS];
 uint8_t GROUP_WIDTHS[MAX_NUM_GROUPS];
 
 
@@ -104,6 +102,7 @@ uint16_t encode_group(uint8_t *output,
                       uint16_t precision,
                       FixedPoint *tempBuffer,
                       int8_t *shiftBuffer,
+                      uint16_t *countBuffer,
                       uint8_t isBlock) {
     // Estimate the meta-data associates with stable group encoding
     uint16_t sizeWidth = 0;
@@ -182,7 +181,7 @@ uint16_t encode_group(uint8_t *output,
     get_range_shifts_array(shiftBuffer, tempBuffer, precision, minWidth, NUM_SHIFT_BITS, count);
 
     // Run-Length Encode the range shifts
-    uint16_t numGroups = create_shift_groups(RESULT_SHIFTS, RESULT_COUNTS, shiftBuffer, count, MAX_NUM_GROUPS); 
+    uint16_t numGroups = create_shift_groups(shiftBuffer, countBuffer, shiftBuffer, count, MAX_NUM_GROUPS); 
 
     // Re-calculate the meta-data size based on the given number of shift groups
     metadataBytes -= sizeBytes;
@@ -190,7 +189,7 @@ uint16_t encode_group(uint8_t *output,
     uint16_t maxSize = 0;
     uint16_t s;
     for (i = 0; i < numGroups; i++) {
-        s = RESULT_COUNTS[i];
+        s = countBuffer[i];
         if (s > maxSize) {
             maxSize = s;
         }
@@ -208,14 +207,14 @@ uint16_t encode_group(uint8_t *output,
     targetDataBytes = targetBytes - metadataBytes;
 
     // Set the group widths
-    set_group_widths(GROUP_WIDTHS, RESULT_COUNTS, numGroups, targetDataBytes, minWidth);
+    set_group_widths(GROUP_WIDTHS, countBuffer, numGroups, targetDataBytes, minWidth);
 
     // Write the collected index bitmap to the output buffer
     uint16_t outputIdx = 0;
     outputIdx = encode_collected_indices(output, collectedIndices, outputIdx);
 
     // Write the shift and width values
-    outputIdx = encode_shifts(output, RESULT_SHIFTS, GROUP_WIDTHS, RESULT_COUNTS, sizeWidth, numGroups, outputIdx);
+    outputIdx = encode_shifts(output, shiftBuffer, GROUP_WIDTHS, countBuffer, sizeWidth, numGroups, outputIdx);
 
     // Write the encoded feature values
     uint16_t nonFractional = 16 - precision;
@@ -223,9 +222,9 @@ uint16_t encode_group(uint8_t *output,
     featureIdx = 0;
 
     for (i = 0; i < numGroups ; i++) {
-        groupSize = RESULT_COUNTS[i];
+        groupSize = countBuffer[i];
         groupWidth = GROUP_WIDTHS[i];
-        groupShift = RESULT_SHIFTS[i];
+        groupShift = shiftBuffer[i];
         groupPrecision = groupWidth - nonFractional - groupShift;
 
         if ((featureIdx + groupSize) > count) {
