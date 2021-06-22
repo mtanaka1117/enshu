@@ -83,7 +83,7 @@ class BLEManager:
                 self._gatt.expect(r'.*Connection successful.*\[LE\]>', timeout)
                 did_connect = True
             except pexpect.TIMEOUT as ex:
-                print('Connection timeout after {0:.3f} seconds. Reason: {1}'.format(timeout, ex))
+                print('Connection timeout after {0:.3f} seconds'.format(timeout))
 
                 retry_count += 1
                 time.sleep(RETRY_WAIT)
@@ -137,20 +137,50 @@ class BLEManager:
                 hex_string = value.hex()
                 write_cmd = 'char-write-cmd 0x{0:02x} {1}'.format(self.rw_handle, hex_string)
 
-                print(write_cmd)
-
                 self._gatt.sendline(write_cmd)
                 self._gatt.expect(r'.*\[LE\]>', timeout)
 
                 did_send = True
             except pexpect.TIMEOUT as ex:
-                print('Write timeout after {0} seconds. Command: {1}. Reason: {2}'.format(timeout, write_cmd, ex))
+                print('Write timeout after {0} seconds. Command: {1}.'.format(timeout, write_cmd))
 
                 retry_count += 1
                 time.sleep(RETRY_WAIT)
 
-    def reset_device(self):
-        self.send(value=b'\xFF')
+    def send_and_expect_byte(self, value: bytes, expected: bytes, timeout: float = DEFAULT_TIMEOUT) -> bool:
+        assert self._is_connected and self._gatt is not None, 'Must call start() first'
+        assert len(value) == 1 and len(expected) == 1, 'Must provide a single byte value and expected.'
+
+        response: Optional[bytes] = None
+        retry_count = 0
+
+        while ((response is None) or (response != expected)):
+            try:
+                # Send the byte
+                write_cmd = 'char-write-cmd 0x{0:02x} {1}'.format(self.rw_handle, value.hex())
+
+                self._gatt.sendline(write_cmd)
+                self._gatt.expect(r'.*\[LE\]>', timeout)
+
+                # Parse the response
+                self._gatt.expect('Notification handle = .*? \r', timeout)
+                response_string = self._gatt.after.decode()
+
+                response_tokens = parse_response(response_string)
+
+                # Convert the response to bytes
+                if len(response_tokens) == 1:
+                    response = bytes.fromhex(response_tokens[0])
+            except pexpect.TIMEOUT as ex:
+                print('Write timeout after {0} seconds. Command: {1}'.format(timeout, write_cmd))
+                time.sleep(RETRY_WAIT)
+
+            retry_count += 1
+
+            if (retry_count >= MAX_RETRIES):
+                return False
+
+        return True
 
     def query(self, value: bytes, timeout: float = DEFAULT_TIMEOUT) -> bytes:
         assert self._is_connected and self._gatt is not None, 'Must call start() first'
@@ -185,10 +215,8 @@ class BLEManager:
 
                 joined = ''.join(tokens)
                 return bytes.fromhex(joined)
-                #parsed = [int(x, 16).to_bytes(1, 'big') for x in tokens]
-                #return reduce(lambda x, y: x + y, parsed)
             except pexpect.TIMEOUT as ex:
-                print('Read timeout after {0} seconds. Reason: {1}'.format(timeout, ex))
+                print('Read timeout after {0} seconds.'.format(timeout))
 
                 retry_count += 1
                 time.sleep(RETRY_WAIT)

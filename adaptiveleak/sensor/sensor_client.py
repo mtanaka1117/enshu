@@ -23,6 +23,15 @@ BLE_HANDLE = 18
 HCI_DEVICE = 'hci1'
 PERIOD = 7
 
+# Special bytes to handle sensor operation
+RESET_BYTE = b'\xFF'
+SEND_BYTE = b'\xBB'
+START_BYTE = b'\xCC'
+
+RESET_RESPONSE = b'\xCD'
+START_RESPONSE = b'\xAB'
+
+
 AES128_KEY = bytes.fromhex('349fdc00b44d1aaacaa3a2670fd44244')
 
 
@@ -48,6 +57,9 @@ def execute_client(inputs: np.ndarray,
     """
     assert encoding_mode in (EncodingMode.STANDARD, EncodingMode.GROUP), 'Encoding type must be either standard or group'
 
+    # Get the default number of non-fractional bits
+    non_fractional = width - precision
+
     # Initialize the device manager
     device_manager = BLEManager(mac_addr=MAC_ADDRESS, handle=BLE_HANDLE, hci_device=HCI_DEVICE)
 
@@ -68,14 +80,14 @@ def execute_client(inputs: np.ndarray,
     print('Starting experiment')
     print('==========')
 
-    # Start and reset the device
+    # Start the device
     try:
         device_manager.start()
+        reset_result = device_manager.send_and_expect_byte(value=RESET_BYTE, expected=RESET_RESPONSE)
 
-        time.sleep(0.1)
-        device_manager.reset_device()
-        time.sleep(0.1)
-        #device_manager.send(value=b'\xFF\xCC')
+        if (reset_result == False):
+            print('Could not reset the device.')
+            return
     finally:
         device_manager.stop()
 
@@ -86,23 +98,22 @@ def execute_client(inputs: np.ndarray,
 
     try:
         end = time.time()
-        #time.sleep(1)
 
         # Send the 'start' sequence
         start = time.time()
         device_manager.start()
 
-        time.sleep(0.1)
-        device_manager.send(value=b'\xCC')
-        time.sleep(0.1)
+        start_response = device_manager.send_and_expect_byte(value=START_BYTE, expected=START_RESPONSE)
+
+        if (start_response == False):
+            print('Could not start device.')
+            return
 
         device_manager.stop()
         end = time.time()
 
-        print('Sent Start signal...')
+        print('Sent Start signal.')
     
-        time.sleep(max(PERIOD - (end - start), 0))
-
         for idx, (features, label) in enumerate(zip(inputs, labels)):
             if idx < start_idx:
                 continue
@@ -110,23 +121,25 @@ def execute_client(inputs: np.ndarray,
             if (max_samples is not None) and (idx >= max_samples):
                 break
 
+            # Delay to align with sampling period
+            time.sleep(max(PERIOD - (end - start), 0))
+
             # Send the fetch character and wait for the response
             start = time.time()
 
             device_manager.start()
-            time.sleep(0.1)
             response = device_manager.query(value=b'\xBB')
-            time.sleep(0.1)
             device_manager.stop()
 
             message_byte_count = len(response)
 
-            # Extract the length
+            # Extract the length and initialization vector
             length = int.from_bytes(response[0:2], 'big')
+            iv = response[2:18]
 
             # Decrypt the response
-            aes = AES.new(AES128_KEY, AES.MODE_ECB)  # TODO: Get CBC Working
-            response = aes.decrypt(response[2:])
+            aes = AES.new(AES128_KEY, AES.MODE_CBC, iv)
+            response = aes.decrypt(response[18:])
             response = response[0:length]
 
             # Decode the response
@@ -139,16 +152,14 @@ def execute_client(inputs: np.ndarray,
                                                                                    should_compress=False)
                 measurements = measurements.T.reshape(-1, num_features)
             elif encoding_mode == EncodingMode.GROUP:
+                print('Seq Length: {0}, Num Features: {1}, Width: {2}, Precision: {3}'.format(seq_length, num_features, width, precision))
+
                 measurements, collected_idx, widths = decode_stable_measurements(encoded=response,
                                                                                  seq_length=seq_length,
                                                                                  num_features=num_features,
-                                                                                 non_fractional=width - precision)
+                                                                                 non_fractional=non_fractional)
             else:
                 raise ValueError('Unknown encoding type: {0}'.format(encoding_mode))
-
-            print(measurements)
-            print(len(collected_idx))
-            print(collected_idx)
 
             # Interpolate the measurements
             recovered = reconstruct_sequence(measurements=measurements,
@@ -174,14 +185,16 @@ def execute_client(inputs: np.ndarray,
             reconstructed_list.append(np.expand_dims(recovered, axis=0))
             true_list.append(np.expand_dims(features, axis=0))
 
-            for width in widths:
-                width_counter[width] += 1
+            for w in widths:
+                width_counter[w] += 1
+
+            print('Completed {0} Sequences. Avg MAE: {1:.4f}, Avg RMSE: {2:.4f}'.format(idx + 1, np.average(maes), np.average(rmses)), end='\r')
 
             end = time.time()
 
-            time.sleep(max(PERIOD - (end - start), 1e-5))
             count += 1
 
+        print()
         reconstructed = np.vstack(reconstructed_list)  # [N, T, D]
         pred = reconstructed.reshape(-1, num_features)  # [N * T, D]
 
