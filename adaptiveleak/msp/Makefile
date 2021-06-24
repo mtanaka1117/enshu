@@ -18,5 +18,8 @@ packing_tests: utils/constants.h utils/fixed_point.h utils/packing.h tests/packi
 range_tests: utils/constants.h utils/math.h utils/fixed_point.h utils/range_shifting.h tests/range_shifting_tests.h utils/math.c utils/fixed_point.c utils/range_shifting.c tests/range_shifting_tests.c
 	$(CC) -o range_tests utils/math.c utils/fixed_point.c utils/range_shifting.c tests/range_shifting_tests.c
 
+lfsr_tests: utils/lfsr.h tests/lfsr_tests.h utils/lfsr.c tests/lfsr_tests.c
+	$(CC) -o lfsr_tests utils/lfsr.c tests/lfsr_tests.c
+
 clean: 
-	rm -f *.o policy matrix_tests encoding_tests packing_tests range_tests *.dSYM
+	rm -f *.o policy matrix_tests encoding_tests packing_tests range_tests lfsr_tests *.dSYM

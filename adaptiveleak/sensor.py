@@ -63,11 +63,12 @@ class Sensor:
                 # Execute the policy on this sequence
                 policy.reset()
 
-                measurements, indices = run_policy(policy=policy,
-                                                   sequence=inputs[idx])
+                policy_result = run_policy(policy=policy,
+                                           sequence=inputs[idx])
 
                 # Encode the measurements into one message
-                message = policy.encode(measurements=measurements, collected_indices=indices)
+                message = policy.encode(measurements=policy_result.measurements,
+                                        collected_indices=policy_result.collected_indices)
 
                 # Encrypt and send the message
                 key = self._aes_key if encryption_mode == EncryptionMode.BLOCK else self._chacha_key
@@ -84,7 +85,7 @@ class Sensor:
                 sock.sendall(tagged_message)
 
                 # Wait for a very small amount of time to rate limit a bit.
-                # The server take precautions to separate messages, but we 
+                # The server take precautions to separate messages, but we
                 # play it safe and just add a small separation between sequences.
                 time.sleep(1e-5)
 

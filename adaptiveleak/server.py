@@ -57,20 +57,7 @@ def reconstruct_sequence(measurements: np.ndarray, collected_indices: List[int],
     feature_list: List[np.ndarray] = []
     seq_idx = list(range(seq_length))
 
-    # Get the 'final' value using a linear interpolation on the last two values (if necessary)
-    #if (len(measurements) >= 2) and (collected_indices[-1] < (seq_length - 1)):
-    #    feature_diff = measurements[-1] - measurements[-2]
-    #    time_diff = collected_indices[-1] - collected_indices[-2]
-
-    #    slope = feature_diff / time_diff
-    #    step = (seq_length - 1) - collected_indices[-2]
-
-    #    right = slope * step + measurements[-2]
-    #    right = np.expand_dims(right, axis=0)
-
-    #    collected_indices.append(seq_length - 1)
-    #    measurements = np.concatenate([measurements, right], axis=0)
-
+    # Interpolate the unseen measurements using a linear function
     for feature_idx in range(measurements.shape[1]):
         collected_features = measurements[:, feature_idx]  # [K]
         reconstructed = np.interp(x=seq_idx,
@@ -80,7 +67,7 @@ def reconstruct_sequence(measurements: np.ndarray, collected_indices: List[int],
                                   right=collected_features[-1])
 
         feature_list.append(np.expand_dims(reconstructed, axis=-1))
-        
+
     return np.concatenate(feature_list, axis=-1)  # [T, D]
 
 
@@ -121,8 +108,9 @@ class Server:
         num_features = inputs.shape[2]
 
         # Initialize lists for logging
-        num_bytes: List[int] = []
-        num_measurements: List[int] = []
+        num_bytes_list: List[int] = []
+        num_measurements_list: List[int] = []
+        energy_list: List[float] = []
 
         maes: List[float] = []
         rmses: List[float] = []
@@ -131,7 +119,7 @@ class Server:
         reconstructed_list: List[np.ndarray] = []
         width_counts: Counter = Counter()
 
-        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock: 
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
             # Bind the sensor to the selected host and port
             sock.bind((self.host, self.port))
 
@@ -178,6 +166,7 @@ class Server:
 
                     # Decode the measurements
                     measurements, collected_indices, widths = policy.decode(message=message)
+                    num_collected = len(measurements)
 
                     # Reconstruct the sequence by inferring the missing elements, [T, D]
                     reconstructed = reconstruct_sequence(measurements=measurements,
@@ -192,10 +181,15 @@ class Server:
                                               y_pred=reconstructed,
                                               squared=False)
 
+                    # Compute the energy from this sequence
+                    energy = policy.get_energy(num_collected=num_collected,
+                                               num_bytes=consumed_bytes)
+
                     # Log the results of this sequence
-                    num_bytes.append(len(parsed.data))
-                    num_measurements.append(len(measurements))
-                    
+                    num_bytes_list.append(consumed_bytes)
+                    num_measurements_list.append(num_collected)
+                    energy_list.append(energy)
+
                     maes.append(mae)
                     rmses.append(rmse)
 
@@ -230,14 +224,16 @@ class Server:
             'norm_mae': norm_mae,
             'norm_rmse': norm_rmse,
             'r2_score': r2,
-            'avg_bytes': np.average(num_bytes),
-            'avg_measurements': np.average(num_measurements),
+            'avg_bytes': np.average(num_bytes_list),
+            'avg_energy': np.average(energy_list),
+            'avg_measurements': np.average(num_measurements_list),
             'count': len(maes),
             'widths': width_counts,
             'all_mae': maes,
             'all_rmse': rmses,
-            'num_bytes': num_bytes,
-            'num_measurements': num_measurements,
+            'energy': energy_list,
+            'num_bytes': num_bytes_list,
+            'num_measurements': num_measurements_list,
             'labels': label_list,
             'encryption_mode': encryption_mode.name,
             'policy': policy.as_dict()
@@ -268,9 +264,6 @@ if __name__ == '__main__':
 
     # Make the server
     server = Server(host='localhost', port=args.port)
-
-    # Extract the parameters
-    #params = read_json(args.params)
 
     # Make the policy
     policy = make_policy(name=args.policy,

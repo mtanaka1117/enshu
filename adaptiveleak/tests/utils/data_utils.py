@@ -788,7 +788,7 @@ class TestGroupWidths(unittest.TestCase):
                                              encryption_mode=EncryptionMode.STREAM)
 
         self.assertEqual(len(widths), 3)
-        self.assertEqual(widths[0], 4)
+        self.assertEqual(widths[0], 5)
         self.assertEqual(widths[1], 5)
         self.assertEqual(widths[2], 5)
 

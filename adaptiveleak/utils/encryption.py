@@ -4,16 +4,13 @@ from Cryptodome.Hash import HMAC, SHA256
 from Cryptodome.Random import get_random_bytes
 from Cryptodome.Util.Padding import pad, unpad
 
+from .types import EncryptionMode
+
 
 AES_BLOCK_SIZE = 16
 CHACHA_KEY_LEN = 32
 CHACHA_NONCE_LEN = 12
 SHA256_LEN = 32
-
-
-class EncryptionMode(Enum):
-    BLOCK = auto()
-    STREAM = auto()
 
 
 def encrypt(message: bytes, key: bytes, mode: EncryptionMode) -> bytes:

@@ -80,7 +80,7 @@ int main(void) {
     uint8_t shouldCollect = 0;
     uint8_t didCollect = 1;
 
-    for (seqIdx = 0; seqIdx < 1; seqIdx++) {
+    for (seqIdx = 0; seqIdx < 2; seqIdx++) {
         // Clear the collected bit map
         clear_bitmap(&collectedIndices);
 

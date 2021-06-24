@@ -22,9 +22,9 @@ class BaseClassifier:
         Fits the given classifier
 
         Args:
-            train_inputs: A [N, D] array of input features
+            train_inputs: A [N, T, D] array of input features
             train_labels: A [N] array of labels
-            val_inputs: A [M, D] array of validation input features
+            val_inputs: A [M, T, D] array of validation input features
             val_labels: A [M] array of validation labels
             save_folder: The folder in which to place the results
             num_epochs: The number of training epochs

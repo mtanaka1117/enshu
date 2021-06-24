@@ -14,6 +14,7 @@ from ble_manager import BLEManager
 from adaptiveleak.server import reconstruct_sequence
 from adaptiveleak.policies import EncodingMode
 from adaptiveleak.utils.analysis import normalized_rmse, normalized_mae
+from adaptiveleak.utils.constants import PERIOD
 from adaptiveleak.utils.file_utils import save_json_gz, read_json, make_dir
 from adaptiveleak.utils.message import decode_standard_measurements, decode_stable_measurements
 
@@ -21,7 +22,6 @@ from adaptiveleak.utils.message import decode_standard_measurements, decode_stab
 MAC_ADDRESS = '00:35:FF:13:A3:1E'
 BLE_HANDLE = 18
 HCI_DEVICE = 'hci1'
-PERIOD = 7
 
 # Special bytes to handle sensor operation
 RESET_BYTE = b'\xFF'
@@ -152,8 +152,6 @@ def execute_client(inputs: np.ndarray,
                                                                                    should_compress=False)
                 measurements = measurements.T.reshape(-1, num_features)
             elif encoding_mode == EncodingMode.GROUP:
-                print('Seq Length: {0}, Num Features: {1}, Width: {2}, Precision: {3}'.format(seq_length, num_features, width, precision))
-
                 measurements, collected_idx, widths = decode_stable_measurements(encoded=response,
                                                                                  seq_length=seq_length,
                                                                                  num_features=num_features,

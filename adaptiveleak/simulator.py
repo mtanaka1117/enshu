@@ -29,15 +29,6 @@ if __name__ == '__main__':
     parser.add_argument('--max-num-samples', type=int)
     args = parser.parse_args()
 
-    # Unpack the parameter files by detecting directories
-    #param_files: List[str] = []
-    #for param_file in args.policy_params:
-    #    if os.path.isdir(param_file):
-    #        file_names = [name for name in os.listdir(param_file) if name.endswith('.json')]
-    #        param_files.extend(os.path.join(param_file, name) for name in file_names)
-    #    else:
-    #        param_files.append(param_file)
-
     # Unpack the targets
     assert len(args.target) in (1, 3), 'Must provide 1 target or a range of targets'
 

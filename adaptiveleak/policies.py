@@ -6,27 +6,23 @@ from collections import deque
 from enum import Enum, auto
 from typing import Tuple, List, Dict, Any
 
-from adaptiveleak.controllers import PIDController
+from adaptiveleak.energy_systems import EnergyUnit
 from adaptiveleak.utils.constants import BITS_PER_BYTE, MIN_WIDTH, SMALL_NUMBER, MAX_WIDTH, SHIFT_BITS, MAX_SHIFT_GROUPS
-from adaptiveleak.utils.constants import MIN_SHIFT_GROUPS
+from adaptiveleak.utils.constants import MIN_SHIFT_GROUPS, PERIOD, LENGTH_BYTES
 from adaptiveleak.utils.data_utils import get_group_widths, get_num_groups, calculate_bytes, pad_to_length, sigmoid
 from adaptiveleak.utils.data_utils import prune_sequence, get_max_collected, calculate_grouped_bytes, linear_extrapolate
-from adaptiveleak.utils.data_utils import balance_group_size, set_widths, select_range_shifts_array, num_bits_for_value, linear_sigmoid, linear_tanh
+from adaptiveleak.utils.data_utils import balance_group_size, set_widths, select_range_shifts_array, num_bits_for_value
 from adaptiveleak.utils.shifting import merge_shift_groups
 from adaptiveleak.utils.message import encode_standard_measurements, decode_standard_measurements
 from adaptiveleak.utils.message import encode_grouped_measurements, decode_grouped_measurements
 from adaptiveleak.utils.message import encode_stable_measurements, decode_stable_measurements
-from adaptiveleak.utils.encryption import AES_BLOCK_SIZE, EncryptionMode, CHACHA_NONCE_LEN
+from adaptiveleak.utils.encryption import AES_BLOCK_SIZE, CHACHA_NONCE_LEN
 from adaptiveleak.utils.file_utils import read_json, read_pickle_gz
+from adaptiveleak.utils.types import EncodingMode, EncryptionMode, PolicyType, PolicyResult
 
 
 MARGIN = 0.005
 MAX_ITER = 100
-
-
-class EncodingMode(Enum):
-    STANDARD = auto()
-    GROUP = auto()
 
 
 class Policy:
@@ -38,14 +34,16 @@ class Policy:
                  num_features: int,
                  seq_length: int,
                  encryption_mode: EncryptionMode,
+                 encoding_mode: EncodingMode,
                  should_compress: bool):
-        self._estimate = np.zeros((num_features, 1))  # [D, 1]
+        self._estimate = np.zeros((num_features, ))  # [D]
         self._precision = precision
         self._width = width
         self._num_features = num_features
         self._seq_length = seq_length
         self._target = target
         self._encryption_mode = encryption_mode
+        self._encoding_mode = encoding_mode
         self._should_compress = should_compress
 
         self._rand = np.random.RandomState(seed=78362)
@@ -53,6 +51,12 @@ class Policy:
         # Track the average number of measurements sent
         self._measurement_count = 0
         self._seq_count = 0
+
+        # Make the energy unit
+        self._energy_unit = EnergyUnit(policy_type=self.policy_type,
+                                       encoding_mode=self.encoding_mode,
+                                       seq_length=self.seq_length,
+                                       period=PERIOD)
 
     @property
     def width(self) -> int:
@@ -83,14 +87,22 @@ class Policy:
         return self._encryption_mode
 
     @property
+    def encoding_mode(self) -> EncodingMode:
+        return self._encoding_mode
+
+    @property
+    def energy_unit(self) -> EnergyUnit:
+        return self._energy_unit
+
+    @property
     def should_compress(self) -> bool:
         return self._should_compress
-    
+
     def collect(self, measurement: np.ndarray):
-        self._estimate = np.copy(measurement.reshape(-1, 1))
-    
+        self._estimate = np.copy(measurement.reshape(-1))  # [D]
+
     def reset(self):
-        self._estimate = np.zeros((self._num_features, 1))  # [D, 1]
+        self._estimate = np.zeros((self._num_features, ))  # [D]
 
     def encode(self, measurements: np.ndarray, collected_indices: List[int]) -> bytes:
         return encode_standard_measurements(measurements=measurements,
@@ -112,18 +124,27 @@ class Policy:
         self._measurement_count += count
         self._seq_count += 1
 
+    def get_energy(self, num_collected: int, num_bytes: int) -> float:
+        return self.energy_unit.get_energy(num_collected=num_collected,
+                                           num_bytes=num_bytes)
+
     def __str__(self) -> str:
-        return 'Policy'
+        return '{0}_{1}'.format(self.policy_type.name.lower(), self.encoding_mode.name.lower())
 
     def as_dict(self) -> Dict[str, Any]:
         return {
-            'name': str(self),
+            'policy_name': self.policy_type.name,
             'target': self.target,
             'width': self.width,
             'precision': self.precision,
-            'encryption_mode': self._encryption_mode.name,
+            'encryption_mode': self.encryption_mode.name,
+            'encoding_mode': self.encoding_mode.name,
             'should_compress': self.should_compress
         }
+
+    @property
+    def policy_type(self) -> PolicyType:
+        raise NotImplementedError()
 
     def should_collect(self, seq_idx: int) -> bool:
         raise NotImplementedError()
@@ -148,21 +169,14 @@ class AdaptivePolicy(Policy):
                          num_features=num_features,
                          seq_length=seq_length,
                          encryption_mode=encryption_mode,
+                         encoding_mode=encoding_mode,
                          should_compress=should_compress)
-
-        # Name of the encoding algorithm
-        self._encoding_mode = encoding_mode
-
         # Variables used to track the adaptive sampling policy
         self._max_skip = int(1.0 / target) + max_skip
         self._current_skip = 0
         self._sample_skip = 0
 
         self._threshold = threshold
-
-    @property
-    def encoding_mode(self) -> EncodingMode:
-        return self._encoding_mode
 
     def reset(self):
         super().reset()
@@ -269,19 +283,14 @@ class AdaptivePolicy(Policy):
         else:
             raise ValueError('Unknown encoding type {0}'.format(self.encoding_mode.name))
 
-    def __str__(self) -> str:
-        return 'adaptive_{0}'.format(self._encoding_mode.name.lower())
-
-    def as_dict(self) -> Dict[str, Any]:
-        policy_dict = super().as_dict()
-        policy_dict['encoding'] = self._encoding_mode.name
-        return policy_dict
-
 
 class AdaptiveHeuristic(AdaptivePolicy):
 
-    def should_collect(self, seq_idx: int) -> bool:
+    @property
+    def policy_type(self) -> PolicyType:
+        return PolicyType.ADAPTIVE_HEURISTIC
 
+    def should_collect(self, seq_idx: int) -> bool:
         if self._sample_skip > 0:
             self._sample_skip -= 1
             return False
@@ -289,15 +298,11 @@ class AdaptiveHeuristic(AdaptivePolicy):
         return True
 
     def collect(self, measurement: np.ndarray):
-        if len(self._estimate.shape) == 2 and len(measurement.shape) == 1:
-            self._estimate = np.squeeze(self._estimate, axis=-1)
+        if len(measurement.shape) >= 2:
+            measurement = measurement.reshape(-1)
 
         diff = np.sum(np.abs(self._estimate - measurement))
-        #print('Estimate: {0}, Measurement: {1}'.format(self._estimate, measurement))
-
         self._estimate = measurement
-
-        #print('Diff: {0}, Threshold: {1}, Current Skip: {2}'.format(diff, self._threshold, self._current_skip))
 
         if diff >= self._threshold:
             self._current_skip = 0
@@ -305,9 +310,6 @@ class AdaptiveHeuristic(AdaptivePolicy):
             self._current_skip = min(self._current_skip + 1, self._max_skip)
 
         self._sample_skip = self._current_skip
-
-    def __str__(self) -> str:
-        return 'adaptive_heuristic_{0}'.format(self._encoding_mode.name.lower())
 
 
 class AdaptiveLiteSense(AdaptivePolicy):
@@ -347,6 +349,9 @@ class AdaptiveLiteSense(AdaptivePolicy):
         return False
 
     def collect(self, measurement: np.ndarray):
+        if len(measurement.shape) >= 2:
+            measurement = measurement.reshape(-1)  # [D]
+
         updated_mean = (1.0 - self._alpha) * self._mean + self._alpha * measurement
         updated_dev = (1.0 - self._beta) * self._dev + self._beta * np.abs(updated_mean - measurement)
 
@@ -366,33 +371,29 @@ class AdaptiveLiteSense(AdaptivePolicy):
 
     def reset(self):
         super().reset()
-        self._mean = np.zeros(shape=(self.num_features, ))  # [D, 1]
-        self._dev = np.zeros(shape=(self.num_features, ))
-
-    def __str__(self) -> str:
-        return 'adaptive_litesense_{0}'.format(self._encoding_mode.name.lower())
+        self._mean = np.zeros(shape=(self.num_features, ))  # [D]
+        self._dev = np.zeros(shape=(self.num_features, ))  # [D]
 
 
 class AdaptiveDeviation(AdaptiveLiteSense):
-    
+
+    @property
+    def policy_type(self) -> PolicyType:
+        return PolicyType.ADAPTIVE_DEVIATION
+
     def collect(self, measurement: np.ndarray):
         self._mean = (1.0 - self._alpha) * self._mean + self._alpha * measurement
         self._dev = (1.0 - self._beta) * self._dev + self._beta * np.abs(self._mean - measurement)
 
         norm = np.sum(self._dev)
 
-        #print('Mean: {0}, Dev: {1}, Norm: {2}, Measurement: {3}'.format(self._mean, self._dev, norm, measurement))
-
         if norm > self._threshold:
-            self._current_skip = max(int(self._current_skip / 2), 0) 
+            self._current_skip = max(int(self._current_skip / 2), 0)
         else:
             self._current_skip = min(self._current_skip + 1, self._max_skip)
 
         self._estimate = measurement
         self._sample_skip = 0
-
-    def __str__(self) -> str:
-        return 'adaptive_deviation_{0}'.format(self._encoding_mode.name.lower())
 
 
 class SkipRNN(AdaptivePolicy):
@@ -433,25 +434,29 @@ class SkipRNN(AdaptivePolicy):
 
         # Unpack the normalization object
         scaler = read_pickle_gz(model_file)['metadata']['scaler']
-        self._mean = np.expand_dims(scaler.mean_, axis=-1) # [K, 1]
+        self._mean = np.expand_dims(scaler.mean_, axis=-1)  # [K, 1]
         self._scale = np.expand_dims(scaler.scale_, axis=-1)  # [K, 1]
 
         # Initialize the state
         self._state_size = self._W_state.shape[1]
 
         self._initial_state = model_weights['initial-hidden-state:0'].T
-       
+
         self._state = self._initial_state
         self._cum_update_prob = 1.0  # Cumulative update prob
         self._update_prob = 0.0  # Update prob from the previous step (avoid re-computation)
 
         self._seq_idx = 0
 
+    @property
+    def policy_type(self) -> PolicyType:
+        return PolicyType.SKIP_RNN
+
     def should_collect(self, seq_idx: int) -> bool:
         self._seq_idx += 1
 
         if (self._cum_update_prob >= self._threshold):
-            self._cum_update_prob = 0.0            
+            self._cum_update_prob = 0.0
             return True
         else:
             self._cum_update_prob = min(self._cum_update_prob + self._update_prob, 1.0)
@@ -474,7 +479,7 @@ class SkipRNN(AdaptivePolicy):
 
         update_gate = sigmoid(update_gate + 1)
         candidate = np.tanh(candidate)
-        
+
         # Compute the next state
         self._state = (1.0 - update_gate) * candidate + update_gate * self._state
 
@@ -489,270 +494,9 @@ class SkipRNN(AdaptivePolicy):
         self._update_prob = 0.0  # Update prob from the previous step (avoid re-computation)
         self._seq_idx = 0
 
-    def __str__(self) -> str:
-        return 'skip_rnn_{0}'.format(self._encoding_mode.name.lower())
-
-
-class AdaptiveJitter(AdaptivePolicy):
-
-    def __init__(self,
-                 target: float,
-                 threshold: float,
-                 precision: int,
-                 width: int,
-                 seq_length: int,
-                 num_features: int,
-                 encryption_mode: EncryptionMode,
-                 encoding_mode: EncodingMode,
-                 should_compress: bool):
-        super().__init__(target=target,
-                         threshold=threshold,
-                         precision=precision,
-                         width=width,
-                         seq_length=seq_length,
-                         num_features=num_features,
-                         encryption_mode=encryption_mode,
-                         encoding_mode=encoding_mode,
-                         should_compress=should_compress)
-
-        # Queue of captured measurements over time
-        self._captured: deque = deque()
-
-        # Queue of the indices of the captured measurements
-        self._captured_idx: deque = deque()
-
-        self._window = 3
-        self._seq_idx = 0 
-
-        self._measurement_sum = np.zeros(shape=(num_features,))
-        self._time_sum = 0
-
-    def should_collect(self, seq_idx: int) -> bool:
-        self._seq_idx = seq_idx
-
-        if (seq_idx > 0) and (self._sample_skip < self._current_skip) and (seq_idx < (self._seq_length - 1)):
-            self._sample_skip += 1
-            return False
-
-        return True
-
-    def collect(self, measurement: np.ndarray):
-        # Add measurement and index to the queue
-        self._captured.append(measurement)
-        self._captured_idx.append(self._seq_idx)
-
-        # Update the sum values
-        self._measurement_sum += measurement
-        self._time_sum += self._seq_idx
-
-        while len(self._captured) > self._window:
-            removed_measurement = self._captured.popleft()
-            self._measurement_sum -= removed_measurement
-
-            removed_time = self._captured_idx.popleft()
-            self._time_sum -= removed_time
-
-        # Update the mean values
-        mean_idx = self._time_sum / len(self._captured_idx)
-        mean_element = self._measurement_sum / len(self._captured)
-
-        # Calculate the differences
-        idx_diff = sum(np.square(idx - mean_idx) for idx in self._captured_idx)
-        measurement_diff = np.zeros_like(measurement, dtype=float)
-
-        for element, idx in zip(self._captured, self._captured_idx):
-            measurement_diff += (idx - mean_idx) * (element - mean_element)
-
-        # Form the best-fit parameters
-        slope = measurement_diff / (idx_diff + SMALL_NUMBER)
-        intercept = mean_element - slope * mean_idx
-
-        # Calculate the jitter metric
-        jitter = 0.0
-        median_idx = (max(self._captured_idx) + min(self._captured_idx)) / 2
-        median_element = intercept + slope * median_idx
-
-        for element in self._captured:
-            jitter += np.sum(np.abs(median_element - element))
-
-        # Update the skipping window
-        if jitter > self._threshold:
-            self._current_skip = max(int(self._current_skip / 2), 0)
-        else:
-            self._current_skip = min(self._current_skip + 1, self._max_skip)
-
-        self._sample_skip = 0
-
-    def reset(self):
-        super().reset()
-        self._captured = deque()
-        self._captured_idx = deque()
-        self._seq_idx = 0
-        self._time_sum = 0
-        self._measurement_sum = np.zeros(shape=(self.num_features,))
-
-    def __str__(self) -> str:
-        return 'adaptive_jitter_{0}'.format(self._encoding_mode.name.lower())
-
-
-class AdaptiveSlope(AdaptiveJitter):
-
-    def __init__(self,
-                 target: float,
-                 threshold: float,
-                 precision: int,
-                 width: int,
-                 seq_length: int,
-                 num_features: int,
-                 encryption_mode: EncryptionMode,
-                 encoding_mode: EncodingMode,
-                 should_compress: bool):
-        super().__init__(target=target,
-                         threshold=threshold,
-                         precision=precision,
-                         width=width,
-                         seq_length=seq_length,
-                         num_features=num_features,
-                         encryption_mode=encryption_mode,
-                         encoding_mode=encoding_mode,
-                         should_compress=should_compress)
-        self._window = 2
-        self._current_skip = int(self._max_skip / 2)
-        self._prev_slope = np.zeros((num_features, ))
-
-    def collect(self, measurement: np.ndarray):
-        # Add measurement and index to the queue
-        self._captured.append(measurement)
-        self._captured_idx.append(self._seq_idx)
-
-        # Update the sum values
-        while len(self._captured) > self._window:
-            self._captured.popleft()
-            self._captured_idx.popleft()
-
-        self._sample_skip = 0
-
-        if len(self._captured) < self._window:
-            self._current_skip = int(self._max_skip / 2)
-            return
-
-        # Compute the slope based on the previous two values
-        feature_diff = self._captured[-1] - self._captured[-2]
-        time_diff = self._captured_idx[-1] - self._captured_idx[-2]
-        slope = feature_diff / time_diff
-
-        error = np.sum(np.abs(slope - self._prev_slope))
-        self._prev_slope = slope
-
-        # Update the skipping window
-        if error > self._threshold:
-            self._current_skip = max(int(self._current_skip / 2), 0)
-        else:
-            self._current_skip = min(self._current_skip * 2 + 1, self._max_skip)
-
-        self._sample_skip = 0
-
-    def __str__(self):
-        return 'adaptive_slope_{0}'.format(self._encoding_mode.name.lower())
-
-
-class AdaptiveLinear(AdaptiveJitter):
-
-    def __init__(self,
-                 target: float,
-                 threshold: float,
-                 precision: int,
-                 width: int,
-                 seq_length: int,
-                 num_features: int,
-                 encryption_mode: EncryptionMode,
-                 encoding_mode: EncodingMode,
-                 should_compress: bool):
-        super().__init__(target=target,
-                         threshold=threshold,
-                         precision=precision,
-                         width=width,
-                         seq_length=seq_length,
-                         num_features=num_features,
-                         encryption_mode=encryption_mode,
-                         encoding_mode=encoding_mode,
-                         should_compress=should_compress)
-        self._window = 2
-        self._current_skip = int(self._max_skip / 2)
-
-    def collect(self, measurement: np.ndarray):
-        # Add measurement and index to the queue
-        self._captured.append(measurement)
-        self._captured_idx.append(self._seq_idx)
-
-        self._sample_skip = 0
-
-        if len(self._captured) <= self._window:
-            self._current_skip = int(self._max_skip / 2)
-            return
-
-        # Compute the slope based on the previous two values
-        feature_diff = self._captured[-2] - self._captured[-3]
-        time_diff = self._captured_idx[-2] - self._captured_idx[-3]
-        slope = feature_diff / time_diff
-
-        step = self._captured_idx[-1] - self._captured_idx[-3]
-        projected = slope * step + self._captured[-3]
-
-        error = np.sum(np.abs(projected - measurement))
-
-        if (error < self._threshold):
-            #self._current_skip = self._current_skip * 2 + 1
-            self._current_skip = self._max_skip
-        else:
-            #self._current_skip -= 1
-            self._current_skip = int(self._current_skip / 2)
-
-        self._current_skip = max(min(self._current_skip, self._max_skip), 0)
-
-        # Update the sum values
-        while len(self._captured) > self._window:
-            self._captured.popleft()
-            self._captured_idx.popleft()
-
-        ## Update the mean values
-        #mean_idx = self._time_sum / len(self._captured_idx)
-        #mean_element = self._measurement_sum / len(self._captured)
-
-        ## Calculate the differences
-        #idx_diff = sum(np.square(idx - mean_idx) for idx in self._captured_idx)
-        #measurement_diff = np.zeros_like(measurement)
-
-        #for element, idx in zip(self._captured, self._captured_idx):
-        #    measurement_diff += (idx - mean_idx) * (element - mean_element)
-
-        ## Form the best-fit parameters
-        #slope = measurement_diff / (idx_diff + SMALL_NUMBER)
-        #delta = int(math.floor(self._threshold / (np.sum(np.abs(slope)) + SMALL_NUMBER)))
-        #
-        #self._current_skip = min(delta, self._max_skip)
-        #self._sample_skip = 0
-
-    def __str__(self):
-        return 'adaptive_linear'.format(self._encoding_mode.name.lower())
-
 
 class RandomPolicy(Policy):
 
-    def should_collect(self, seq_idx: int) -> bool:
-        r = self._rand.uniform()
-
-        if r < (self._target + MARGIN) or seq_idx == 0:
-            return True
-
-        return False
-
-    def __str__(self) -> str:
-        return 'random'
-
-
-class UniformPolicy(Policy):
-    
     def __init__(self,
                  target: float,
                  precision: int,
@@ -767,6 +511,42 @@ class UniformPolicy(Policy):
                          num_features=num_features,
                          seq_length=seq_length,
                          encryption_mode=encryption_mode,
+                         encoding_mode=EncodingMode.STANDARD,
+                         should_compress=should_compress)
+        self._energy_unit = EnergyUnit(policy_type=PolicyType.UNIFORM,
+                                       encoding_mode=EncodingMode.STANDARD,
+                                       seq_length=seq_length)
+
+    @property
+    def policy_type(self) -> PolicyType:
+        return PolicyType.RANDOM
+
+    def should_collect(self, seq_idx: int) -> bool:
+        r = self._rand.uniform()
+
+        if r < (self._target + MARGIN) or seq_idx == 0:
+            return True
+
+        return False
+
+
+class UniformPolicy(Policy):
+
+    def __init__(self,
+                 target: float,
+                 precision: int,
+                 width: int,
+                 seq_length: int,
+                 num_features: int,
+                 encryption_mode: EncryptionMode,
+                 should_compress: bool):
+        super().__init__(precision=precision,
+                         width=width,
+                         target=target,
+                         num_features=num_features,
+                         seq_length=seq_length,
+                         encryption_mode=encryption_mode,
+                         encoding_mode=EncodingMode.STANDARD,
                          should_compress=should_compress)
         target_samples = int((target + MARGIN) * seq_length)
 
@@ -791,6 +571,10 @@ class UniformPolicy(Policy):
         self._skip_indices = self._skip_indices[:target_samples]
         self._skip_idx = 0
 
+    @property
+    def policy_type(self) -> PolicyType:
+        return PolicyType.UNIFORM
+
     def should_collect(self, seq_idx: int) -> bool:
         if (seq_idx == 0) or (self._skip_idx < len(self._skip_indices) and seq_idx == self._skip_indices[self._skip_idx]):
             self._skip_idx += 1
@@ -798,15 +582,12 @@ class UniformPolicy(Policy):
 
         return False
 
-    def __str__(self) -> str:
-        return 'uniform'
-
     def reset(self):
         super().reset()
         self._skip_idx = 0
 
 
-def run_policy(policy: Policy, sequence: np.ndarray) -> Tuple[np.ndarray, List[int]]:
+def run_policy(policy: Policy, sequence: np.ndarray) -> PolicyResult:
     """
     Executes the policy on the given sequence.
 
@@ -814,17 +595,23 @@ def run_policy(policy: Policy, sequence: np.ndarray) -> Tuple[np.ndarray, List[i
         policy: The sampling policy
         sequence: A [T, D] array of features (D) for each element (T)
     Returns:
-        A tuple of two elements:
+        A tuple of three elements:
             (1) A [K, D] array of the collected measurements
             (2) The K indices of the collected elements
+            (3) The encoded message as a byte string
+            (4) The energy required for this sequence
     """
     assert len(sequence.shape) == 2, 'Must provide a 2d sequence'
 
+    # Lists to hold the results
     collected_list: List[np.ndarray] = []
     collected_indices: List[int] = []
 
-    for seq_idx in range(sequence.shape[0]):
-        
+    # Unpack the shape
+    seq_length, num_features = sequence.shape
+
+    # Execute the policy on the given sequence
+    for seq_idx in range(seq_length):
         should_collect = policy.should_collect(seq_idx=seq_idx)
 
         if should_collect:
@@ -834,7 +621,33 @@ def run_policy(policy: Policy, sequence: np.ndarray) -> Tuple[np.ndarray, List[i
             collected_list.append(measurement.reshape(1, -1))
             collected_indices.append(seq_idx)
 
-    return np.vstack(collected_list), collected_indices
+    # Stack collected features into a numpy array
+    collected = np.vstack(collected_list)  # [K, D]
+
+    # Encode the results into a byte string
+    encoded = policy.encode(measurements=collected,
+                            collected_indices=collected_indices)
+
+    # Compute the number of bytes accounting for the length and encryption nonces
+    num_bytes = len(encoded) + LENGTH_BYTES
+
+    if policy.encryption_mode == EncryptionMode.STREAM:
+        num_bytes += CHACHA_NONCE_LEN
+    elif policy.encryption_mode == EncryptionMode.BLOCK:
+        num_bytes += AES_BLOCK_SIZE
+    else:
+        raise ValueError('Unknown encryption mode: {0}'.format(policy.encoding_mode.name.lower()))
+
+    # Compute the energy required
+    energy = policy.get_energy(num_collected=len(collected_indices),
+                               num_bytes=num_bytes)
+
+    return PolicyResult(measurements=collected,
+                        collected_indices=collected_indices,
+                        num_collected=len(collected_indices),
+                        encoded=encoded,
+                        num_bytes=num_bytes,
+                        energy=energy)
 
 
 def make_policy(name: str,
@@ -848,7 +661,9 @@ def make_policy(name: str,
     name = name.lower()
 
     # Look up the data-specific precision and width
-    quantize_path = os.path.join('datasets', dataset, 'quantize.json')
+    base = os.path.dirname(__file__)
+    quantize_path = os.path.join(base, 'datasets', dataset, 'quantize.json')
+
     quantize_dict = read_json(quantize_path)
     precision = quantize_dict['precision']
     width = quantize_dict['width']
@@ -872,7 +687,7 @@ def make_policy(name: str,
                              should_compress=should_compress)
     elif name.startswith('adaptive'):
         # Look up the threshold path
-        threshold_path = os.path.join('saved_models', dataset, 'thresholds.pkl.gz')
+        threshold_path = os.path.join(base, 'saved_models', dataset, 'thresholds.pkl.gz')
 
         if not os.path.exists(threshold_path):
             print('WARNING: No threshold path exists. Defaulting to 0.0')
@@ -892,12 +707,6 @@ def make_policy(name: str,
             cls = AdaptiveLiteSense
         elif name == 'adaptive_deviation':
             cls = AdaptiveDeviation
-        elif name == 'adaptive_jitter':
-            cls = AdaptiveJitter
-        elif name == 'adaptive_linear':
-            cls = AdaptiveLinear
-        elif name == 'adaptive_slope':
-            cls = AdaptiveSlope
         else:
             raise ValueError('Unknown adaptive policy with name: {0}'.format(name))
 

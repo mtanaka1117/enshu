@@ -3,7 +3,7 @@ import tensorflow.keras as keras
 import os.path
 from typing import Tuple
 
-from .dnn import NeuralNetwork
+from dnn import NeuralNetwork
 
 
 def conv(inputs: keras.layers.Layer, num_filters: int, kernel_size: int, should_activate: bool) -> keras.layers.Layer:

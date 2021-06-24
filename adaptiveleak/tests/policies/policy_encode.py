@@ -118,7 +118,7 @@ class TestAdaptiveEncode(unittest.TestCase):
 
         decoded_measurements, decoded_collected, _ = policy.decode(encoded)
 
-        self.assertEqual(len(decoded_measurements), 118)
+        self.assertEqual(len(decoded_measurements), 87)
 
     def test_tiselac_stream(self):
          # Read the data
