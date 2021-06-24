@@ -1,12 +1,11 @@
 import numpy as np
 import math
 import os.path
-import time
 from collections import deque
 from enum import Enum, auto
-from typing import Tuple, List, Dict, Any
+from typing import Tuple, List, Dict, Any, Optional
 
-from adaptiveleak.energy_systems import EnergyUnit
+from adaptiveleak.energy_systems import EnergyUnit, convert_rate_to_energy
 from adaptiveleak.utils.constants import BITS_PER_BYTE, MIN_WIDTH, SMALL_NUMBER, MAX_WIDTH, SHIFT_BITS, MAX_SHIFT_GROUPS
 from adaptiveleak.utils.constants import MIN_SHIFT_GROUPS, PERIOD, LENGTH_BYTES
 from adaptiveleak.utils.data_utils import get_group_widths, get_num_groups, calculate_bytes, pad_to_length, sigmoid
@@ -14,21 +13,17 @@ from adaptiveleak.utils.data_utils import prune_sequence, get_max_collected, cal
 from adaptiveleak.utils.data_utils import balance_group_size, set_widths, select_range_shifts_array, num_bits_for_value
 from adaptiveleak.utils.shifting import merge_shift_groups
 from adaptiveleak.utils.message import encode_standard_measurements, decode_standard_measurements
-from adaptiveleak.utils.message import encode_grouped_measurements, decode_grouped_measurements
 from adaptiveleak.utils.message import encode_stable_measurements, decode_stable_measurements
 from adaptiveleak.utils.encryption import AES_BLOCK_SIZE, CHACHA_NONCE_LEN
 from adaptiveleak.utils.file_utils import read_json, read_pickle_gz
-from adaptiveleak.utils.types import EncodingMode, EncryptionMode, PolicyType, PolicyResult
+from adaptiveleak.utils.types import EncodingMode, EncryptionMode, PolicyType, PolicyResult, CollectMode
 
-
-MARGIN = 0.005
-MAX_ITER = 100
 
 
 class Policy:
 
     def __init__(self,
-                 target: float,
+                 collection_rate: float,
                  precision: int,
                  width: int,
                  num_features: int,
@@ -41,9 +36,10 @@ class Policy:
         self._width = width
         self._num_features = num_features
         self._seq_length = seq_length
-        self._target = target
+        self._collection_rate = collection_rate
         self._encryption_mode = encryption_mode
         self._encoding_mode = encoding_mode
+        self._collect_mode = CollectMode.LOW
         self._should_compress = should_compress
 
         self._rand = np.random.RandomState(seed=78362)
@@ -55,6 +51,7 @@ class Policy:
         # Make the energy unit
         self._energy_unit = EnergyUnit(policy_type=self.policy_type,
                                        encoding_mode=self.encoding_mode,
+                                       collect_mode=self.collect_mode,
                                        seq_length=self.seq_length,
                                        period=PERIOD)
 
@@ -79,8 +76,8 @@ class Policy:
         return self._num_features
 
     @property
-    def target(self) -> float:
-        return self._target
+    def collection_rate(self) -> float:
+        return self._collection_rate
 
     @property
     def encryption_mode(self) -> EncryptionMode:
@@ -89,6 +86,10 @@ class Policy:
     @property
     def encoding_mode(self) -> EncodingMode:
         return self._encoding_mode
+
+    @property
+    def collect_mode(self) -> CollectMode:
+        return self._collect_mode
 
     @property
     def energy_unit(self) -> EnergyUnit:
@@ -129,16 +130,17 @@ class Policy:
                                            num_bytes=num_bytes)
 
     def __str__(self) -> str:
-        return '{0}_{1}'.format(self.policy_type.name.lower(), self.encoding_mode.name.lower())
+        return '{0}-{1}-{2}-{3}'.format(self.policy_type.name.lower(), self.encoding_mode.name.lower(), self.encryption_mode.lower(), self.collect_mode.lower())
 
     def as_dict(self) -> Dict[str, Any]:
         return {
             'policy_name': self.policy_type.name,
-            'target': self.target,
+            'collection_rate': self.collection_rate,
             'width': self.width,
             'precision': self.precision,
             'encryption_mode': self.encryption_mode.name,
             'encoding_mode': self.encoding_mode.name,
+            'collect_mode': self.collect_mode.name,
             'should_compress': self.should_compress
         }
 
@@ -153,7 +155,7 @@ class Policy:
 class AdaptivePolicy(Policy):
 
     def __init__(self,
-                 target: float,
+                 collection_rate: float,
                  threshold: float,
                  precision: int,
                  width: int,
@@ -165,14 +167,14 @@ class AdaptivePolicy(Policy):
                  should_compress: bool):
         super().__init__(precision=precision,
                          width=width,
-                         target=target,
+                         collection_rate=collection_rate,
                          num_features=num_features,
                          seq_length=seq_length,
                          encryption_mode=encryption_mode,
                          encoding_mode=encoding_mode,
                          should_compress=should_compress)
         # Variables used to track the adaptive sampling policy
-        self._max_skip = int(1.0 / target) + max_skip
+        self._max_skip = int(1.0 / collection_rate) + max_skip
         self._current_skip = 0
         self._sample_skip = 0
 
@@ -190,7 +192,7 @@ class AdaptivePolicy(Policy):
             # Get the maximum number of collected measurements to still
             # meet the target size
             target_bytes = calculate_bytes(width=self.width,
-                                           num_collected=int(self.target * self.seq_length),
+                                           num_collected=int(self.collection_rate * self.seq_length),
                                            num_features=self.num_features,
                                            seq_length=self.seq_length,
                                            encryption_mode=self.encryption_mode)
@@ -315,7 +317,7 @@ class AdaptiveHeuristic(AdaptivePolicy):
 class AdaptiveLiteSense(AdaptivePolicy):
 
     def __init__(self,
-                 target: float,
+                 collection_rate: float,
                  threshold: float,
                  precision: int,
                  width: int,
@@ -325,7 +327,7 @@ class AdaptiveLiteSense(AdaptivePolicy):
                  encryption_mode: EncryptionMode,
                  encoding_mode: EncodingMode,
                  should_compress: bool):
-        super().__init__(target=target,
+        super().__init__(collection_rate=collection_rate,
                          threshold=threshold,
                          precision=precision,
                          width=width,
@@ -399,7 +401,7 @@ class AdaptiveDeviation(AdaptiveLiteSense):
 class SkipRNN(AdaptivePolicy):
 
     def __init__(self,
-                 target: float,
+                 collection_rate: float,
                  threshold: float,
                  precision: int,
                  width: int,
@@ -409,7 +411,7 @@ class SkipRNN(AdaptivePolicy):
                  encoding_mode: EncodingMode,
                  should_compress: bool,
                  dataset_name: str):
-        super().__init__(target=target,
+        super().__init__(collection_rate=collection_rate,
                          threshold=threshold,
                          precision=precision,
                          width=width,
@@ -422,7 +424,7 @@ class SkipRNN(AdaptivePolicy):
 
         # Fetch the parameters
         dir_name = os.path.dirname(__file__)
-        model_file = os.path.join(dir_name, 'saved_models', dataset_name, 'skip_rnn', 'skip-rnn-{0}.pkl.gz'.format(int(target * 100)))
+        model_file = os.path.join(dir_name, 'saved_models', dataset_name, 'skip_rnn', 'skip-rnn-{0}.pkl.gz'.format(int(collection_rate * 100)))
         model_weights = read_pickle_gz(model_file)['trainable_vars']
 
         # Unpack the model parameters
@@ -498,7 +500,7 @@ class SkipRNN(AdaptivePolicy):
 class RandomPolicy(Policy):
 
     def __init__(self,
-                 target: float,
+                 collection_rate: float,
                  precision: int,
                  width: int,
                  seq_length: int,
@@ -507,7 +509,7 @@ class RandomPolicy(Policy):
                  should_compress: bool):
         super().__init__(precision=precision,
                          width=width,
-                         target=target,
+                         collection_rate=collection_rate,
                          num_features=num_features,
                          seq_length=seq_length,
                          encryption_mode=encryption_mode,
@@ -515,7 +517,9 @@ class RandomPolicy(Policy):
                          should_compress=should_compress)
         self._energy_unit = EnergyUnit(policy_type=PolicyType.UNIFORM,
                                        encoding_mode=EncodingMode.STANDARD,
-                                       seq_length=seq_length)
+                                       collect_mode=CollectMode.LOW,
+                                       seq_length=seq_length,
+                                       period=PERIOD)
 
     @property
     def policy_type(self) -> PolicyType:
@@ -524,7 +528,7 @@ class RandomPolicy(Policy):
     def should_collect(self, seq_idx: int) -> bool:
         r = self._rand.uniform()
 
-        if r < (self._target + MARGIN) or seq_idx == 0:
+        if r < self.collection_rate or seq_idx == 0:
             return True
 
         return False
@@ -533,7 +537,7 @@ class RandomPolicy(Policy):
 class UniformPolicy(Policy):
 
     def __init__(self,
-                 target: float,
+                 collection_rate: float,
                  precision: int,
                  width: int,
                  seq_length: int,
@@ -542,15 +546,15 @@ class UniformPolicy(Policy):
                  should_compress: bool):
         super().__init__(precision=precision,
                          width=width,
-                         target=target,
+                         collection_rate=collection_rate,
                          num_features=num_features,
                          seq_length=seq_length,
                          encryption_mode=encryption_mode,
                          encoding_mode=EncodingMode.STANDARD,
                          should_compress=should_compress)
-        target_samples = int((target + MARGIN) * seq_length)
+        target_samples = int(collection_rate * seq_length)
 
-        skip = max(1.0 / target, 1)
+        skip = max(1.0 / collection_rate, 1)
         frac_part = skip - math.floor(skip)
 
         self._skip_indices: List[int] = []
@@ -587,7 +591,116 @@ class UniformPolicy(Policy):
         self._skip_idx = 0
 
 
-def run_policy(policy: Policy, sequence: np.ndarray) -> PolicyResult:
+class BudgetWrappedPolicy(Policy):
+
+    def __init__(self,
+                 name: str,
+                 seq_length: int,
+                 num_features: int,
+                 encryption_mode: EncryptionMode,
+                 collection_rate: float,
+                 dataset: str,
+                 should_compress: bool,
+                 **kwargs: Dict[str, Any]):
+        # Make the internal policy
+        self._policy = make_policy(name=name,
+                                   seq_length=seq_length,
+                                   num_features=num_features,
+                                   encryption_mode=encryption_mode,
+                                   collection_rate=collection_rate,
+                                   dataset=dataset,
+                                   should_compress=should_compress,
+                                   **kwargs)
+
+        # Call the base constructor to set the internal fields
+        super().__init__(seq_length=seq_length,
+                         num_features=num_features,
+                         encryption_mode=encryption_mode,
+                         encoding_mode=self._policy.encoding_mode,
+                         width=self._policy.width,
+                         precision=self._policy.precision,
+                         collection_rate=collection_rate,
+                         should_compress=should_compress)
+
+        # Convert the target rate into an energy rate per sequences
+        self._energy_per_seq = convert_rate_to_energy(collection_rate=collection_rate,
+                                                      width=self.width,
+                                                      encryption_mode=encryption_mode,
+                                                      seq_length=seq_length,
+                                                      num_features=num_features)
+
+        # Counters for tracking the energy consumption
+        self._consumed_energy = 0.0
+        self._num_sequences: Optional[int] = None
+        self._budget: Optional[float] = None
+
+        # Get the data distributions for possible random sequence generation
+        dirname = os.path.dirname(__file__)
+        distribution_path = os.path.join(dirname, 'datasets', dataset, 'distribution.json')
+        distribution = read_json(distribution_path)
+
+        self._data_mean = np.array(distribution['mean'])
+        self._data_std = np.array(distribution['std'])
+
+    @property
+    def policy_type(self) -> PolicyType:
+        return self._policy.policy_type
+
+    @property
+    def energy_per_seq(self) -> float:
+        return self._energy_per_seq
+
+    @property
+    def budget(self) -> Optional[float]:
+        return self._budget
+
+    @property
+    def consumed_energy(self) -> float:
+        return self._consumed_energy
+
+    def encode(self, measurements: np.ndarray, collected_indices: List[int]) -> bytes:
+        return self._policy.encode(measurements=measurements,
+                                   collected_indices=collected_indices)
+
+    def decode(self, message: bytes) -> Tuple[np.ndarray, List[int]]:
+        return self._policy.decode(message=message)
+
+    def should_collect(self, seq_idx: int) -> bool:
+        return self._policy.should_collect(seq_idx=seq_idx)    
+
+    def collect(self, measurement: np.ndarray):
+        self._policy.collect(measurement=measurement)
+
+    def reset(self):
+        self._policy.reset()
+
+    def init_for_experiment(self, num_sequences: int):
+        self._consumed_energy = 0.0
+        self._num_sequences = num_sequences
+        self._budget = self.energy_per_seq * num_sequences
+
+    def consume_energy(self, num_collected: int, num_bytes: int) -> float:
+        energy = self.energy_unit.get_energy(num_collected=num_collected,
+                                             num_bytes=num_bytes,
+                                             use_noise=True)
+        self._consumed_energy += energy
+        return energy
+
+    def has_exhausted_budget(self) -> bool:
+        assert self._budget is not None, 'Must call init_for_experiment() first'
+        return self._consumed_energy > self._budget
+
+    def get_random_sequence(self) -> np.ndarray:
+        rand_list: List[np.ndarray] = []
+
+        for m, s in zip(self._data_mean, self._data_std):
+            val = self._rand.normal(loc=m, scale=s, size=self.seq_length)  # [T]
+            rand_list.append(np.expand_dims(val, axis=-1))
+
+        return np.concatenate(rand_list, axis=-1)  # [T, D]
+
+
+def run_policy(policy: BudgetWrappedPolicy, sequence: np.ndarray) -> PolicyResult:
     """
     Executes the policy on the given sequence.
 
@@ -603,12 +716,24 @@ def run_policy(policy: Policy, sequence: np.ndarray) -> PolicyResult:
     """
     assert len(sequence.shape) == 2, 'Must provide a 2d sequence'
 
-    # Lists to hold the results
-    collected_list: List[np.ndarray] = []
-    collected_indices: List[int] = []
+    # Reset all internal per-sequence counters
+    policy.reset()
 
     # Unpack the shape
     seq_length, num_features = sequence.shape
+
+    if policy.has_exhausted_budget():
+        measurements = policy.get_random_sequence()
+        return PolicyResult(measurements=measurements,
+                            collected_indices=list(range(seq_length)),
+                            num_collected=seq_length,
+                            energy=0.0,
+                            num_bytes=0,
+                            encoded=bytes())
+
+    # Lists to hold the results
+    collected_list: List[np.ndarray] = []
+    collected_indices: List[int] = []
 
     # Execute the policy on the given sequence
     for seq_idx in range(seq_length):
@@ -639,8 +764,19 @@ def run_policy(policy: Policy, sequence: np.ndarray) -> PolicyResult:
         raise ValueError('Unknown encryption mode: {0}'.format(policy.encoding_mode.name.lower()))
 
     # Compute the energy required
-    energy = policy.get_energy(num_collected=len(collected_indices),
-                               num_bytes=num_bytes)
+    energy = policy.consume_energy(num_collected=len(collected_indices),
+                                   num_bytes=num_bytes)
+
+    if policy.has_exhausted_budget():
+        measurements = policy.get_random_sequence()
+        policy._consumed_energy = policy._budget + SMALL_NUMBER
+
+        return PolicyResult(measurements=measurements,
+                            collected_indices=list(range(seq_length)),
+                            num_collected=seq_length,
+                            energy=0.0,
+                            num_bytes=0,
+                            encoded=bytes())
 
     return PolicyResult(measurements=collected,
                         collected_indices=collected_indices,
@@ -649,12 +785,11 @@ def run_policy(policy: Policy, sequence: np.ndarray) -> PolicyResult:
                         num_bytes=num_bytes,
                         energy=energy)
 
-
 def make_policy(name: str,
                 seq_length: int,
                 num_features: int,
                 encryption_mode: EncryptionMode,
-                target: float,
+                collection_rate: float,
                 dataset: str,
                 should_compress: bool,
                 **kwargs: Dict[str, Any]) -> Policy:
@@ -670,7 +805,7 @@ def make_policy(name: str,
     max_skip = quantize_dict.get('max_skip', 1)
 
     if name == 'random':
-        return RandomPolicy(target=target + MARGIN,
+        return RandomPolicy(collection_rate=collection_rate,
                             precision=precision,
                             width=width,
                             num_features=num_features,
@@ -678,28 +813,31 @@ def make_policy(name: str,
                             encryption_mode=encryption_mode,
                             should_compress=should_compress)
     elif name == 'uniform':
-        return UniformPolicy(target=target + MARGIN,
+        return UniformPolicy(collection_rate=collection_rate,
                              precision=precision,
                              width=width,
                              num_features=num_features,
                              seq_length=seq_length,
                              encryption_mode=encryption_mode,
                              should_compress=should_compress)
-    elif name.startswith('adaptive'):
+    elif name.startswith('adaptive') or name == 'skip_rnn':
         # Look up the threshold path
         threshold_path = os.path.join(base, 'saved_models', dataset, 'thresholds.pkl.gz')
 
+        did_find_threshold = False
+
         if not os.path.exists(threshold_path):
-            print('WARNING: No threshold path exists. Defaulting to 0.0')
+            print('WARNING: No threshold path exists.')
             threshold = 0.0
         else:
             thresholds = read_pickle_gz(threshold_path)
 
-            if (name not in thresholds) or (target not in thresholds[name]):
-                print('WARNING: No threshold path exists. Defaulting to 0.0')
+            if (name not in thresholds) or (collection_rate not in thresholds[name]):
+                print('WARNING: No threshold path exists.')
                 threshold = 0.0
             else:
-                threshold = thresholds[name][target]
+                threshold = thresholds[name][collection_rate]
+                did_find_threshold = True
 
         if name == 'adaptive_heuristic':
             cls = AdaptiveHeuristic
@@ -707,10 +845,22 @@ def make_policy(name: str,
             cls = AdaptiveLiteSense
         elif name == 'adaptive_deviation':
             cls = AdaptiveDeviation
+        elif name == 'skip_rnn':
+            threshold = threshold if did_find_threshold else 0.5
+            return SkipRNN(collection_rate=collection_rate,
+                           threshold=threshold,
+                           precision=precision,
+                           width=width,
+                           seq_length=seq_length,
+                           num_features=num_features,
+                           dataset_name=dataset,
+                           encryption_mode=encryption_mode,
+                           encoding_mode=EncodingMode[str(kwargs['encoding']).upper()],
+                           should_compress=should_compress)
         else:
             raise ValueError('Unknown adaptive policy with name: {0}'.format(name))
 
-        return cls(target=target,
+        return cls(collection_rate=collection_rate,
                    threshold=threshold,
                    precision=precision,
                    width=width,
@@ -720,16 +870,5 @@ def make_policy(name: str,
                    encryption_mode=encryption_mode,
                    encoding_mode=EncodingMode[str(kwargs['encoding']).upper()],
                    should_compress=should_compress)
-    elif name == 'skip_rnn':
-        return SkipRNN(target=target,
-                       threshold=0.5,
-                       precision=precision,
-                       width=width,
-                       seq_length=seq_length,
-                       num_features=num_features,
-                       encryption_mode=encryption_mode,
-                       encoding_mode=EncodingMode[str(kwargs['encoding']).upper()],
-                       should_compress=should_compress,
-                       dataset_name=dataset)
     else:
         raise ValueError('Unknown policy with name: {0}'.format(name))

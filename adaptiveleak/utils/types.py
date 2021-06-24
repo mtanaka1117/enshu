@@ -19,4 +19,8 @@ class EncodingMode(Enum):
     GROUP = auto()
 
 
+class CollectMode(Enum):
+    LOW = auto()  # Data in FRAM
+
+
 PolicyResult = namedtuple('PolicyResult', ['measurements', 'collected_indices', 'encoded', 'energy', 'num_bytes', 'num_collected'])

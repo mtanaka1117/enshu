@@ -3,23 +3,13 @@ import csv
 import numpy as np
 from sklearn.linear_model import Ridge
 
-from adaptiveleak.utils.file_utils import iterate_dir
-from adaptiveleak.utils.types import PolicyType, EncodingMode
+from adaptiveleak.utils.file_utils import iterate_dir, read_json
+from adaptiveleak.utils.types import PolicyType, EncodingMode, CollectMode
 
 
 BT_FRAME_SIZE = 20
 OP_TRIALS = 5
 BASELINE_PERIOD = 10
-
-
-def get_energy_from_trace_file(path: str) -> float:
-    with open(path, 'r') as fin:
-        reader = csv.reader(fin, delimiter=',')
-        for idx, line in enumerate(reader):
-            if idx > 0:
-                energy = float(line[-1])
-
-    return energy / 1000.0
 
 
 def get_energy_from_folder(path: str, baseline: float, num_trials: int) -> float:
@@ -29,10 +19,9 @@ def get_energy_from_folder(path: str, baseline: float, num_trials: int) -> float
     """
     energy_list: List[float] = []
 
-    for trace_path in iterate_dir(path, pattern='.*csv'):
-        energy = get_energy_from_trace_file(path=trace_path)
-        energy_per_trial = (energy - baseline) / num_trials
-        energy_list.append(energy_per_trial)
+    trace_path = os.path.join(path, 'energy.json')
+    energy_list = read_json(trace_path)['energy']
+    energy_list = [(e - baseline) / num_trials for e in energy_list]
 
     return np.average(energy_list), np.std(energy_list)
 
@@ -46,38 +35,16 @@ class BluetoothEnergy:
         """
         # Get the trace data
         dir_name = os.path.dirname(__file__)
-        base = os.path.join(dir_name, '..', 'traces', 'bluetooth')
+        weights_path = os.path.join(dir_name, '..', 'traces', 'bluetooth', 'model.json')
+        weights_dict = read_json(weights_path)
 
-        bytes_list: List[int] = []
-        energy_list: List[float] = []
-
-        # Read the baseline energy
-        baseline_energy, _ = get_energy_from_folder(path=os.path.join(base, 'baseline'), baseline=0.0, num_trials=1)
-
-        # Get the energy for each trace value
-        for trace_folder in iterate_dir(base, pattern='.*'):
-            name = os.path.split(trace_folder)[-1]
-    
-            try:
-                num_bytes = int(name)
-            except ValueError:
-                continue
-
-            for path in iterate_dir(trace_folder, '.*.csv'):
-                energy = get_energy_from_trace_file(path=path)
-
-                bytes_list.append(num_bytes)
-                energy_list.append(energy - baseline_energy)
-
-        self._model = Ridge()
-        self._model.fit(X=np.expand_dims(bytes_list, axis=-1),
-                        y=energy_list)
+        self._w = weights_dict['w']
+        self._b = weights_dict['b']
 
         self._scale = 0.7
         self._rand = np.random.RandomState(57010)
 
-
-    def get_energy(self, num_bytes: int) -> float:
+    def get_energy(self, num_bytes: int, use_noise: bool) -> float:
         """
         Returns the energy (in mJ) associated with sending the given number of bytes.
         """
@@ -85,9 +52,12 @@ class BluetoothEnergy:
         num_bytes = int(num_bytes / BT_FRAME_SIZE) * BT_FRAME_SIZE
         
         # Use the linear model to predict the energy amount
-        energy = self._model.predict(X=[[num_bytes]])[0]
+        energy = self._w * num_bytes + self._b
 
-        return max(self._rand.normal(loc=energy, scale=self._scale), 0.0)
+        if use_noise:
+            energy = self._rand.normal(loc=energy, scale=self._scale)
+
+        return max(energy, 0.0)
 
 
 class EncryptionEnergy:
@@ -105,13 +75,14 @@ class EncryptionEnergy:
 
         self._rand = np.random.RandomState(seed=8753)
 
-    def get_energy(self) -> float:
-        return max(self._rand.normal(loc=self._energy, scale=self._scale), 0.0)
+    def get_energy(self, use_noise: bool) -> float:
+        energy = self._rand.normal(loc=self._energy, scale=self._scale) if use_noise else self._energy
+        return max(energy, 0.0)
 
 
 class CollectEnergy:
 
-    def __init__(self):
+    def __init__(self, collect_mode: CollectMode):
         # Get the base directory
         dir_name = os.path.dirname(__file__)
         base = os.path.join(dir_name, '..', 'traces')
@@ -124,10 +95,13 @@ class CollectEnergy:
 
         self._rand = np.random.RandomState(seed=8753)
 
-    def get_energy(self) -> float:
-        return self.get_energy_multiple(count=1)
+    def get_energy(self, use_noise: bool) -> float:
+        return self.get_energy_multiple(count=1, use_noise=use_noise)
 
-    def get_energy_multiple(self, count: int) -> np.ndarray:
+    def get_energy_multiple(self, count: int, use_noise: bool) -> float:
+        if not use_noise:
+            return self._energy * count
+
         return float(np.sum(np.maximum(self._rand.normal(loc=self._energy, scale=self._scale, size=count), 0.0)))
 
 
@@ -152,16 +126,19 @@ class PolicyComponentEnergy:
         # Create the random state
         self._rand = np.random.RandomState(seed)
 
-    def get_energy(self) -> float:
+    def get_energy(self, use_noise: bool) -> float:
         """
         Returns the energy (mJ) for a single operation
         """
-        return self.get_energy_multiple(count=1)
+        return self.get_energy_multiple(count=1, use_noise=use_noise)
 
-    def get_energy_multiple(self, count: int) -> float:
+    def get_energy_multiple(self, count: int, use_noise: bool) -> float:
         """
         Returns the energy (mJ) for the given number of operations
         """
+        if not use_noise:
+            return self._energy * count
+
         noisy_energy = self._rand.normal(loc=self._energy, scale=self._scale, size=count)
         return float(np.sum(np.maximum(noisy_energy, 0.0)))
 
@@ -192,13 +169,14 @@ class EncodingEnergy(PolicyComponentEnergy):
 
 class EnergyUnit:
 
-    def __init__(self, policy_type: PolicyType, encoding_mode: EncodingMode, seq_length: int, period: float):
+    def __init__(self, policy_type: PolicyType, encoding_mode: EncodingMode, collect_mode: CollectMode, seq_length: int, period: float):
         """
         Creates the energy unit for a given policy.
 
         Args:
             policy_type: The type of policy
             encoding_mode: The encoding mode (standard or group)
+            collect_mode: The collection mode (low, medium, high)
             seq_length: The length of each sequence
             period: The number of seconds per sequence
         """
@@ -207,7 +185,7 @@ class EnergyUnit:
         self._update = UpdateEnergy(policy_type=policy_type)
         self._encode = EncodingEnergy(encoding_mode=encoding_mode)
         self._encrypt = EncryptionEnergy()
-        self._collect = CollectEnergy()
+        self._collect = CollectEnergy(collect_mode=collect_mode)
         self._comm = BluetoothEnergy()
 
         # Save the sequence length and period
@@ -222,14 +200,14 @@ class EnergyUnit:
 
         self._baseline_energy = baseline_energy * self._scale
 
-    def get_energy(self, num_collected: int, num_bytes: int):
+    def get_energy(self, num_collected: int, num_bytes: int, use_noise: bool):
         # Get the energy from each component
-        collect_energy = self._collect.get_energy_multiple(count=num_collected)
-        should_collect_energy = self._should_collect.get_energy_multiple(count=self._seq_length)
-        update_energy = self._update.get_energy_multiple(count=num_collected)
-        encode_energy = self._encode.get_energy()
-        encrypt_energy = self._encrypt.get_energy()
-        comm_energy = self._comm.get_energy(num_bytes=num_bytes)
+        collect_energy = self._collect.get_energy_multiple(count=num_collected, use_noise=use_noise)
+        should_collect_energy = self._should_collect.get_energy_multiple(count=self._seq_length, use_noise=use_noise)
+        update_energy = self._update.get_energy_multiple(count=num_collected, use_noise=use_noise)
+        encode_energy = self._encode.get_energy(use_noise=use_noise)
+        encrypt_energy = self._encrypt.get_energy(use_noise=use_noise)
+        comm_energy = self._comm.get_energy(num_bytes=num_bytes, use_noise=use_noise)
 
         return collect_energy + should_collect_energy + update_energy + encode_energy + \
                 encrypt_energy + comm_energy + self._baseline_energy

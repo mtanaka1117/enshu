@@ -14,7 +14,8 @@ def load_data(dataset_name: str, fold: str) -> Tuple[np.ndarray, np.ndarray]:
     Returns:
         A tuple of (1) [N, T, D] inputs and (2) [N] labels.
     """
-    data_file = os.path.join('datasets', dataset_name, fold, 'data.h5')
+    dirname = os.path.dirname(__file__)
+    data_file = os.path.join(dirname, '..', 'datasets', dataset_name, fold, 'data.h5')
 
     with h5py.File(data_file, 'r') as fin:
         inputs = fin['inputs'][:]
