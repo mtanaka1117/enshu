@@ -1,0 +1,4 @@
+{
+    "ops_per_trial": 25,
+    "num_trials": [8, 8, 8, 8, 8]
+}
