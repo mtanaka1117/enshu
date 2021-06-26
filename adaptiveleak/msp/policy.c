@@ -12,14 +12,19 @@ void uniform_policy_init(struct UniformPolicy *policy, const uint16_t *collectIn
     policy->collectIdx = 0;
 }
 
+
 uint8_t uniform_should_collect(struct UniformPolicy *policy, uint16_t seqIdx) {
     if (policy->collectIdx >= policy->numIndices) {
         return 0;
     }
 
     uint8_t result = (seqIdx == policy->collectIndices[policy->collectIdx]);
-    policy->collectIdx += result;
     return result;
+}
+
+
+void uniform_update(struct UniformPolicy *policy) {
+    policy->collectIdx += 1;
 }
 
 

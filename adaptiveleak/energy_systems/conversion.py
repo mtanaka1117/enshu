@@ -4,6 +4,9 @@ from adaptiveleak.utils.types import PolicyType, EncodingMode, CollectMode, Encr
 from .energy_systems import EnergyUnit
 
 
+MARGIN = 1e-4
+
+
 def convert_rate_to_energy(collection_rate: float, width: int, encryption_mode: EncryptionMode, seq_length: int, num_features: int) -> float:
     """
     Converts a target collection rate to an energy rate / sequences. This
@@ -20,7 +23,9 @@ def convert_rate_to_energy(collection_rate: float, width: int, encryption_mode: 
     energy_unit = EnergyUnit(policy_type=PolicyType.UNIFORM,
                              encoding_mode=EncodingMode.STANDARD,
                              collect_mode=CollectMode.LOW,
+                             encryption_mode=encryption_mode,
                              seq_length=seq_length,
+                             num_features=num_features,
                              period=PERIOD)
 
     # Calculate the energy required to collect the target rate
@@ -34,8 +39,8 @@ def convert_rate_to_energy(collection_rate: float, width: int, encryption_mode: 
 
     sent_bytes += LENGTH_BYTES  # Account for the length field
 
-    energy_per_seq = energy_unit.get_energy(num_collected=seq_length,
+    energy_per_seq = energy_unit.get_energy(num_collected=target_collected,
                                             num_bytes=sent_bytes,
                                             use_noise=False)
 
-    return energy_per_seq
+    return energy_per_seq + MARGIN

@@ -1,6 +1,7 @@
 import numpy as np
 import math
 import os.path
+import time
 from collections import deque
 from enum import Enum, auto
 from typing import Tuple, List, Dict, Any, Optional
@@ -15,7 +16,7 @@ from adaptiveleak.utils.shifting import merge_shift_groups
 from adaptiveleak.utils.message import encode_standard_measurements, decode_standard_measurements
 from adaptiveleak.utils.message import encode_stable_measurements, decode_stable_measurements
 from adaptiveleak.utils.encryption import AES_BLOCK_SIZE, CHACHA_NONCE_LEN
-from adaptiveleak.utils.file_utils import read_json, read_pickle_gz
+from adaptiveleak.utils.file_utils import read_json, read_pickle_gz, read_json_gz
 from adaptiveleak.utils.types import EncodingMode, EncryptionMode, PolicyType, PolicyResult, CollectMode
 
 
@@ -51,8 +52,10 @@ class Policy:
         # Make the energy unit
         self._energy_unit = EnergyUnit(policy_type=self.policy_type,
                                        encoding_mode=self.encoding_mode,
+                                       encryption_mode=self.encryption_mode,
                                        collect_mode=self.collect_mode,
                                        seq_length=self.seq_length,
+                                       num_features=num_features,
                                        period=PERIOD)
 
     @property
@@ -180,6 +183,10 @@ class AdaptivePolicy(Policy):
 
         self._threshold = threshold
 
+    @property
+    def threshold(self) -> float:
+        return self._threshold
+
     def reset(self):
         super().reset()
         self._current_skip = 0
@@ -292,6 +299,7 @@ class AdaptiveHeuristic(AdaptivePolicy):
     def policy_type(self) -> PolicyType:
         return PolicyType.ADAPTIVE_HEURISTIC
 
+
     def should_collect(self, seq_idx: int) -> bool:
         if self._sample_skip > 0:
             self._sample_skip -= 1
@@ -306,7 +314,7 @@ class AdaptiveHeuristic(AdaptivePolicy):
         diff = np.sum(np.abs(self._estimate - measurement))
         self._estimate = measurement
 
-        if diff >= self._threshold:
+        if diff >= self.threshold:
             self._current_skip = 0
         else:
             self._current_skip = min(self._current_skip + 1, self._max_skip)
@@ -359,7 +367,7 @@ class AdaptiveLiteSense(AdaptivePolicy):
 
         diff = np.sum(updated_dev - self._dev)
 
-        if diff >= self._threshold:
+        if diff >= self.threshold:
             self._current_skip = max(self._current_skip - 1, 0)
         else:
             self._current_skip = min(self._current_skip + 1, self._max_skip)
@@ -389,7 +397,7 @@ class AdaptiveDeviation(AdaptiveLiteSense):
 
         norm = np.sum(self._dev)
 
-        if norm > self._threshold:
+        if norm > self.threshold:
             self._current_skip = max(int(self._current_skip / 2), 0)
         else:
             self._current_skip = min(self._current_skip + 1, self._max_skip)
@@ -457,7 +465,7 @@ class SkipRNN(AdaptivePolicy):
     def should_collect(self, seq_idx: int) -> bool:
         self._seq_idx += 1
 
-        if (self._cum_update_prob >= self._threshold):
+        if (self._cum_update_prob >= self.threshold):
             self._cum_update_prob = 0.0
             return True
         else:
@@ -515,10 +523,13 @@ class RandomPolicy(Policy):
                          encryption_mode=encryption_mode,
                          encoding_mode=EncodingMode.STANDARD,
                          should_compress=should_compress)
+
         self._energy_unit = EnergyUnit(policy_type=PolicyType.UNIFORM,
                                        encoding_mode=EncodingMode.STANDARD,
+                                       encryption_mode=encryption_mode,
                                        collect_mode=CollectMode.LOW,
                                        seq_length=seq_length,
+                                       num_features=num_features,
                                        period=PERIOD)
 
     @property
@@ -658,6 +669,9 @@ class BudgetWrappedPolicy(Policy):
     def consumed_energy(self) -> float:
         return self._consumed_energy
 
+    def set_threshold(self, threshold: float):
+        self._policy._threshold = threshold
+
     def encode(self, measurements: np.ndarray, collected_indices: List[int]) -> bytes:
         return self._policy.encode(measurements=measurements,
                                    collected_indices=collected_indices)
@@ -682,7 +696,7 @@ class BudgetWrappedPolicy(Policy):
     def consume_energy(self, num_collected: int, num_bytes: int) -> float:
         energy = self.energy_unit.get_energy(num_collected=num_collected,
                                              num_bytes=num_bytes,
-                                             use_noise=True)
+                                             use_noise=False)
         self._consumed_energy += energy
         return energy
 
@@ -822,7 +836,7 @@ def make_policy(name: str,
                              should_compress=should_compress)
     elif name.startswith('adaptive') or name == 'skip_rnn':
         # Look up the threshold path
-        threshold_path = os.path.join(base, 'saved_models', dataset, 'thresholds.pkl.gz')
+        threshold_path = os.path.join(base, 'saved_models', dataset, 'thresholds.json.gz')
 
         did_find_threshold = False
 
@@ -830,13 +844,15 @@ def make_policy(name: str,
             print('WARNING: No threshold path exists.')
             threshold = 0.0
         else:
-            thresholds = read_pickle_gz(threshold_path)
+            thresholds = read_json_gz(threshold_path)
+            rate_str = str(collection_rate)
+            encoding_name = str(kwargs['encoding']).lower()
 
-            if (name not in thresholds) or (collection_rate not in thresholds[name]):
+            if (name not in thresholds) or (encoding_name not in thresholds[name]) or (rate_str not in thresholds[name][encoding_name]):
                 print('WARNING: No threshold path exists.')
                 threshold = 0.0
             else:
-                threshold = thresholds[name][collection_rate]
+                threshold = thresholds[name][encoding_name][rate_str]
                 did_find_threshold = True
 
         if name == 'adaptive_heuristic':

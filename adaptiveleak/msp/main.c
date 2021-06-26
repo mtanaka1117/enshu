@@ -129,7 +129,9 @@ int main(void) {
                 // Record the collection of this element.
                 set_bit(elemIdx, &collectedIndices);
 
-                #ifdef IS_ADAPTIVE_HEURISTIC
+                #ifdef IS_UNIFORM
+                uniform_update(&policy);
+                #elif defined(IS_ADAPTIVE_HEURISTIC)
                 heuristic_update(&policy, featureVectors + elemIdx, prevFeatures);
                 prevFeatures = featureVectors + elemIdx;
                 #elif defined(IS_ADAPTIVE_DEVIATION)

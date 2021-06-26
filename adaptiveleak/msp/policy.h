@@ -49,6 +49,7 @@ struct SkipRNNPolicy {
 // Uniform Policy Operations
 void uniform_policy_init(struct UniformPolicy *policy, const uint16_t *collectIndices, uint16_t numIndices);
 uint8_t uniform_should_collect(struct UniformPolicy *policy, uint16_t seqIdx);
+void uniform_update(struct UniformPolicy *policy);
 void uniform_reset(struct UniformPolicy *policy);
 
 // Heuristic Policy Operations
