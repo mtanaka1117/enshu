@@ -29,13 +29,13 @@ if __name__ == '__main__':
     parser.add_argument('--max-num-samples', type=int)
     args = parser.parse_args()
 
-    # Unpack the targets
-    assert len(args.collection_rate) in (1, 3), 'Must provide 1 target or a range of targets'
+    # Unpack the target collection rates
+    assert len(args.collection_rate) in (1, 3), 'Must provide 1 rate or a range of collection rates'
 
     if len(args.collection_rate) == 1:
         collection_rates = args.collection_rate
     else:
-        collection_rates = np.arange(start=args.collection_rate[0], stop=args.collection_rate[1] + 1e-5, step=args.target[2]).tolist()
+        collection_rates = np.arange(start=args.collection_rate[0], stop=args.collection_rate[1] + 1e-5, step=args.collection_rate[2]).tolist()
 
     # Make the output folder
     current_date = datetime.now().strftime('%Y-%m-%d')
