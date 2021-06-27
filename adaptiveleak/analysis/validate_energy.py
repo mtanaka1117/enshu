@@ -7,7 +7,7 @@ import matplotlib.pyplot as plt
 from argparse import ArgumentParser
 from typing import Dict, List
 
-from adaptiveleak.policies import make_policy, run_policy
+from adaptiveleak.policies import run_policy, BudgetWrappedPolicy
 from adaptiveleak.energy_systems import BluetoothEnergy
 from adaptiveleak.utils.file_utils import read_json, iterate_dir
 from adaptiveleak.utils.constants import PERIOD
@@ -30,7 +30,7 @@ def get_energy(path: str) -> float:
     return energy / 1000.0  # Return the energy in mJ
 
 
-def simulate_policy(policy_name: str, inputs: np.ndarray, target: float, dataset_name: str) -> float:
+def simulate_policy(policy_name: str, inputs: np.ndarray, collection_rate: float, dataset_name: str) -> float:
     """
     Runs the policy on the given inputs and returns the total energy.
     """
@@ -38,14 +38,16 @@ def simulate_policy(policy_name: str, inputs: np.ndarray, target: float, dataset
     policy_name = '_'.join(tokens[0:-1])
     encoding_mode = tokens[-1]
 
-    policy = make_policy(name=policy_name,
-                         seq_length=inputs.shape[1],
-                         num_features=inputs.shape[2],
-                         dataset=dataset_name,
-                         target=target,
-                         encryption_mode=EncryptionMode.STREAM,
-                         encoding=encoding_mode,
-                         should_compress=False)
+    policy = BudgetWrappedPolicy(name=policy_name,
+                                 seq_length=inputs.shape[1],
+                                 num_features=inputs.shape[2],
+                                 dataset=dataset_name,
+                                 collection_rate=collection_rate,
+                                 encryption_mode=EncryptionMode.STREAM,
+                                 encoding=encoding_mode,
+                                 should_compress=False)
+
+    policy.init_for_experiment(num_sequences=len(inputs) * 2)
 
     energy_list: List[float] = []
     for idx, sequence in enumerate(inputs):
@@ -114,7 +116,7 @@ if __name__ == '__main__':
     parser = ArgumentParser()
     parser.add_argument('--policies', type=str, nargs='+', required=True)
     parser.add_argument('--dataset', type=str, required=True)
-    parser.add_argument('--target', type=float, required=True)
+    parser.add_argument('--collection-rate', type=float, required=True)
     args = parser.parse_args()
 
     base = os.path.join('..', 'traces', 'end_to_end', args.dataset)
@@ -141,12 +143,12 @@ if __name__ == '__main__':
 
     # Add the energy required to send the start byte
     bt_energy = BluetoothEnergy()
-    excess_energy += bt_energy.get_energy(num_bytes=1)
+    excess_energy += bt_energy.get_energy(num_bytes=1, use_noise=False)
 
     # Get the trace results
     trace_energy: Dict[str, float] = dict()
     for policy_name in args.policies:
-        path = os.path.join(base, '{0}_{1}.csv'.format(policy_name, int(round(args.target * 100))))
+        path = os.path.join(base, '{0}_{1}.csv'.format(policy_name, int(round(args.collection_rate * 100))))
         trace_energy[policy_name] = get_energy(path=path) - excess_energy
 
     # Read the data
@@ -158,7 +160,7 @@ if __name__ == '__main__':
     for policy_name in args.policies:
         simulated_energy[policy_name] = simulate_policy(policy_name=policy_name,
                                                         inputs=inputs,
-                                                        target=args.target,
+                                                        collection_rate=args.collection_rate,
                                                         dataset_name=args.dataset)
 
 

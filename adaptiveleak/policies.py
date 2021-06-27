@@ -705,6 +705,12 @@ class BudgetWrappedPolicy(Policy):
 
         return np.concatenate(rand_list, axis=-1)  # [T, D]
 
+    def as_dict(self) -> Dict[str, Any]:
+        result = super().as_dict()
+        result['budget'] = self._budget
+        result['energy_per_seq'] = self.energy_per_seq
+        return result
+
 
 def run_policy(policy: BudgetWrappedPolicy, sequence: np.ndarray, should_enforce_budget: bool) -> PolicyResult:
     """
