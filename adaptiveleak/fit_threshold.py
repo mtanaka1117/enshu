@@ -22,7 +22,8 @@ def execute(policy: BudgetWrappedPolicy,
             inputs: np.ndarray,
             batch_size: int,
             lower: float,
-            upper: float) -> float:
+            upper: float,
+            should_print: bool) -> float:
     seq_length = inputs.shape[1]
     sample_idx = np.arange(inputs.shape[0])
 
@@ -74,7 +75,8 @@ def execute(policy: BudgetWrappedPolicy,
             best_threshold = current
             best_error = error
 
-        print('Best Error: {0:.4f}, Best Threshold: {1:.4f}'.format(best_error, best_threshold))
+        if should_print:
+            print('Best Error: {0:.4f}, Best Threshold: {1:.4f}'.format(best_error, best_threshold), end='\r')
 
         # Get the search direction based on the budget use
         budget = policy.budget
@@ -84,6 +86,9 @@ def execute(policy: BudgetWrappedPolicy,
             lower = current
         else:
             upper = current
+
+    if should_print:
+        print()
 
     return best_threshold
 
@@ -136,6 +141,7 @@ if __name__ == '__main__':
     parser.add_argument('--encoding', type=str, required=True, choices=['standard' , 'group'])
     parser.add_argument('--max-threshold', type=float, default=10.0)
     parser.add_argument('--batch-size', type=int, default=128)
+    parser.add_argument('--should-print', action='store_true')
     args = parser.parse_args()
 
     # Load the data
@@ -157,8 +163,17 @@ if __name__ == '__main__':
     if encoding not in threshold_map[policy_name]:
         threshold_map[policy_name][encoding] = dict()
 
+    # Set the lower threshold based on the model type
+    if policy_name == 'skip_rnn':
+        lower = 0.0
+        upper = 1.0
+    else:
+        lower = -1 * args.max_threshold
+        upper = args.max_threshold
+
     for collection_rate in args.collection_rates:
-        print('Starting {0}'.format(collection_rate))
+        if args.should_print:
+            print('Starting {0}'.format(collection_rate))
 
         # Create the policy for which to fit thresholds
         policy = BudgetWrappedPolicy(name=policy_name,
@@ -173,12 +188,14 @@ if __name__ == '__main__':
         threshold = execute(policy=policy,
                             inputs=inputs,
                             batch_size=args.batch_size,
-                            lower=-1 * args.max_threshold,
-                            upper=args.max_threshold)
+                            lower=lower,
+                            upper=upper,
+                            should_print=args.should_print)
 
         threshold_map[policy_name][encoding][str(collection_rate)] = threshold
 
-        print('==========')
+        if args.should_print:
+            print('==========')
 
     print(threshold_map)
 

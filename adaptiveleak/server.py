@@ -2,20 +2,22 @@ import numpy as np
 import os.path
 import h5py
 import socket
+import time
 from argparse import ArgumentParser
 from collections import namedtuple, Counter
 from sklearn.metrics import mean_absolute_error, r2_score, mean_squared_error
 from typing import Optional, List, Tuple
 
-from adaptiveleak.policies import make_policy, Policy
-from adaptiveleak.utils.constants import LENGTH_BYTES, LENGTH_ORDER
+from adaptiveleak.policies import BudgetWrappedPolicy
+from adaptiveleak.utils.constants import LENGTH_BYTES, LENGTH_ORDER, SMALL_NUMBER
 from adaptiveleak.utils.analysis import normalized_mae, normalized_rmse
-from adaptiveleak.utils.encryption import decrypt, EncryptionMode, verify_hmac, SHA256_LEN
+from adaptiveleak.utils.encryption import decrypt, verify_hmac, SHA256_LEN
 from adaptiveleak.utils.loading import load_data
+from adaptiveleak.utils.types import EncryptionMode
 from adaptiveleak.utils.file_utils import read_json, save_json_gz, read_pickle_gz
 
 
-Message = namedtuple('Message', ['mac', 'length', 'data', 'full'])
+Message = namedtuple('Message', ['mac', 'length', 'data', 'full', 'num_bytes', 'true_num_collected'])
 
 
 def parse_message(message_buffer: bytes) -> Tuple[Message, int]:
@@ -30,16 +32,25 @@ def parse_message(message_buffer: bytes) -> Tuple[Message, int]:
             (2) The number of consumed bytes. The buffer
                 should be advanced by this amount.
     """
-    length_start = SHA256_LEN
-    data_start = SHA256_LEN + LENGTH_BYTES
+    collected_start = SHA256_LEN
+    length_start = collected_start + LENGTH_BYTES
+    data_start = length_start + LENGTH_BYTES
 
-    mac = message_buffer[:length_start]
+    mac = message_buffer[:collected_start]
 
+    true_collected = int.from_bytes(message_buffer[collected_start:length_start], byteorder=LENGTH_ORDER)
     length = int.from_bytes(message_buffer[length_start:data_start], byteorder=LENGTH_ORDER)
-    data = message_buffer[data_start:data_start + length]
-    full = message_buffer[length_start:data_start + length]
 
-    message = Message(mac=mac, length=length, data=data, full=full)
+    data = message_buffer[data_start:data_start + length]
+    full = message_buffer[collected_start:data_start + length]
+
+    message = Message(mac=mac,
+                      length=length,
+                      data=data,
+                      full=full,
+                      num_bytes=len(full) - LENGTH_BYTES,  # Remove the true collected field (only included for logging purposes in the simulator)
+                      true_num_collected=true_collected)
+
     return message, length + data_start
 
 
@@ -93,7 +104,7 @@ class Server:
     def port(self) -> int:
         return self._port
 
-    def run(self, inputs: np.ndarray, labels: np.ndarray, policy: Policy, max_sequences: Optional[int], encryption_mode: EncryptionMode, should_print: bool, output_folder: str):
+    def run(self, inputs: np.ndarray, labels: np.ndarray, policy: BudgetWrappedPolicy, num_sequences: int, encryption_mode: EncryptionMode, should_print: bool, output_folder: str):
         """
         Opens the server for connections.
         """
@@ -103,7 +114,6 @@ class Server:
         assert inputs.shape[0] == labels.shape[0], 'Labels ({0}) and Inputs ({1}) do not align.'.format(labels.shape[0], inputs.shape[0])
 
         # Unpack the shape
-        num_samples = inputs.shape[0]
         seq_length = inputs.shape[1]
         num_features = inputs.shape[2]
 
@@ -134,20 +144,21 @@ class Server:
                 print('Accepted connection from {0}'.format(addr))
 
             with conn:
-                # Set the maximum number of samples
-                limit = min(max_sequences, num_samples) if max_sequences is not None else num_samples
-
                 # Create a buffer for messages
                 message_buffer = bytearray()
 
+                # Create a counter to track the energy consumption
+                consumed_energy = 0.0
+
                 # Iterate over all samples
-                for idx in range(limit):
+                for idx in range(num_sequences):
                     # Receive the given sequence (large-enough buffer)
                     recv = conn.recv(5000)
                     message_buffer.extend(recv)
 
                     # Parse the message
                     parsed, consumed_bytes = parse_message(message_buffer)
+                    num_bytes = parsed.num_bytes
 
                     # Move the message buffer
                     message_buffer = message_buffer[consumed_bytes:]
@@ -168,10 +179,28 @@ class Server:
                     measurements, collected_indices, widths = policy.decode(message=message)
                     num_collected = len(measurements)
 
-                    # Reconstruct the sequence by inferring the missing elements, [T, D]
-                    reconstructed = reconstruct_sequence(measurements=measurements,
-                                                         collected_indices=collected_indices,
-                                                         seq_length=seq_length)
+                    # Check whether we have exhausted the budget
+                    if policy.has_exhausted_budget():
+                        reconstructed = policy.get_random_sequence()
+                        policy._consumed_energy = policy._budget + SMALL_NUMBER
+                        num_bytes = 0
+                    else:
+                        # Record the energy consumption (use the true number of 
+                        # collected measurements for proper recording in the case of pruning)
+                        energy = policy.consume_energy(num_collected=parsed.true_num_collected,
+                                                   num_bytes=num_bytes)
+
+                        # Re-check the budget exhaustion (if the most-recent sample goes over
+                        # the budget.
+                        if policy.has_exhausted_budget():
+                            reconstructed = policy.get_random_sequence()
+                            policy._consumed_energy = policy._budget + SMALL_NUMBER
+                            num_bytes = 0
+                        else:
+                            # Reconstruct the sequence by inferring the missing elements, [T, D]
+                            reconstructed = reconstruct_sequence(measurements=measurements,
+                                                                 collected_indices=collected_indices,
+                                                                 seq_length=seq_length)
 
                     # Compute the reconstruction error in the measurements
                     mae = mean_absolute_error(y_true=inputs[idx],
@@ -181,29 +210,26 @@ class Server:
                                               y_pred=reconstructed,
                                               squared=False)
 
-                    # Compute the energy from this sequence
-                    energy = policy.get_energy(num_collected=num_collected,
-                                               num_bytes=consumed_bytes)
-
                     # Log the results of this sequence
-                    num_bytes_list.append(consumed_bytes)
-                    num_measurements_list.append(num_collected)
-                    energy_list.append(energy)
-
                     maes.append(mae)
                     rmses.append(rmse)
-
-                    label_list.append(int(labels[idx]))
                     reconstructed_list.append(np.expand_dims(reconstructed, axis=0))
 
-                    for width in widths:
-                        width_counts[width] += 1
+                    # Record meta-data for non-exhausted sequences
+                    if num_bytes > 0:
+                        num_bytes_list.append(num_bytes)
+                        num_measurements_list.append(num_collected)
+                        energy_list.append(energy)
+                        label_list.append(int(labels[idx]))
+
+                        for width in widths:
+                            width_counts[width] += 1
 
                     if ((idx + 1) % 100) == 0:
                         print('Completed {0} sequences.'.format(idx + 1))
 
                 # Compute the aggregate scores across across all samples
-                true = inputs[0:limit]  # [N, T, D]
+                true = inputs[0:num_sequences]  # [N, T, D]
                 true = true.reshape(-1, num_features)
 
                 reconstructed = np.vstack(reconstructed_list)  # [N, T, D]
@@ -239,20 +265,20 @@ class Server:
             'policy': policy.as_dict()
         }
 
-        output_path = os.path.join(output_folder, '{0}_{1}.json.gz'.format(str(policy), int(policy.target * 100)))
+        output_path = os.path.join(output_folder, '{0}_{1}.json.gz'.format(str(policy), int(policy.collection_rate * 100)))
         save_json_gz(result_dict, output_path)
 
 
 if __name__ == '__main__':
     parser = ArgumentParser()
     parser.add_argument('--dataset', type=str, required=True)
-    parser.add_argument('--target', type=float, required=True)
+    parser.add_argument('--collection-rate', type=float, required=True)
     parser.add_argument('--encryption', type=str, choices=['block', 'stream'], required=True)
     parser.add_argument('--policy', type=str, required=True)
     parser.add_argument('--encoding', type=str, choices=['standard', 'group'], required=True)
     parser.add_argument('--output-folder', type=str, required=True)
     parser.add_argument('--port', type=int, default=50000)
-    parser.add_argument('--max-num-samples', type=int)
+    parser.add_argument('--max-num-seq', type=int)
     parser.add_argument('--should-compress', action='store_true')
     args = parser.parse_args()
 
@@ -265,20 +291,26 @@ if __name__ == '__main__':
     # Make the server
     server = Server(host='localhost', port=args.port)
 
+    # Unpack the input shape
+    num_seq, seq_length, num_features = inputs.shape
+    num_seq = min(num_seq, args.max_num_seq) if args.max_num_seq is not None else num_seq
+
     # Make the policy
-    policy = make_policy(name=args.policy,
-                         target=round(args.target, 2),
-                         num_features=inputs.shape[2],
-                         seq_length=inputs.shape[1],
-                         dataset=args.dataset,
-                         encryption_mode=encryption_mode,
-                         encoding=args.encoding,
-                         should_compress=args.should_compress)
+    policy = BudgetWrappedPolicy(name=args.policy,
+                                 collection_rate=round(args.collection_rate, 2),
+                                 num_features=num_features,
+                                 seq_length=seq_length,
+                                 dataset=args.dataset,
+                                 encryption_mode=encryption_mode,
+                                 encoding=args.encoding,
+                                 should_compress=args.should_compress)
+
+    policy.init_for_experiment(num_sequences=num_seq)
 
     # Run the experiment
     server.run(inputs=inputs,
                labels=labels,
-               max_sequences=args.max_num_samples,
+               num_sequences=num_seq,
                should_print=True,
                policy=policy,
                encryption_mode=encryption_mode,

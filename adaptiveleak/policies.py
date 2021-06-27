@@ -133,7 +133,7 @@ class Policy:
                                            num_bytes=num_bytes)
 
     def __str__(self) -> str:
-        return '{0}-{1}-{2}-{3}'.format(self.policy_type.name.lower(), self.encoding_mode.name.lower(), self.encryption_mode.lower(), self.collect_mode.lower())
+        return '{0}-{1}-{2}-{3}'.format(self.policy_type.name.lower(), self.encoding_mode.name.lower(), self.encryption_mode.name.lower(), self.collect_mode.name.lower())
 
     def as_dict(self) -> Dict[str, Any]:
         return {
@@ -517,20 +517,12 @@ class RandomPolicy(Policy):
                  should_compress: bool):
         super().__init__(precision=precision,
                          width=width,
-                         collection_rate=collection_rate,
+                         collection_rate=collection_rate - 0.01,  # Give margin for (random) larger messages
                          num_features=num_features,
                          seq_length=seq_length,
                          encryption_mode=encryption_mode,
                          encoding_mode=EncodingMode.STANDARD,
                          should_compress=should_compress)
-
-        self._energy_unit = EnergyUnit(policy_type=PolicyType.UNIFORM,
-                                       encoding_mode=EncodingMode.STANDARD,
-                                       encryption_mode=encryption_mode,
-                                       collect_mode=CollectMode.LOW,
-                                       seq_length=seq_length,
-                                       num_features=num_features,
-                                       period=PERIOD)
 
     @property
     def policy_type(self) -> PolicyType:
@@ -714,13 +706,14 @@ class BudgetWrappedPolicy(Policy):
         return np.concatenate(rand_list, axis=-1)  # [T, D]
 
 
-def run_policy(policy: BudgetWrappedPolicy, sequence: np.ndarray) -> PolicyResult:
+def run_policy(policy: BudgetWrappedPolicy, sequence: np.ndarray, should_enforce_budget: bool) -> PolicyResult:
     """
     Executes the policy on the given sequence.
 
     Args:
         policy: The sampling policy
         sequence: A [T, D] array of features (D) for each element (T)
+        should_enforce_budget: Whether to enforce the current energy budget
     Returns:
         A tuple of three elements:
             (1) A [K, D] array of the collected measurements
@@ -736,7 +729,7 @@ def run_policy(policy: BudgetWrappedPolicy, sequence: np.ndarray) -> PolicyResul
     # Unpack the shape
     seq_length, num_features = sequence.shape
 
-    if policy.has_exhausted_budget():
+    if should_enforce_budget and policy.has_exhausted_budget():
         measurements = policy.get_random_sequence()
         return PolicyResult(measurements=measurements,
                             collected_indices=list(range(seq_length)),
@@ -781,7 +774,7 @@ def run_policy(policy: BudgetWrappedPolicy, sequence: np.ndarray) -> PolicyResul
     energy = policy.consume_energy(num_collected=len(collected_indices),
                                    num_bytes=num_bytes)
 
-    if policy.has_exhausted_budget():
+    if should_enforce_budget and policy.has_exhausted_budget():
         measurements = policy.get_random_sequence()
         policy._consumed_energy = policy._budget + SMALL_NUMBER
 

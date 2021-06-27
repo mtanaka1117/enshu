@@ -6,7 +6,7 @@ import time
 from argparse import ArgumentParser
 from typing import Optional
 
-from adaptiveleak.policies import make_policy, run_policy, Policy
+from adaptiveleak.policies import BudgetWrappedPolicy, run_policy
 from adaptiveleak.utils.constants import LENGTH_BYTES, LENGTH_ORDER
 from adaptiveleak.utils.data_utils import array_to_fp, array_to_float
 from adaptiveleak.utils.encryption import encrypt, EncryptionMode, add_hmac
@@ -35,7 +35,7 @@ class Sensor:
     def port(self) -> int:
         return self._server_port
 
-    def run(self, inputs: np.ndarray, policy: Policy, encryption_mode: EncryptionMode, max_sequences: Optional[int]):
+    def run(self, inputs: np.ndarray, policy: BudgetWrappedPolicy, encryption_mode: EncryptionMode, num_sequences: int):
         """
         Execute the sensor on the given number of sequences.
 
@@ -44,8 +44,7 @@ class Sensor:
                 and sample (N)
             policy: The sampling policy
             encryption_mode: The type of encryption algorithm used for communication
-            max_sequences: The number of sequences to execute. If None,
-                then the sensor will execute on all sequences.
+            num_sequences: The number of sequences to execute.
         """
         assert len(inputs.shape) == 3, 'Must provide a 3d input'
 
@@ -53,18 +52,17 @@ class Sensor:
             # Connect to the server
             sock.connect((self.host, self.port))
 
-            # Set the maximum number of sequences
-            num_samples = inputs.shape[0]
-            limit = min(num_samples, max_sequences) if max_sequences is not None else num_samples
-
+            # Get the sequence length from the input shape
             seq_length = inputs.shape[1]
 
-            for idx in range(limit):
-                # Execute the policy on this sequence
+            for idx in range(num_sequences):
+                # Execute the policy on this sequence. We do not enforce the budget
+                # on the sensor and instead track the energy on the server. We take this design
+                # decision because the server logs all information.
                 policy.reset()
-
                 policy_result = run_policy(policy=policy,
-                                           sequence=inputs[idx])
+                                           sequence=inputs[idx],
+                                           should_enforce_budget=False)
 
                 # Encode the measurements into one message
                 message = policy.encode(measurements=policy_result.measurements,
@@ -74,10 +72,14 @@ class Sensor:
                 key = self._aes_key if encryption_mode == EncryptionMode.BLOCK else self._chacha_key
                 encrypted_message = encrypt(message=message, key=key, mode=encryption_mode)
 
-                # Pre-pend the message length to the front (4 bytes)
+                # Include the true number of collected measurements for proper energy logging
+                true_num_collected = policy_result.num_collected.to_bytes(LENGTH_BYTES, byteorder=LENGTH_ORDER)
+
+                # Include the message length to the front (2 bytes)
                 length = len(encrypted_message).to_bytes(LENGTH_BYTES, byteorder=LENGTH_ORDER)
 
-                encrypted_message = length + encrypted_message
+                # Concatenate all message fields
+                encrypted_message = true_num_collected + length + encrypted_message
 
                 # Add the HMAC authentication
                 tagged_message = add_hmac(encrypted_message, secret=self._hmac_secret)
@@ -93,12 +95,12 @@ class Sensor:
 if __name__ == '__main__':
     parser = ArgumentParser()
     parser.add_argument('--dataset', type=str, required=True)
-    parser.add_argument('--target', type=float, required=True)
+    parser.add_argument('--collection-rate', type=float, required=True)
     parser.add_argument('--encryption', type=str, choices=['block', 'stream'], required=True)
     parser.add_argument('--policy', type=str, required=True)
     parser.add_argument('--encoding', type=str, choices=['standard', 'group'], required=True)
     parser.add_argument('--port', type=int, default=50000)
-    parser.add_argument('--max-num-samples', type=int)
+    parser.add_argument('--max-num-seq', type=int)
     parser.add_argument('--should-compress', action='store_true')
     args = parser.parse_args()
 
@@ -108,15 +110,22 @@ if __name__ == '__main__':
     # Extract the encryption mode
     encryption_mode = EncryptionMode[args.encryption.upper()]
 
+    # Unpack the input shape
+    num_seq, seq_length, num_features = inputs.shape
+    num_seq = min(num_seq, args.max_num_seq) if args.max_num_seq is not None else num_seq
+
     # Make the policy
-    policy = make_policy(name=args.policy,
-                         target=round(args.target, 2),
-                         num_features=inputs.shape[2],
-                         seq_length=inputs.shape[1],
-                         dataset=args.dataset,
-                         encryption_mode=encryption_mode,
-                         encoding=args.encoding,
-                         should_compress=args.should_compress)
+    policy = BudgetWrappedPolicy(name=args.policy,
+                                 collection_rate=round(args.collection_rate, 2),
+                                 num_features=num_features,
+                                 seq_length=seq_length,
+                                 dataset=args.dataset,
+                                 encryption_mode=encryption_mode,
+                                 encoding=args.encoding,
+                                 should_compress=args.should_compress)
+
+    # Initialize the policy for the current budget
+    policy.init_for_experiment(num_sequences=num_seq)
 
     # Pre-Quantize the data, as this is how the MCU reads the data
     quantized = array_to_fp(inputs, width=policy.width, precision=policy.precision)
@@ -126,7 +135,7 @@ if __name__ == '__main__':
     sensor = Sensor(server_host='localhost', server_port=args.port)
     sensor.run(inputs=inputs,
                policy=policy,
-               max_sequences=args.max_num_samples,
+               num_sequences=num_seq,
                encryption_mode=encryption_mode)
 
     print('Completed Sensor.')

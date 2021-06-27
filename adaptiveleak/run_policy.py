@@ -25,7 +25,7 @@ if __name__ == '__main__':
     parser.add_argument('--max-num-samples', type=int)
     args = parser.parse_args()
 
-    fold = 'validation'
+    fold = 'test'
 
     data_file = os.path.join('datasets', args.dataset, fold, 'data.h5')
     with h5py.File(data_file, 'r') as fin:
@@ -72,7 +72,9 @@ if __name__ == '__main__':
         policy.reset()
 
         # Run the policy
-        policy_result = run_policy(policy=policy, sequence=sequence)
+        policy_result = run_policy(policy=policy,
+                                   sequence=sequence,
+                                   should_enforce_budget=True)
         policy.step(seq_idx=idx, count=policy_result.num_collected)
 
         # Reconstruct the sequence
@@ -85,10 +87,10 @@ if __name__ == '__main__':
         # Record the policy results
         errors.append(error)
         estimate_list.append(reconstructed)
-        energy_list.append(policy_result.energy)
-        bytes_list.append(policy_result.num_bytes)
         collected.append(policy_result.collected_indices)
         collected_counts[label].append(policy_result.num_collected)
+        energy_list.append(policy_result.energy)
+        bytes_list.append(policy_result.num_bytes)
 
         if not policy.has_exhausted_budget():
             collected_seq = idx + 1
@@ -112,7 +114,8 @@ if __name__ == '__main__':
 
     print('MAE: {0:.5f}, Norm MAE: {1:.5f}, RMSE: {2:.5f}, Norm RMSE: {3:.5f}, R^2: {4:.5f}'.format(error, norm_error, rmse, norm_rmse, r2))
     print('Number Collected: {0} / {1} ({2:.4f})'.format(num_collected, num_samples, num_collected / num_samples))
-    print('Energy: {0:.5f} mJ (Budget: {1:.5f}, Per Seq: {2:.5f})'.format(policy.consumed_energy, policy.budget, policy.energy_per_seq))
+    print('Energy: {0:.5f} mJ (Budget: {1:.5f})'.format(policy.consumed_energy, policy.budget))
+    print('Energy Per Seq: {0:.5f} (Budget: {1:.5f})'.format(np.average(energy_list[:collected_seq]), policy.energy_per_seq))
     print('Byte Count: {0:.5f} ({1:.5f})'.format(np.average(bytes_list[:collected_seq]), np.std(bytes_list[:collected_seq])))
     print('Collected: {0} / {1}'.format(collected_seq, max_num_seq))
 
