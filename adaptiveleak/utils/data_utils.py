@@ -10,6 +10,7 @@ from adaptiveleak.utils.encryption import AES_BLOCK_SIZE, EncryptionMode, CHACHA
 
 
 MAX_ITER = 100
+ERROR_TOL = SMALL_NUMBER
 
 
 def apply_dropout(mat: np.ndarray, drop_rate: float, rand: np.random.RandomState) -> np.ndarray:
@@ -153,7 +154,6 @@ def array_to_fp_shifted(arr: np.ndarray, precision: int, width: int, shifts: np.
     return np.clip(quantized, a_min=min_val, a_max=max_val)
 
 
-
 def array_to_float(fp_arr: Union[np.ndarray, List[int]], precision: int) -> np.ndarray:
     multiplier = float(1 << abs(precision))
 
@@ -183,42 +183,60 @@ def array_to_float_shifted(arr: Union[np.ndarray, List[int]], precision: int, sh
     return recovered
 
 
-def select_range_shift(measurements: np.ndarray, width: int, precision: int, num_range_bits: int, is_unsigned: bool) -> int:
+def select_range_shift(measurement: float, width: int, precision: int, num_range_bits: int, prev_shift: int) -> int:
     """
     Selects the lowest-error range multiplier.
 
     Args:
-        measurement: The measurement features
+        measurement: The measurement feature
         width: The width of each feature
         precision: The precision of each feature
         num_range_bits: The number of bits for the range exponent
-        is_unsigned: Whether to encode signed or unsigned values
     Returns:
         The range exponent in [-2^{range_bits - 1}, 2^{range_bits - 1}]
     """
     assert num_range_bits >= 1, 'Number of range bits must be non-negative'
     assert width >= 1, 'Number of width bits must be non-negative'
 
-    max_value = np.max(np.abs(measurements))
-    max_representable_fp = (1 << width) - 1 if is_unsigned else (1 << (width - 1)) - 1
+    abs_value = np.abs(measurement)
     non_fractional = width - precision
 
-    best_error = BIG_NUMBER
-    best_shift = (1 << (num_range_bits - 1)) - 1
+    # Try the previous shift first for potential early-exiting with a greedy algorithm
+    shifted = precision - prev_shift
+    quantized = to_fixed_point(abs_value, width=width, precision=shifted)
+    recovered = to_float(quantized, precision=shifted)
+
+    prev_error = abs(abs_value - recovered)
+
+    if (prev_error <= ERROR_TOL):
+        return prev_shift
+
+    best_error = prev_error
+    best_shift = prev_shift
 
     offset = (1 << (num_range_bits - 1))
+    limit = 1 << num_range_bits
 
-    for idx in range(pow(2, num_range_bits)):
+    for idx in range(limit):
         shift = idx - offset
         
-        shifted_max = to_float(max_representable_fp, precision=precision - shift)
-        error = abs(shifted_max - max_value)
+        # Convert the value to and from floating point
+        shifted = precision - shift
+        quantized = to_fixed_point(abs_value, width=width, precision=shifted)
+        recovered = to_float(quantized, precision=shifted)
 
-        if (error < best_error) and (shifted_max > max_value):
+        # Compute the error and save the best result
+        error = abs(abs_value - recovered)
+
+        if (error < best_error):
             best_shift = shift
             best_error = error
 
+    if (prev_error <= best_error):
+        return prev_shift
+
     return best_shift
+
 
 def select_range_shifts_array(measurements: np.ndarray, width: int, precision: int, num_range_bits: int) -> np.ndarray:
     """
@@ -236,26 +254,41 @@ def select_range_shifts_array(measurements: np.ndarray, width: int, precision: i
     assert width >= 1, 'Number of width bits must be non-negative'
     assert len(measurements.shape) == 1, 'Must provide a 1d numpy array'
 
-    abs_values = np.abs(measurements)
-    max_representable_fp = (1 << (width - 1)) - 1
-    non_fractional = width - precision
+    num_values = measurements.shape[0]
+    best_shifts = np.empty(num_values)
+    prev_shift = 0
 
-    best_errors = np.ones_like(abs_values) * BIG_NUMBER
-    best_shifts = np.ones_like(abs_values) * ((1 << (num_range_bits - 1)) - 1)
-
-    offset = 1 << (num_range_bits - 1)
-
-    for idx in range(pow(2, num_range_bits)):
-        shift = idx - offset
-        
-        shifted_max = to_float(max_representable_fp, precision=precision - shift)
-        errors = np.abs(shifted_max - abs_values)
-
-        cond = np.logical_and(errors < best_errors, shifted_max >= abs_values)
-        best_errors = np.where(cond, errors, best_errors)
-        best_shifts = np.where(cond, shift, best_shifts)
+    for idx in range(num_values):
+        shift = select_range_shift(measurement=measurements[idx],
+                                   width=width,
+                                   precision=precision,
+                                   num_range_bits=num_range_bits,
+                                   prev_shift=prev_shift)
+        best_shifts[idx] = int(shift)
+        prev_shift = shift
 
     return best_shifts.astype(int)
+
+    #abs_values = np.abs(measurements)
+    #max_representable_fp = (1 << (width - 1)) - 1
+    #non_fractional = width - precision
+
+    #best_errors = np.ones_like(abs_values) * BIG_NUMBER
+    #best_shifts = np.ones_like(abs_values) * ((1 << (num_range_bits - 1)) - 1)
+
+    #offset = 1 << (num_range_bits - 1)
+
+    #for idx in range(pow(2, num_range_bits)):
+    #    shift = idx - offset
+    #    
+    #    shifted_max = to_float(max_representable_fp, precision=precision - shift)
+    #    errors = np.abs(shifted_max - abs_values)
+
+    #    cond = np.logical_and(errors < best_errors, shifted_max >= abs_values)
+    #    best_errors = np.where(cond, errors, best_errors)
+    #    best_shifts = np.where(cond, shift, best_shifts)
+
+    #return best_shifts.astype(int)
 
 
 def linear_extrapolate(prev: np.ndarray, curr: np.ndarray, delta: float, num_steps: int) -> np.ndarray:
@@ -463,7 +496,8 @@ def set_widths(group_sizes: List[int], target_bytes: int, start_width: int) -> L
     #even_width = int(target_bits / num_values)
     consumed_bytes = sum((int(math.ceil((start_width * size) / BITS_PER_BYTE)) for size in group_sizes))
 
-    widths: List[int] = [min(start_width, MAX_WIDTH) for _ in range(num_groups)]
+    start_widths = min(start_width, MAX_WiDTH)
+    widths: List[int] = [start_width for _ in range(num_groups)]
 
     if start_width >= MAX_WIDTH:
         return widths

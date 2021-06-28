@@ -52,6 +52,9 @@ class UnionFind:
     def get_num_groups(self) -> int:
         return self._num_groups
 
+    def get(self, idx: int) -> ShiftGroup:
+        return self._union_find[idx]
+
     def find(self, group: ShiftGroup) -> ShiftGroup:
         group_iter = group
         while (group_iter.parent != -1):
@@ -78,7 +81,7 @@ class UnionFind:
         left_parent.next_parent = right_parent.next_parent
         self._num_groups -= 1
 
-    def get_groups_to_merge(self) -> Tuple[ShiftGroup, ShiftGroup]:
+    def get_groups_to_merge(self, num_to_merge: int) -> List[int]:
         # Locate the first parent
         group_id = 0
         while (self._union_find[group_id].parent != -1):
@@ -87,31 +90,57 @@ class UnionFind:
         left = self._union_find[group_id]
         right = self._union_find[left.next_parent]
 
-        if (left.shift == right.shift):
-            return left, right
+        scores: List[float] = []
+        left_parents: List[int] = []
 
-        best_id = group_id
-        best_score = (left.count + right.count) + abs(left.shift - right.shift)
+        shift_diff = abs(left.shift - right.shift)
+        score = (left.count + right.count + shift_diff) * int(shift_diff > 0)
+
+        scores.append(score)
+        left_parents.append(left.group_id)
 
         group_id = left.next_parent
         while (group_id < len(self._union_find) and self._union_find[group_id].next_parent < len(self._union_find)):
             left = self._union_find[group_id]
             right = self._union_find[left.next_parent]
 
-            if (left.shift == right.shift):
-                return left, right
+            shift_diff = abs(left.shift - right.shift)
+            score = (left.count + right.count + shift_diff) * int(shift_diff > 0)
 
-            score = (left.count + right.count) + abs(left.shift - right.shift)
+            if (len(scores) < num_to_merge) or (score < scores[num_to_merge - 1]):
 
-            if (score < best_score):
-                best_id = group_id
-                best_score = score
+                if len(scores) < num_to_merge:
+                    scores.append(score)
+                    left_parents.append(left.group_id)
+                else:
+                    scores[num_to_merge - 1] = score
+                    left_parents[num_to_merge - 1] = left.group_id
+
+                # Use an insertion sort step to re-sort the scores list
+                i = len(scores) - 1
+                while (i > 0) and (scores[i] < scores[i-1]):
+                    temp = scores[i-1]
+                    scores[i-1] = scores[i]
+                    scores[i] = temp
+
+                    temp = left_parents[i-1]
+                    left_parents[i-1] = left_parents[i]
+                    left_parents[i] = temp
+
+                    i -= 1
 
             group_id = left.next_parent
 
-        best_left = self._union_find[best_id]
-        best_right = self._union_find[best_left.next_parent]
-        return best_left, best_right
+        return left_parents
+
+        # Get the parents to merge
+        #result: List[Tuple[ShiftGroup, ShiftGroup]] = []
+        #for group_id in left_parents:
+        #    left = self._union_find[group_id]
+        #    right = self._union_find[left.next_parent]
+        #    result.append((left, right))
+
+        #return result
 
     def get_parents(self) -> List[ShiftGroup]:
         return list(filter(lambda g: g.parent == -1, self._union_find))
@@ -141,9 +170,20 @@ def merge_shift_groups(values: List[float], shifts: List[int], max_num_groups: i
     # Initialize the union-find structure
     union_find = UnionFind(group_shifts=grouped_shifts, reps=reps)
 
-    while (union_find.get_num_groups() > max_num_groups):
-        left, right = union_find.get_groups_to_merge()
+    # Get the groups to merge
+    num_to_merge = len(grouped_shifts) - max_num_groups
+    groups_to_merge = union_find.get_groups_to_merge(num_to_merge=num_to_merge)
+
+    # Merge the given groups
+    for left_idx in groups_to_merge:
+        left = union_find.get(left_idx)
+        right = union_find.get(left.next_parent)
+
         union_find.union(left, right)
+
+    #while (union_find.get_num_groups() > max_num_groups):
+    #    left, right = union_find.get_groups_to_merge()
+    #    union_find.union(left, right)
 
     # Get all of the parents
     final_groups = union_find.get_parents()
@@ -183,6 +223,3 @@ def compute_runs(values: List[int]) -> Tuple[List[int], List[int]]:
     reps.append(current_count)
 
     return encoded, reps
-
-
-
