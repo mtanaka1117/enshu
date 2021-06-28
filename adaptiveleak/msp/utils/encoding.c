@@ -17,10 +17,6 @@ uint16_t encode_collected_indices(uint8_t *output, struct BitMap *collectedIndic
 
 
 uint16_t encode_shifts(uint8_t *output, int8_t *shifts, uint8_t *widths, uint16_t *counts, uint8_t countBits, uint8_t numGroups, uint16_t outputIdx) {
-    // Include the number of groups
-    //output[outputIdx] = numGroups;
-    //outputIdx++;
-
     output[outputIdx] = ((numGroups << 4) & 0xF0) | (countBits & 0xF);
     outputIdx++;
 
@@ -98,22 +94,16 @@ uint16_t encode_group(uint8_t *output,
                       uint16_t numCollected,
                       uint16_t numFeatures,
                       uint16_t seqLength,
+                      uint16_t sizeBytes,
                       uint16_t targetBytes,
                       uint16_t precision,
+                      uint16_t maxCollected,
                       FixedPoint *tempBuffer,
                       int8_t *shiftBuffer,
                       uint16_t *countBuffer,
                       uint8_t isBlock) {
-    // Estimate the meta-data associates with stable group encoding
-    uint16_t sizeWidth = 0;
-    uint16_t tempLength = seqLength;
-    while (tempLength > 0) {
-        tempLength = tempLength >> 1;
-        sizeWidth++;
-    }
-
-    uint16_t sizeBytes = get_num_bytes(sizeWidth * MAX_NUM_GROUPS);
-    uint16_t maskBytes = get_num_bytes(seqLength);
+    // Estimate the meta-data associated with stable group encoding
+    uint16_t maskBytes = collectedIndices->numBytes;
     uint16_t metadataBytes = maskBytes + sizeBytes + MAX_NUM_GROUPS + 1;
 
     if (isBlock) {
@@ -126,10 +116,7 @@ uint16_t encode_group(uint8_t *output,
     uint16_t targetDataBytes = targetBytes - metadataBytes;
     uint16_t targetDataBits = (targetDataBytes - MAX_NUM_GROUPS) << 3;
 
-    // Estimate the maximum number of measurements we can collect
-    uint16_t maxFeatures = targetDataBits / MIN_WIDTH;
-    uint16_t maxCollected = maxFeatures / numFeatures;
-
+    // Prune measurements if needed
     if (numCollected > maxCollected) {
         prune_sequence(featureVectors, collectedIndices, numCollected, maxCollected, seqLength, precision);
         numCollected = maxCollected;
@@ -151,6 +138,7 @@ uint16_t encode_group(uint8_t *output,
        
         currentVector = featureVectors[seqIdx];
 
+        // Write the current vector in transpose fashion
         for (i = 0; i < numFeatures; i++) {
             featureIdx = i * numCollected + collectedIdx;
             tempBuffer[featureIdx] = currentVector.data[i];
@@ -195,7 +183,7 @@ uint16_t encode_group(uint8_t *output,
         }
     }
 
-    sizeWidth = 0;
+    uint8_t sizeWidth = 0;
     uint16_t tempSize = maxSize;
     while (tempSize > 0) {
         tempSize = tempSize >> 1;
