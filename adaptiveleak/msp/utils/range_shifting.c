@@ -6,8 +6,7 @@
 static struct ShiftGroup UNION_FIND[100];
 
 
-
-int8_t get_range_shift(FixedPoint value, uint8_t currentPrecision, uint8_t newWidth, uint8_t numShiftBits) {
+int8_t get_range_shift(FixedPoint value, uint8_t currentPrecision, uint8_t newWidth, uint8_t numShiftBits, int8_t prevShift) {
     if (newWidth == 16) {
         return 0;
     }
@@ -17,6 +16,8 @@ int8_t get_range_shift(FixedPoint value, uint8_t currentPrecision, uint8_t newWi
     const uint16_t widthMask = (1 << (newWidth - 1)) - 1;  // Mask out all non-data bits (including the sign bit)
     const uint16_t signBit = 1 << newWidth;
     const int8_t newPrecision = newWidth - nonFractional;
+    const uint16_t absValue = fp_abs(value);
+
 
     volatile int8_t shift;
     volatile int8_t shiftedPrecision;
@@ -25,14 +26,37 @@ int8_t get_range_shift(FixedPoint value, uint8_t currentPrecision, uint8_t newWi
     volatile FixedPoint shiftedValue;
     volatile FixedPoint error;
 
-    volatile FixedPoint bestError = INT16_MAX;
-    volatile int8_t bestShift = 0;
+    // Try the previous shift value first
+    shiftedPrecision = newPrecision - prevShift;
+    conversionShift = currentPrecision - shiftedPrecision;
 
-    uint16_t absValue = fp_abs(value);
-    
+    if (conversionShift > 0) {
+        shiftedValue = (absValue >> conversionShift) & widthMask;
+        shiftedValue = shiftedValue << conversionShift;
+    } else {
+        conversionShift *= -1;
+        shiftedValue = (absValue << conversionShift) & widthMask;
+        shiftedValue = shiftedValue >> conversionShift;
+    }
+
+    shiftedValue &= CONV_MASK;  // Prevent negative values
+    const FixedPoint prevError = fp_abs(fp_sub(absValue, shiftedValue));  // Error in the current precision
+
+    if (prevError <= SHIFT_TOL) {
+        return prevShift;
+    }
+
+    volatile FixedPoint bestError = prevError;
+    volatile int8_t bestShift = prevShift;
+
     uint16_t i = 1 << numShiftBits;
     for (; i > 0; i--) {
         shift = i - shiftOffset;
+
+        if (shift == prevShift) {
+            continue;
+        }
+
         shiftedPrecision = newPrecision - shift;
         conversionShift = currentPrecision - shiftedPrecision;
 
@@ -58,14 +82,21 @@ int8_t get_range_shift(FixedPoint value, uint8_t currentPrecision, uint8_t newWi
         }
     }
 
+    if (prevError <= bestError) {
+        return prevShift;
+    }
+
     return bestShift;
 }
 
 
 void get_range_shifts_array(int8_t *result, FixedPoint *values, uint8_t currentPrecision, uint8_t newWidth, uint8_t numShiftBits, uint16_t numValues) {
+    volatile int8_t prevShift = 0;
+
     uint16_t i;
     for (i = 0; i < numValues; i++) {
-        result[i] = get_range_shift(values[i], currentPrecision, newWidth, numShiftBits);
+        prevShift = get_range_shift(values[i], currentPrecision, newWidth, numShiftBits, prevShift);
+        result[i] = prevShift;
     }
 }
 
