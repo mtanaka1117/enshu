@@ -230,8 +230,6 @@ uint16_t encode_group(uint8_t *output,
 
 
 void set_group_widths(uint8_t *result, uint16_t *groupSizes, uint8_t numGroups, uint16_t targetBytes, uint16_t startWidth) {
-    uint16_t targetBits = targetBytes << 3;
-
     uint16_t consumedBytes = 0;
     uint16_t i;
     for (i = 0; i < numGroups; i++) {
@@ -266,7 +264,6 @@ void set_group_widths(uint8_t *result, uint16_t *groupSizes, uint8_t numGroups, 
 
         counter--;
     }
-
 }
 
 

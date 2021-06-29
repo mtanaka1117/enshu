@@ -736,8 +736,8 @@ def run_policy(policy: BudgetWrappedPolicy, sequence: np.ndarray, should_enforce
     seq_length, num_features = sequence.shape
 
     if should_enforce_budget and policy.has_exhausted_budget():
-        measurements = policy.get_random_sequence()
-        return PolicyResult(measurements=measurements,
+        rand_measurements = policy.get_random_sequence()
+        return PolicyResult(measurements=rand_measurements,
                             collected_indices=list(range(seq_length)),
                             num_collected=seq_length,
                             energy=0.0,
@@ -781,10 +781,10 @@ def run_policy(policy: BudgetWrappedPolicy, sequence: np.ndarray, should_enforce
                                    num_bytes=num_bytes)
 
     if should_enforce_budget and policy.has_exhausted_budget():
-        measurements = policy.get_random_sequence()
+        rand_measurements = policy.get_random_sequence()
         policy._consumed_energy = policy._budget + SMALL_NUMBER
 
-        return PolicyResult(measurements=measurements,
+        return PolicyResult(measurements=rand_measurements,
                             collected_indices=list(range(seq_length)),
                             num_collected=seq_length,
                             energy=0.0,

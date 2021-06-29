@@ -10,10 +10,10 @@ from adaptiveleak.utils.data_utils import array_to_fp, array_to_fp_unsigned, arr
 from adaptiveleak.utils.shifting import merge_shift_groups
 
 
-NUM_SAMPLES = 2500
-WIDTH = 20
+NUM_SAMPLES = 1
+WIDTH = 9
 PRECISIONS = list(range(0, WIDTH))
-DATASET_NAME = 'eog'
+DATASET_NAME = 'mnist'
 
 with h5py.File(os.path.join('..', 'datasets', DATASET_NAME, 'train', 'data.h5'), 'r') as fin:
     inputs = fin['inputs'][:NUM_SAMPLES]

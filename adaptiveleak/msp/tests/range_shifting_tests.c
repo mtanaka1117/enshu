@@ -16,8 +16,8 @@ int main(void) {
     test_range_shift_large();
     test_range_shift_large_2();
     test_range_shifts_array();
-    test_range_shifts_array_activity();
-    test_range_shifts_array_tiselac();
+    //test_range_shifts_array_activity();
+    //test_range_shifts_array_tiselac();
     printf("\tPassed Shifting Tests.\n");
 
     printf("===== Testing Fixed Point Conversion =====\n");
@@ -55,7 +55,7 @@ void test_range_125_13(void) {
     uint8_t numShiftBits = 3;
     FixedPoint value = (1 << currentPrecision) + (1 << (currentPrecision - 2));  // 1.25
 
-    int8_t shift = get_range_shift(value, currentPrecision, newWidth, numShiftBits);
+    int8_t shift = get_range_shift(value, currentPrecision, newWidth, numShiftBits, 0);
     assert(shift == -1);
 }
 
@@ -66,7 +66,7 @@ void test_range_225_13(void) {
     uint8_t numShiftBits = 3;
     FixedPoint value = (1 << (currentPrecision + 1)) + (1 << (currentPrecision - 2));  // 2.25
 
-    int8_t shift = get_range_shift(value, currentPrecision, newWidth, numShiftBits);
+    int8_t shift = get_range_shift(value, currentPrecision, newWidth, numShiftBits, 0);
     assert(shift == 0);
 }
 
@@ -77,7 +77,7 @@ void test_range_neg125_13(void) {
     uint8_t numShiftBits = 3;
     FixedPoint value = fp_neg((1 << currentPrecision) + (1 << (currentPrecision - 2)));  // 1.25
 
-    int8_t shift = get_range_shift(value, currentPrecision, newWidth, numShiftBits);
+    int8_t shift = get_range_shift(value, currentPrecision, newWidth, numShiftBits, 0);
     assert(shift == -1);
 }
 
@@ -88,7 +88,7 @@ void test_range_1125_10(void) {
     uint8_t numShiftBits = 3;
     FixedPoint value = (1 << currentPrecision) + (1 << (currentPrecision - 3));  // 1.125
 
-    int8_t shift = get_range_shift(value, currentPrecision, newWidth, numShiftBits);
+    int8_t shift = get_range_shift(value, currentPrecision, newWidth, numShiftBits, 0);
     assert(shift == -4);
 }
 
@@ -99,7 +99,7 @@ void test_range_9125_10(void) {
     uint8_t numShiftBits = 3;
     FixedPoint value = (1 << (currentPrecision + 3)) + (1 << currentPrecision) + (1 << (currentPrecision - 3));  // 9.125
 
-    int8_t shift = get_range_shift(value, currentPrecision, newWidth, numShiftBits);
+    int8_t shift = get_range_shift(value, currentPrecision, newWidth, numShiftBits, -1);
     assert(shift == -1);
 }
 
@@ -110,7 +110,7 @@ void test_range_shift_int(void) {
     uint8_t numShiftBits = 5;
     FixedPoint value = 248;
 
-    int8_t shift = get_range_shift(value, currentPrecision, newWidth, numShiftBits);
+    int8_t shift = get_range_shift(value, currentPrecision, newWidth, numShiftBits, 0);
     assert(shift == -7);
 }
 
@@ -121,7 +121,7 @@ void test_range_shift_large(void) {
     uint8_t numShiftBits = 3;
     FixedPoint value = 0x5A47;
 
-    int8_t shift = get_range_shift(value, currentPrecision, newWidth, numShiftBits);
+    int8_t shift = get_range_shift(value, currentPrecision, newWidth, numShiftBits, 0);
     assert(shift == 0);
 }
 
@@ -131,12 +131,12 @@ void test_range_shift_large_2(void) {
     uint8_t newWidth = 4;
     uint8_t numBits = 3;
     
-    assert(get_range_shift(0x5A47, prec, newWidth, numBits) == 0);
-    assert(get_range_shift(-0x0BE0, prec, newWidth, numBits) == -3);
-    assert(get_range_shift(-0x6EE2, prec, newWidth, numBits) == 0);
-    assert(get_range_shift(0x1628, prec, newWidth, numBits) == -2);
-    assert(get_range_shift(-0x12D7, prec, newWidth, numBits) == -2);
-    assert(get_range_shift(-0x7FA7, prec, newWidth, numBits) == 0);
+    assert(get_range_shift(0x5A47, prec, newWidth, numBits, 0) == 0);
+    assert(get_range_shift(-0x0BE0, prec, newWidth, numBits, 0) == -3);
+    assert(get_range_shift(-0x6EE2, prec, newWidth, numBits, 0) == 0);
+    assert(get_range_shift(0x1628, prec, newWidth, numBits, 0) == -2);
+    assert(get_range_shift(-0x12D7, prec, newWidth, numBits, 0) == 0);
+    assert(get_range_shift(-0x7FA7, prec, newWidth, numBits, 0) == 0);
 }
 
 
@@ -306,33 +306,29 @@ void test_union_find_simple(void) {
     // Initialize the union find structure
     struct ShiftGroup unionFind[4];
 
-    struct ShiftGroup g0 = { 0, -1, 1, 2, 4, 2 };
+    struct ShiftGroup g0 = { -1, 0, 2 };
     unionFind[0] = g0;
 
-    struct ShiftGroup g1 = { 1, 0, 1, 2, 3, 1 };
+    struct ShiftGroup g1 = { 0, 0, 1 };
     unionFind[1] = g1;
 
-    struct ShiftGroup g2 = { 2, -1, 0, 3, 3, 1 };
+    struct ShiftGroup g2 = { -1, 1, 1 };
     unionFind[2] = g2;
 
-    struct ShiftGroup g3 = { 3, -1, -1, 4, INT16_MAX, 1 };
+    struct ShiftGroup g3 = { -1, -1, 1 };
     unionFind[3] = g3;
 
-    assert(find(&g0, unionFind) == 0);
-    assert(find(&g1, unionFind) == 0);
-    assert(find(&g2, unionFind) == 2);
-    assert(find(&g3, unionFind) == 3);
+    assert(find(0, unionFind) == 0);
+    assert(find(1, unionFind) == 0);
+    assert(find(2, unionFind) == 2);
+    assert(find(3, unionFind) == 3);
 
-    merge(&unionFind[0], &unionFind[2], unionFind, 4);
-    assert(unionFind[0].nextParent == 3);
+    merge(0, 2, unionFind);
     assert(unionFind[0].shift == 1);
     assert(unionFind[0].count == 3);
-    assert(unionFind[0].score == 6);
     assert(unionFind[2].parent == 0);
 
-    merge(&unionFind[2], &unionFind[3], unionFind, 4);
-    assert(unionFind[0].nextParent == 4);
-    assert(unionFind[0].score == INT16_MAX);
+    merge(2, 3, unionFind);
     assert(unionFind[0].count == 4);
     assert(unionFind[0].shift == 1);
     assert(unionFind[3].parent == 0);

@@ -77,9 +77,16 @@ if __name__ == '__main__':
                                    should_enforce_budget=True)
         policy.step(seq_idx=idx, count=policy_result.num_collected)
 
+        # Decode the sequence (accounts for numerical errors)
+        if policy_result.num_bytes > 0:
+            recv_measurements, recv_indices, _ = policy.decode(message=policy_result.encoded)
+        else:
+            recv_measurements = policy_result.measurements
+            recv_indices = policy_result.collected_indices
+
         # Reconstruct the sequence
-        reconstructed = reconstruct_sequence(measurements=policy_result.measurements,
-                                             collected_indices=policy_result.collected_indices,
+        reconstructed = reconstruct_sequence(measurements=recv_measurements,
+                                             collected_indices=recv_indices,
                                              seq_length=seq_length)
                                              
         error = mean_absolute_error(y_true=sequence, y_pred=reconstructed)

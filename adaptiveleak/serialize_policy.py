@@ -4,9 +4,11 @@ import numpy as np
 import math
 from argparse import ArgumentParser
 
-from adaptiveleak.policies import make_policy, Policy, UniformPolicy, AdaptiveHeuristic, AdaptiveDeviation, EncodingMode, AdaptivePolicy, SkipRNN
-from adaptiveleak.utils.data_utils import to_fixed_point, array_to_fp, calculate_bytes
-from adaptiveleak.utils.encryption import EncryptionMode
+from adaptiveleak.policies import make_policy, Policy, UniformPolicy, AdaptiveHeuristic, AdaptiveDeviation, AdaptivePolicy, SkipRNN
+from adaptiveleak.utils.data_utils import to_fixed_point, array_to_fp, calculate_bytes, num_bits_for_value
+from adaptiveleak.utils.constants import BITS_PER_BYTE, MAX_SHIFT_GROUPS, MIN_WIDTH
+from adaptiveleak.utils.encryption import AES_BLOCK_SIZE, CHACHA_NONCE_LEN
+from adaptiveleak.utils.types import EncodingMode, EncryptionMode
 
 
 OUTPUT_PATH = 'policy_parameters.h'
@@ -63,7 +65,6 @@ def write_policy(policy: Policy, is_msp: bool):
 
     # Calculate the target number of bytes (same for all sequences)
     target_collected = int(policy.collection_rate * policy.seq_length)
-    target_data_bits = 16 * target_collected * policy.num_features
     target_bytes = calculate_bytes(width=16,
                                    num_collected=target_collected,
                                    num_features=policy.num_features,
@@ -91,6 +92,29 @@ def write_policy(policy: Policy, is_msp: bool):
             fout.write('#define IS_STANDARD_ENCODED\n')
         else:
             fout.write('#define IS_GROUP_ENCODED\n')
+
+            size_width = num_bits_for_value(policy.seq_length)
+            size_bytes = int(math.ceil((size_width * MAX_SHIFT_GROUPS) / BITS_PER_BYTE))
+            mask_bytes = int(math.ceil(policy.seq_length / BITS_PER_BYTE))
+
+            shift_bytes = 1 + MAX_SHIFT_GROUPS + size_bytes
+            metadata_bytes = shift_bytes + mask_bytes
+
+            if policy.encryption_mode == EncryptionMode.STREAM:
+                metadata_bytes += CHACHA_NONCE_LEN
+            else:
+                metadata_bytes += AES_BLOCK_SIZE
+
+            # Compute the target number of data bytes
+            target_data_bytes = target_bytes - metadata_bytes
+            target_data_bits = (target_data_bytes - MAX_SHIFT_GROUPS) * BITS_PER_BYTE
+
+            # Estimate the maximum number of measurements we can collect
+            max_features = int(target_data_bits / MIN_WIDTH)
+            max_collected = int(max_features / policy.num_features)
+
+            fout.write('#define MAX_COLLECTED {0}\n'.format(max_collected))
+            fout.write('#define SIZE_BYTES {0}\n\n'.format(size_bytes))
 
         # Add policy-specific information
         if isinstance(policy, UniformPolicy):

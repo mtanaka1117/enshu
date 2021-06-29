@@ -211,6 +211,7 @@ def select_range_shift(measurement: float, width: int, precision: int, num_range
     if (prev_error <= ERROR_TOL):
         return prev_shift
 
+    last_error = BIG_NUMBER
     best_error = prev_error
     best_shift = prev_shift
 
@@ -231,6 +232,10 @@ def select_range_shift(measurement: float, width: int, precision: int, num_range
         if (error < best_error):
             best_shift = shift
             best_error = error
+        elif (error > last_error):
+            break  # Stop once the error starts to increase
+
+        last_error = error
 
     if (prev_error <= best_error):
         return prev_shift
@@ -496,7 +501,7 @@ def set_widths(group_sizes: List[int], target_bytes: int, start_width: int) -> L
     #even_width = int(target_bits / num_values)
     consumed_bytes = sum((int(math.ceil((start_width * size) / BITS_PER_BYTE)) for size in group_sizes))
 
-    start_widths = min(start_width, MAX_WiDTH)
+    start_widths = min(start_width, MAX_WIDTH)
     widths: List[int] = [start_width for _ in range(num_groups)]
 
     if start_width >= MAX_WIDTH:

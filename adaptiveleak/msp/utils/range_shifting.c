@@ -1,8 +1,8 @@
 #include "range_shifting.h"
 
-#ifdef IS_MSP
-#pragma DATA_SECTION("UNION_FIND", ".matrix")
-#endif
+//#ifdef IS_MSP
+//#pragma DATA_SECTION("UNION_FIND", ".matrix")
+//#endif
 static struct ShiftGroup UNION_FIND[100];
 
 static uint8_t SCORE_BUFFER[100];
@@ -49,6 +49,7 @@ int8_t get_range_shift(FixedPoint value, uint8_t currentPrecision, uint8_t newWi
         return prevShift;
     }
 
+    volatile FixedPoint lastError = INT16_MAX;
     volatile FixedPoint bestError = prevError;
     volatile int8_t bestShift = prevShift;
 
@@ -73,16 +74,16 @@ int8_t get_range_shift(FixedPoint value, uint8_t currentPrecision, uint8_t newWi
         }
 
         shiftedValue &= CONV_MASK;  // Prevent negative values
-        error = fp_sub(absValue, shiftedValue);
+        error = fp_abs(fp_sub(absValue, shiftedValue));
 
-        if (error >= 0) {
-            error = fp_abs(error);
-
-            if (error <= bestError) {
-                bestError = error;
-                bestShift = shift;
-            }
+        if (error <= bestError) {
+            bestError = error;
+            bestShift = shift;
+        } else if (error >= lastError) {
+            break;
         }
+
+        lastError = error;
     }
 
     if (prevError <= bestError) {
@@ -137,75 +138,67 @@ uint16_t run_length_encode_shifts(int8_t *resultShifts, uint16_t *resultCounts, 
 /*
  * Shift Group Functions
  */
-uint16_t find(struct ShiftGroup *group, struct ShiftGroup *unionFind) {
-    int16_t parent = group->parent;
+uint8_t find(uint8_t idx, struct ShiftGroup *unionFind) {
+    uint8_t prevIdx = idx;
+    int16_t parent = unionFind[idx].parent;
 
     while (parent != -1) {
-        group = unionFind + parent;
-        parent = group->parent;
+        prevIdx = parent;
+        parent = unionFind[parent].parent;
     }
 
-    return group->idx;
+    return prevIdx;
 }
 
 
-void merge(struct ShiftGroup *g1, struct ShiftGroup *g2, struct ShiftGroup *unionFind) {
-    uint16_t idx1 = find(g1, unionFind);
-    uint16_t idx2 = find(g2, unionFind);
+void merge(uint8_t idx1, uint8_t idx2, struct ShiftGroup *unionFind) {
+    uint8_t p1 = find(idx1, unionFind);
+    uint8_t p2 = find(idx2, unionFind);
 
     struct ShiftGroup *left;
     struct ShiftGroup *right;
 
-    if (idx1 < idx2) {
-        left = unionFind + idx1;
-        right = unionFind + idx2;
-    } else {
-        left = unionFind + idx2;
-        right = unionFind + idx1;
+    if (p1 > p2) {
+        uint8_t temp = p2;
+        p2 = p1;
+        p1 = temp;
     }
 
-    right->parent = left->idx;
+    left = unionFind + p1;
+    right = unionFind + p2;
+
+    right->parent = p1;
     left->shift = max8(left->shift, right->shift);
-    left->nextParent = right->nextParent;
     left->count = left->count + right->count;
 }
 
 
-void get_groups_to_merge(uint8_t *leftParents, uint8_t *scoreBuffer, uint8_t numToMerge, struct ShiftGroup *unionFind, uint16_t numGroups) {
-    // Locate the first parent
-    uint16_t i = 0;
-    while (unionFind[i].parent != -1) {
-        i++;
-    }
-
-    // Get the initial left and right groups
-    volatile uint8_t idx = 0;
+void create_union_find(struct ShiftGroup *unionFind, uint8_t *leftParents, uint8_t *scoreBuffer, int8_t *shifts, uint16_t *counts, uint8_t numToMerge, uint16_t numGroups) {
     volatile uint8_t finalIdx, lowerIdx;
     volatile uint8_t temp;
 
-    volatile struct ShiftGroup *left = unionFind;
+    volatile struct ShiftGroup *left;
     volatile struct ShiftGroup *right;
     
     volatile int8_t score;
     volatile int8_t shiftDiff;
-    volatile uint8_t nextParent = left->nextParent;
 
-    while (nextParent < numGroups) {
-        left = unionFind + idx;
-        right = unionFind + nextParent;
+    uint8_t groupIdx, nextIdx;
+    for (groupIdx = 0; groupIdx < numGroups - 1; groupIdx++) {
+        nextIdx = groupIdx + 1;
 
-        shiftDiff = fp_abs(left->shift - right->shift);
-        score = (left->count + right->count + shiftDiff) * (shiftDiff > 0);
+        shiftDiff = fp_abs(shifts[groupIdx] - shifts[nextIdx]);
+        score = (counts[groupIdx] + counts[nextIdx] + shiftDiff) * (shiftDiff > 0);
 
-        finalIdx = idx - 1;
-        if ((idx < numToMerge) || (score < scoreBuffer[finalIdx])) {
+        finalIdx = numToMerge - 1;
+        if ((groupIdx < numToMerge) || (score < scoreBuffer[finalIdx])) {
 
-            if (idx < numToMerge) {
-                finalIdx++;
+            if (groupIdx < numToMerge) {
+                finalIdx = groupIdx;
             }
 
             scoreBuffer[finalIdx] = score;
-            leftParents[finalIdx] = idx;
+            leftParents[finalIdx] = groupIdx;
 
             lowerIdx = finalIdx - 1;
             while ((finalIdx > 0) && (scoreBuffer[finalIdx] < scoreBuffer[lowerIdx])) {
@@ -222,9 +215,17 @@ void get_groups_to_merge(uint8_t *leftParents, uint8_t *scoreBuffer, uint8_t num
             }
         }
 
-        idx = nextParent;
-        nextParent = unionFind[idx].nextParent;
+        // Initialize the union-find structure
+        unionFind[groupIdx].parent = -1;
+        unionFind[groupIdx].shift = shifts[groupIdx];
+        unionFind[groupIdx].count = counts[groupIdx];
     }
+
+    // Initialize the final union-find element
+    groupIdx = numGroups - 1;
+    unionFind[groupIdx].parent = -1;
+    unionFind[groupIdx].shift = shifts[groupIdx];
+    unionFind[groupIdx].count = counts[groupIdx];
 }
 
 
@@ -236,45 +237,26 @@ uint16_t create_shift_groups(int8_t *resultShifts, uint16_t *resultCounts, int8_
         return groupCount;
     }
 
-    // Initialize the union-find structure
+    // Initialize the union-find structure and get the groups to merge
     struct ShiftGroup *unionFind = UNION_FIND;
-    int16_t countSum, shiftDiff;
-
-    uint8_t i, j;
-    for (i = 0; i < groupCount; i++) {
-        j = i + 1;
-        unionFind[i].idx = i;
-        unionFind[i].count = resultCounts[i];
-        unionFind[i].shift = resultShifts[i];
-        unionFind[i].parent = -1;
-        unionFind[i].nextParent = j;
-    }
-
-    // Merge the groups until we meet the right amount
     uint8_t leftIdx, rightIdx;
     uint8_t numToMerge = groupCount - maxNumGroups;
 
-    get_groups_to_merge(LEFT_PARENTS, SCORE_BUFFER, numToMerge, unionFind, groupCount);
+    create_union_find(UNION_FIND, LEFT_PARENTS, SCORE_BUFFER, resultShifts, resultCounts, numToMerge, groupCount);
 
+    uint8_t i;
     for (i = 0; i < numToMerge; i++) {
         leftIdx = LEFT_PARENTS[i];
-        rightIdx = unionFind[leftIdx].nextParent;
-        merge(unionFind + leftIdx, unionFind + rightIdx, unionFind);
+        merge(leftIdx, leftIdx + 1, UNION_FIND);
     }
-    
-    //while (numGroups > maxNumGroups) {
-    //    get_groups_to_merge(&leftIdx, &rightIdx, unionFind, groupCount);
-    //    merge(unionFind + leftIdx, unionFind + rightIdx, unionFind, groupCount);
-    //    numGroups--;
-    //}
 
     // Reconstruct the resulting shifts and counts
     uint16_t groupIdx = 0;
 
     for (i = 0; i < groupCount; i++) {
-        if (unionFind[i].parent == -1) {
-            resultShifts[groupIdx] = unionFind[i].shift;
-            resultCounts[groupIdx] = unionFind[i].count;
+        if (UNION_FIND[i].parent == -1) {
+            resultShifts[groupIdx] = UNION_FIND[i].shift;
+            resultCounts[groupIdx] = UNION_FIND[i].count;
             groupIdx++;
         }
     }

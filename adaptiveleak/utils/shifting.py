@@ -8,20 +8,14 @@ from adaptiveleak.utils.constants import BIG_NUMBER
 
 class ShiftGroup:
     
-    def __init__(self, shift: int, start_idx: int, end_idx: int, group_id: int, parent: int, next_parent: int):
+    def __init__(self, shift: int, count: int, group_id: int, parent: int):
         self.parent = parent
-        self.next_parent = next_parent
         self.shift = shift
-        self.start_idx = start_idx
-        self.end_idx = end_idx
+        self.count = count
         self.group_id = group_id
 
-    @property
-    def count(self) -> int:
-        return self.end_idx - self.start_idx
-
     def __str__(self) -> str:
-        return '(Id: {0}, P: {1}, N: {2}, S: {3}, C: {4})'.format(self.group_id, self.parent, self.next_parent, self.shift, self.count)
+        return '(Id: {0}, P: {1}, S: {2}, C: {3})'.format(self.group_id, self.parent, self.shift, self.count)
 
 def absolute_error(y_true: np.ndarray, y_pred: np.ndarray) -> float:
     return np.average(np.abs(y_true - y_pred))
@@ -37,10 +31,8 @@ class UnionFind:
             end_idx = start_idx + rep
 
             group = ShiftGroup(shift=shift,
-                               start_idx=start_idx,
-                               end_idx=end_idx,
+                               count=end_idx - start_idx,
                                parent=-1,
-                               next_parent=group_id + 1,
                                group_id=group_id)
 
             union_find.append(group)
@@ -76,33 +68,17 @@ class UnionFind:
             right_parent = p1
 
         right_parent.parent = left_parent.group_id
-        left_parent.end_idx = right_parent.end_idx
+        left_parent.count += right_parent.count
         left_parent.shift = max(left_parent.shift, right_parent.shift)
-        left_parent.next_parent = right_parent.next_parent
         self._num_groups -= 1
 
     def get_groups_to_merge(self, num_to_merge: int) -> List[int]:
-        # Locate the first parent
-        group_id = 0
-        while (self._union_find[group_id].parent != -1):
-            group_id += 1
-
-        left = self._union_find[group_id]
-        right = self._union_find[left.next_parent]
-
         scores: List[float] = []
         left_parents: List[int] = []
 
-        shift_diff = abs(left.shift - right.shift)
-        score = (left.count + right.count + shift_diff) * int(shift_diff > 0)
-
-        scores.append(score)
-        left_parents.append(left.group_id)
-
-        group_id = left.next_parent
-        while (group_id < len(self._union_find) and self._union_find[group_id].next_parent < len(self._union_find)):
+        for group_id in range(len(self._union_find) - 1):
             left = self._union_find[group_id]
-            right = self._union_find[left.next_parent]
+            right = self._union_find[group_id + 1]
 
             shift_diff = abs(left.shift - right.shift)
             score = (left.count + right.count + shift_diff) * int(shift_diff > 0)
@@ -129,18 +105,9 @@ class UnionFind:
 
                     i -= 1
 
-            group_id = left.next_parent
+            group_id += 1
 
         return left_parents
-
-        # Get the parents to merge
-        #result: List[Tuple[ShiftGroup, ShiftGroup]] = []
-        #for group_id in left_parents:
-        #    left = self._union_find[group_id]
-        #    right = self._union_find[left.next_parent]
-        #    result.append((left, right))
-
-        #return result
 
     def get_parents(self) -> List[ShiftGroup]:
         return list(filter(lambda g: g.parent == -1, self._union_find))
@@ -177,13 +144,9 @@ def merge_shift_groups(values: List[float], shifts: List[int], max_num_groups: i
     # Merge the given groups
     for left_idx in groups_to_merge:
         left = union_find.get(left_idx)
-        right = union_find.get(left.next_parent)
+        right = union_find.get(left_idx + 1)
 
         union_find.union(left, right)
-
-    #while (union_find.get_num_groups() > max_num_groups):
-    #    left, right = union_find.get_groups_to_merge()
-    #    union_find.union(left, right)
 
     # Get all of the parents
     final_groups = union_find.get_parents()

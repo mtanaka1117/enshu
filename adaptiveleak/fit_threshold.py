@@ -3,7 +3,7 @@
 import os.path
 import numpy as np
 import time
-from collections import defaultdict
+from collections import defaultdict, namedtuple
 from argparse import ArgumentParser
 
 from adaptiveleak.server import reconstruct_sequence
@@ -15,7 +15,36 @@ from adaptiveleak.utils.loading import load_data
 from adaptiveleak.utils.file_utils import iterate_dir, read_json, save_json_gz, read_json_gz
 
 
-MARGIN = 2
+MARGIN = 5  # Margin to account for differences in the training and testing sets
+BatchResult = namedtuple('BatchResult', ['mae', 'did_exhaust'])
+
+
+def execute_on_batch(policy: BudgetWrappedPolicy, batch: np.ndarray) -> BatchResult:
+    policy.init_for_experiment(num_sequences=batch.shape[0])
+
+    policy._budget -= MARGIN
+
+    # Execute the policy on each sequence
+    estimated_list: List[np.ndarray] = []
+
+    for seq_idx, sequence in enumerate(batch):
+        policy.reset()
+        policy_result = run_policy(policy=policy, sequence=sequence, should_enforce_budget=True)
+
+        # Reconstruct the sequence elements, [T, D]
+        reconstructed = reconstruct_sequence(measurements=policy_result.measurements,
+                                             collected_indices=policy_result.collected_indices,
+                                             seq_length=seq_length)
+
+        estimated_list.append(np.expand_dims(reconstructed, axis=0))
+
+    estimated = np.vstack(estimated_list)  # [B, T, D]
+
+    # Compute the error over the batch
+    error = np.average(np.abs(batch - estimated))
+
+    return BatchResult(mae=error,
+                       did_exhaust=policy.has_exhausted_budget())
 
 
 def execute(policy: BudgetWrappedPolicy,
@@ -23,7 +52,10 @@ def execute(policy: BudgetWrappedPolicy,
             batch_size: int,
             lower: float,
             upper: float,
+            batches_per_trial: int,
             should_print: bool) -> float:
+    assert batches_per_trial >= 1, 'The # of Batches per Trial must be positive'
+
     seq_length = inputs.shape[1]
     sample_idx = np.arange(inputs.shape[0])
 
@@ -37,40 +69,38 @@ def execute(policy: BudgetWrappedPolicy,
 
     batch_size = min(len(sample_idx), batch_size)
 
-    while ((upper > lower) and ((upper - lower) > SMALL_NUMBER)):
+    # No need to run multiple batches when we are already
+    # using the full data-set
+    if batch_size == len(sample_idx):
+        batches_per_trial = 1
+
+    while ((upper - lower) > SMALL_NUMBER):
         # Set the current threshold
         current = (upper + lower) / 2
         
-        # Make the batch
-        batch_idx = rand.choice(sample_idx, size=batch_size, replace=False)
-        sample_inputs = inputs[batch_idx]
-
         # Set the threshold for the policy
         policy.set_threshold(threshold=current)
 
-        policy.init_for_experiment(num_sequences=batch_size)
+        # Make lists to track results
+        did_exhaust_list: List[bool] = []
+        error_list: List[float] = []
 
-        policy._budget -= MARGIN
+        # Execute the policy on each batch
+        for _ in range(batches_per_trial):
+            # Make the batch
+            batch_idx = rand.choice(sample_idx, size=batch_size, replace=False)
+            batch = inputs[batch_idx]
 
-        # Execute the policy on each sequence
-        estimated_list: List[np.ndarray] = []
+            batch_result = execute_on_batch(policy=policy, batch=batch)
 
-        for seq_idx, sequence in enumerate(sample_inputs):
-            policy.reset()
-            policy_result = run_policy(policy=policy, sequence=sequence)
+            error_list.append(batch_result.mae)
+            did_exhaust_list.append(batch_result.did_exhaust)
 
-            # Reconstruct the sequence elements, [T, D]
-            reconstructed = reconstruct_sequence(measurements=policy_result.measurements,
-                                                 collected_indices=policy_result.collected_indices,
-                                                 seq_length=seq_length)
+        # Get aggregate metrics
+        error = np.average(error_list)
+        did_exhaust = any(did_exhaust_list)
 
-            estimated_list.append(np.expand_dims(reconstructed, axis=0))
-
-        estimated = np.vstack(estimated_list)  # [B, T, D]
-
-        # Compute the error over the batch
-        error = np.average(np.abs(sample_inputs - estimated))
-
+        # Track the best error
         if error < best_error:
             best_threshold = current
             best_error = error
@@ -82,55 +112,20 @@ def execute(policy: BudgetWrappedPolicy,
         budget = policy.budget
         consumed_energy = policy.consumed_energy
 
-        if consumed_energy > budget:
+        if did_exhaust:
             lower = current
         else:
             upper = current
+
+        # Ensure that lower <= upper
+        temp = min(lower, upper)
+        upper = max(lower, upper)
+        lower = temp
 
     if should_print:
         print()
 
     return best_threshold
-
-
-   # while (abs(observed - target_energy) > EPSILON):
-
-   #     current = (upper + lower) / 2
-   #     
-   #     batch_idx = rand.choice(sample_idx, size=batch_size, replace=False)
-   #     sample_inputs = inputs[batch_idx]
-
-   #     sample_count = 0
-   #     seq_count = 0
-
-   #     policy._threshold = current
-
-   #     # Execute the policy on each sequence
-   #     for seq_idx, sequence in enumerate(sample_inputs):
-   #         policy.reset()
-   #         policy_result = run_policy(policy=policy, sequence=sequence)
-
-   #         energy_sum += policy_result.energy
-   #         seq_count += 1
-
-   #     observed = energy_sum / seq_count
-   #     print('Observed Average: {0:.5f}, Current: {1:.5f}'.format(observed, current))
-
-   #     diff = abs(target - observed)
-   #     if (diff < best_diff) and (observed <= target):
-   #         best_threshold = current
-   #         best_observed = observed
-   #         best_diff = diff
-
-   #     if (observed < policy._target):
-   #         upper = current
-   #     else:
-   #         lower = current
-
-   #     if (upper - lower) < SMALL_NUMBER:
-   #         break
-
-   # return best_threshold
 
 
 if __name__ == '__main__':
@@ -139,8 +134,8 @@ if __name__ == '__main__':
     parser.add_argument('--policy', type=str, required=True)
     parser.add_argument('--collection-rates', type=float, nargs='+', required=True)
     parser.add_argument('--encoding', type=str, required=True, choices=['standard' , 'group'])
-    parser.add_argument('--max-threshold', type=float, default=10.0)
     parser.add_argument('--batch-size', type=int, default=128)
+    parser.add_argument('--batches-per-trial', type=int, default=3)
     parser.add_argument('--should-print', action='store_true')
     args = parser.parse_args()
 
@@ -149,6 +144,9 @@ if __name__ == '__main__':
 
     # Unpack the data dimensions
     num_seq, seq_length, num_features = inputs.shape
+
+    # Get the maximum threshold value based on the data
+    max_threshold = np.max(np.abs(inputs)) * 1.01
 
     # Load the parameter files
     output_file = os.path.join('saved_models', args.dataset, 'thresholds.json.gz')
@@ -168,8 +166,8 @@ if __name__ == '__main__':
         lower = 0.0
         upper = 1.0
     else:
-        lower = -1 * args.max_threshold
-        upper = args.max_threshold
+        lower = -1 * max_threshold
+        upper = max_threshold
 
     for collection_rate in args.collection_rates:
         if args.should_print:
@@ -190,6 +188,7 @@ if __name__ == '__main__':
                             batch_size=args.batch_size,
                             lower=lower,
                             upper=upper,
+                            batches_per_trial=args.batches_per_trial,
                             should_print=args.should_print)
 
         threshold_map[policy_name][encoding][str(collection_rate)] = threshold
