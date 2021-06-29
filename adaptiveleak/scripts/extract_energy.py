@@ -33,7 +33,7 @@ def read_trace_file(path: str) -> OrderedDict:
 
 def get_threshold(energy_readings: OrderedDict):
     # Get the unique energy values
-    unique_values = set((r.current for r in energy_readings.values()))
+    unique_values = list((r.current for r in energy_readings.values()))
 
     # Return the corresponding percentile
     return np.percentile(list(unique_values), q=THRESHOLD_PERCENTILE) * 3.3

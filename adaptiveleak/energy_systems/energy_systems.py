@@ -9,6 +9,7 @@ from adaptiveleak.utils.types import PolicyType, EncodingMode, CollectMode, Encr
 BT_FRAME_SIZE = 20
 OP_TRIALS = 5
 BASELINE_PERIOD = 10
+GROUP_FACTOR = 2
 
 
 class BluetoothEnergy:
@@ -23,8 +24,8 @@ class BluetoothEnergy:
         weights_path = os.path.join(dir_name, '..', 'traces', 'bluetooth', 'model.json')
         weights_dict = read_json(weights_path)
 
-        self._w = weights_dict['w']
-        self._b = weights_dict['b']
+        self._comm_w = weights_dict['comm_w']
+        self._comm_b = weights_dict['comm_b']
 
         self._scale = 0.7
         self._rand = np.random.RandomState(57010)
@@ -37,7 +38,38 @@ class BluetoothEnergy:
         num_bytes = int(num_bytes / BT_FRAME_SIZE) * BT_FRAME_SIZE
 
         # Use the linear model to predict the energy amount
-        energy = self._w * num_bytes + self._b
+        energy = self._comm_w * num_bytes + self._comm_b
+
+        if use_noise:
+            energy = self._rand.normal(loc=energy, scale=self._scale)
+
+        return max(energy, 0.0)
+
+
+class ActiveEnergy:
+
+    def __init__(self):
+        # Get the trace data
+        dir_name = os.path.dirname(__file__)
+        weights_path = os.path.join(dir_name, '..', 'traces', 'bluetooth', 'model.json')
+        weights_dict = read_json(weights_path)
+
+        self._base_w = weights_dict['base_w']
+        self._base_b = weights_dict['base_b']
+
+        self._scale = 0.001
+        self._rand = np.random.RandomState(3513)
+
+    def get_energy(self, num_bytes: int, period: float, use_noise: bool) -> float:
+        """
+        Returns the energy required for baseline device activity over the given period when
+        sending the given number of bytes.
+        """
+        # Estimate the baseline power
+        baseline_power = self._base_w * num_bytes + self._base_b
+
+        # Compute the baseline energy using the given period
+        energy = baseline_power * period
 
         if use_noise:
             energy = self._rand.normal(loc=energy, scale=self._scale)
@@ -103,22 +135,28 @@ class EncodingEnergy:
         if use_noise:
             energy = self._rand.normal(loc=energy, scale=self._scale)
 
-        return max(energy, 0.0)
+        energy = max(energy, 0.0)
+
+        if self._encoding_mode == EncodingMode.GROUP:
+            return energy * GROUP_FACTOR
+
+        return energy
 
 
 class CollectEnergy:
 
     def __init__(self, collect_mode: CollectMode):
         # Get the path
-        #dir_name = os.path.dirname(__file__)
-        #energy_path = os.path.join(dir_name, '..', 'traces', 'collect', 'energy.json')
-        #energy_dict = read_json(energy_path)
+        dir_name = os.path.dirname(__file__)
+        energy_path = os.path.join(dir_name, '..', 'traces', 'collect', 'energy.json')
+        energy_dict = read_json(energy_path)
 
-        ## Read the energy value
-        #self._energy = np.median(energy_dict['energy'])
-        #self._scale = np.std(energy_dict['energy'])
-        self._energy = 0.25
-        self._scale = 0.001
+        # Read the energy value
+        self._energy = np.median(energy_dict['energy'])
+        self._scale = np.std(energy_dict['energy'])
+        
+        #self._energy = 0.25
+        #self._scale = 0.001
 
         self._rand = np.random.RandomState(seed=8753)
 
@@ -209,21 +247,14 @@ class EnergyUnit:
         self._encrypt = EncryptionEnergy(encryption_mode=encryption_mode)
         self._collect = CollectEnergy(collect_mode=collect_mode)
         self._comm = BluetoothEnergy()
+        self._active = ActiveEnergy()
 
         # Save the sequence length, number of features, and period
         self._seq_length = seq_length
         self._num_features = num_features
         self._period = period
-        self._period_scale = period / BASELINE_PERIOD
 
-        # Read the baseline energy
-        dir_name = os.path.dirname(__file__)
-        energy_path = os.path.join(dir_name, '..', 'traces', 'baseline', 'energy.json')
-        energy_dict = read_json(energy_path)
-
-        self._baseline_energy = np.median(energy_dict['energy']) * self._period_scale
-
-    def get_energy(self, num_collected: int, num_bytes: int, use_noise: bool):
+    def get_computation_energy(self, num_bytes: int, num_collected: int, use_noise: bool) -> float:
         # Get the energy from each component
         collect_energy = self._collect.get_energy_multiple(count=num_collected,
                                                            use_noise=use_noise)
@@ -240,8 +271,28 @@ class EnergyUnit:
         encrypt_energy = self._encrypt.get_energy(num_bytes=num_bytes,
                                                   use_noise=use_noise)
 
-        comm_energy = self._comm.get_energy(num_bytes=num_bytes,
-                                            use_noise=use_noise)
+        return collect_energy + should_collect_energy + update_energy + encode_energy + encrypt_energy
 
-        return collect_energy + should_collect_energy + update_energy + encode_energy + \
-                encrypt_energy + comm_energy + self._baseline_energy
+    def get_communication_energy(self, num_bytes: int, use_noise: bool) -> float:
+        return self._comm.get_energy(num_bytes=num_bytes,
+                                     use_noise=use_noise)
+
+
+    def get_active_energy(self, num_bytes: int, use_noise: bool) -> float:
+        return self._active.get_energy(num_bytes=num_bytes,
+                                       period=self._period,
+                                       use_noise=use_noise)
+
+    def get_energy(self, num_collected: int, num_bytes: int, use_noise: bool):
+        # Get the energy from each component
+        comp_energy = self.get_computation_energy(num_bytes=num_bytes,
+                                                  num_collected=num_collected,
+                                                  use_noise=use_noise)
+
+        comm_energy = self.get_communication_energy(num_bytes=num_bytes,
+                                                    use_noise=use_noise)
+
+        active_energy = self.get_active_energy(num_bytes=num_bytes,
+                                               use_noise=use_noise)
+
+        return comp_energy + comm_energy + active_energy

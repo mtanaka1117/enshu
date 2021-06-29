@@ -1,4 +1,4 @@
 {
-    "ops_per_trial": 2,
-    "num_trials": [6, 6, 6, 6, 6]
+    "ops_per_trial": 5,
+    "num_trials": [6, 7, 7, 7, 7]
 }
