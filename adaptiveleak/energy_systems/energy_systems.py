@@ -147,16 +147,16 @@ class CollectEnergy:
 
     def __init__(self, collect_mode: CollectMode):
         # Get the path
-        dir_name = os.path.dirname(__file__)
-        energy_path = os.path.join(dir_name, '..', 'traces', 'collect', 'energy.json')
-        energy_dict = read_json(energy_path)
+        #dir_name = os.path.dirname(__file__)
+        #energy_path = os.path.join(dir_name, '..', 'traces', 'collect', 'energy.json')
+        #energy_dict = read_json(energy_path)
 
-        # Read the energy value
-        self._energy = np.median(energy_dict['energy'])
-        self._scale = np.std(energy_dict['energy'])
+        ## Read the energy value
+        #self._energy = np.median(energy_dict['energy'])
+        #self._scale = np.std(energy_dict['energy'])
         
-        #self._energy = 0.25
-        #self._scale = 0.001
+        self._energy = 0.1
+        self._scale = 0.001
 
         self._rand = np.random.RandomState(seed=8753)
 
