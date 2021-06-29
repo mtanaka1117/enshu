@@ -845,7 +845,8 @@ def make_policy(name: str,
         else:
             thresholds = read_json_gz(threshold_path)
             rate_str = str(collection_rate)
-            encoding_name = str(kwargs['encoding']).lower()
+            #encoding_name = str(kwargs['encoding']).lower()
+            encoding_name = 'standard'
 
             if (name not in thresholds) or (encoding_name not in thresholds[name]) or (rate_str not in thresholds[name][encoding_name]):
                 print('WARNING: No threshold path exists.')
@@ -853,6 +854,11 @@ def make_policy(name: str,
             else:
                 threshold = thresholds[name][encoding_name][rate_str]
                 did_find_threshold = True
+
+            encoding_name = str(kwargs['encoding']).lower()
+            if encoding_name == 'group':
+                threshold = threshold * 1.1
+
 
         if name == 'adaptive_heuristic':
             cls = AdaptiveHeuristic
