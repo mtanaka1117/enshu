@@ -17,6 +17,9 @@ from adaptiveleak.utils.file_utils import iterate_dir, read_json, save_json_gz, 
 
 BatchResult = namedtuple('BatchResult', ['mae', 'did_exhaust'])
 VAL_BATCH_SIZE = 1024
+THRESHOLD_FACTOR_UPPER = 1.5
+THRESHOLD_FACTOR_LOWER = 0.5
+TOLERANCE = 1e-5
 
 
 def execute_on_batch(policy: BudgetWrappedPolicy, batch: np.ndarray, energy_margin: float) -> BatchResult:
@@ -75,7 +78,7 @@ def fit(policy: BudgetWrappedPolicy,
     if batch_size == len(sample_idx):
         batches_per_trial = 1
 
-    while ((upper - lower) > SMALL_NUMBER):
+    while (abs(upper - lower) > TOLERANCE):
         # Set the current threshold
         current = (upper + lower) / 2
         
@@ -232,9 +235,13 @@ if __name__ == '__main__':
             did_exhaust = val_result.did_exhaust
             final_threshold = threshold
 
+            # Reset the bounds to speed up the next iteration
+            upper = threshold * THRESHOLD_FACTOR_UPPER
+            lower = threshold * THRESHOLD_FACTOR_LOWER
+
             energy_margin += 1
 
-        threshold_map[policy_name][encoding][str(collection_rate)] = threshold
+        threshold_map[policy_name][encoding][str(collection_rate)] = final_threshold
 
         if args.should_print:
             print('==========')
