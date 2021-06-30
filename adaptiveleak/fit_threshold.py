@@ -15,14 +15,14 @@ from adaptiveleak.utils.loading import load_data
 from adaptiveleak.utils.file_utils import iterate_dir, read_json, save_json_gz, read_json_gz
 
 
-MARGIN = 5  # Margin to account for differences in the training and testing sets
 BatchResult = namedtuple('BatchResult', ['mae', 'did_exhaust'])
+VAL_BATCH_SIZE = 1024
 
 
-def execute_on_batch(policy: BudgetWrappedPolicy, batch: np.ndarray) -> BatchResult:
+def execute_on_batch(policy: BudgetWrappedPolicy, batch: np.ndarray, energy_margin: float) -> BatchResult:
     policy.init_for_experiment(num_sequences=batch.shape[0])
 
-    policy._budget -= MARGIN
+    policy._budget -= energy_margin
 
     # Execute the policy on each sequence
     estimated_list: List[np.ndarray] = []
@@ -47,13 +47,14 @@ def execute_on_batch(policy: BudgetWrappedPolicy, batch: np.ndarray) -> BatchRes
                        did_exhaust=policy.has_exhausted_budget())
 
 
-def execute(policy: BudgetWrappedPolicy,
-            inputs: np.ndarray,
-            batch_size: int,
-            lower: float,
-            upper: float,
-            batches_per_trial: int,
-            should_print: bool) -> float:
+def fit(policy: BudgetWrappedPolicy,
+        inputs: np.ndarray,
+        batch_size: int,
+        lower: float,
+        upper: float,
+        batches_per_trial: int,
+        energy_margin: float,
+        should_print: bool) -> float:
     assert batches_per_trial >= 1, 'The # of Batches per Trial must be positive'
 
     seq_length = inputs.shape[1]
@@ -91,7 +92,7 @@ def execute(policy: BudgetWrappedPolicy,
             batch_idx = rand.choice(sample_idx, size=batch_size, replace=False)
             batch = inputs[batch_idx]
 
-            batch_result = execute_on_batch(policy=policy, batch=batch)
+            batch_result = execute_on_batch(policy=policy, batch=batch, energy_margin=energy_margin)
 
             error_list.append(batch_result.mae)
             did_exhaust_list.append(batch_result.did_exhaust)
@@ -128,6 +129,19 @@ def execute(policy: BudgetWrappedPolicy,
     return best_threshold
 
 
+def validate_thresholds(policy: BudgetWrappedPolicy, inputs: np.ndarray, threshold: float) -> BatchResult:
+    """
+    Validates the policy and thresholds on a set of held-out inputs.
+    """
+    # Set the threshold
+    policy._threshold = threshold
+
+    # Run the policy on the given batch
+    val_result = execute_on_batch(policy=policy, batch=inputs, energy_margin=0)
+
+    return val_result
+
+
 if __name__ == '__main__':
     parser = ArgumentParser()
     parser.add_argument('--dataset', type=str, required=True)
@@ -139,8 +153,12 @@ if __name__ == '__main__':
     parser.add_argument('--should-print', action='store_true')
     args = parser.parse_args()
 
-    # Load the data
+    # Load the data. We fit thresholds on the "validation" set and
+    # validation on the "training" set. Fitting the thresholds on the training
+    # set can cause overfitting because some policies (e.g. Skip RNNs) fit their policy
+    # to the training set.
     inputs, _ = load_data(args.dataset, fold='validation')
+    val_inputs, _ = load_data(args.dataset, fold='train')
 
     # Unpack the data dimensions
     num_seq, seq_length, num_features = inputs.shape
@@ -169,6 +187,10 @@ if __name__ == '__main__':
         lower = -1 * max_threshold
         upper = max_threshold
 
+    # Create parameters for policy validation data splitting
+    val_indices = np.arange(val_inputs.shape[0])
+    rand = np.random.RandomState(seed=3485)
+
     for collection_rate in args.collection_rates:
         if args.should_print:
             print('Starting {0}'.format(collection_rate))
@@ -183,13 +205,34 @@ if __name__ == '__main__':
                                      dataset=args.dataset,
                                      should_compress=False)
 
-        threshold = execute(policy=policy,
+        final_threshold = None
+        energy_margin = 1
+        did_exhaust = True
+
+        while (did_exhaust):
+            # Fit the policy using the given rate and energy margin
+            threshold = fit(policy=policy,
                             inputs=inputs,
                             batch_size=args.batch_size,
                             lower=lower,
                             upper=upper,
                             batches_per_trial=args.batches_per_trial,
+                            energy_margin=energy_margin,
                             should_print=args.should_print)
+
+            # Make the validation batch
+            if len(val_indices) > VAL_BATCH_SIZE:
+                val_batch_idx = rand.choice(val_indices, size=VAL_BATCH_SIZE, replace=True)
+            else:
+                val_batch_idx = val_indices
+
+            val_batch = val_inputs[val_batch_idx]
+            val_result = validate_thresholds(policy=policy, threshold=threshold, inputs=val_batch)
+
+            did_exhaust = val_result.did_exhaust
+            final_threshold = threshold
+
+            energy_margin += 1
 
         threshold_map[policy_name][encoding][str(collection_rate)] = threshold
 
