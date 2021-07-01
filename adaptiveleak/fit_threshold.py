@@ -132,7 +132,7 @@ def fit(policy: BudgetWrappedPolicy,
     return best_threshold
 
 
-def validate_thresholds(policy: BudgetWrappedPolicy, inputs: np.ndarray, threshold: float) -> BatchResult:
+def validate_thresholds(policy: BudgetWrappedPolicy, inputs: np.ndarray, threshold: float, energy_margin: float) -> BatchResult:
     """
     Validates the policy and thresholds on a set of held-out inputs.
     """
@@ -140,7 +140,7 @@ def validate_thresholds(policy: BudgetWrappedPolicy, inputs: np.ndarray, thresho
     policy._threshold = threshold
 
     # Run the policy on the given batch
-    val_result = execute_on_batch(policy=policy, batch=inputs, energy_margin=0)
+    val_result = execute_on_batch(policy=policy, batch=inputs, energy_margin=energy_margin)
 
     return val_result
 
@@ -229,8 +229,12 @@ if __name__ == '__main__':
             else:
                 val_batch_idx = val_indices
 
+            val_margin = energy_margin * 0.5
             val_batch = val_inputs[val_batch_idx]
-            val_result = validate_thresholds(policy=policy, threshold=threshold, inputs=val_batch)
+            val_result = validate_thresholds(policy=policy,
+                                             threshold=threshold,
+                                             inputs=val_batch,
+                                             energy_margin=val_margin)
 
             did_exhaust = val_result.did_exhaust
             final_threshold = threshold
