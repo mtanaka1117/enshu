@@ -164,6 +164,7 @@ class AdaptivePolicy(Policy):
                  width: int,
                  seq_length: int,
                  num_features: int,
+                 min_skip: int,
                  max_skip: int,
                  encryption_mode: EncryptionMode,
                  encoding_mode: EncodingMode,
@@ -176,12 +177,26 @@ class AdaptivePolicy(Policy):
                          encryption_mode=encryption_mode,
                          encoding_mode=encoding_mode,
                          should_compress=should_compress)
+        assert min_skip >= 0, 'Must provide a non-negative minimum skip value'
+
         # Variables used to track the adaptive sampling policy
         self._max_skip = int(1.0 / collection_rate) + max_skip
+        self._min_skip = min_skip if collection_rate < (1.0 / (min_skip + 1)) else 0
+
+        assert self._max_skip > self._min_skip, 'Must have a max skip > min_skip'
+
         self._current_skip = 0
         self._sample_skip = 0
 
         self._threshold = threshold
+
+    @property
+    def max_skip(self) -> int:
+        return self._max_skip
+
+    @property
+    def min_skip(self) -> int:
+        return self._min_skip
 
     @property
     def threshold(self) -> float:
@@ -299,7 +314,6 @@ class AdaptiveHeuristic(AdaptivePolicy):
     def policy_type(self) -> PolicyType:
         return PolicyType.ADAPTIVE_HEURISTIC
 
-
     def should_collect(self, seq_idx: int) -> bool:
         if self._sample_skip > 0:
             self._sample_skip -= 1
@@ -315,9 +329,9 @@ class AdaptiveHeuristic(AdaptivePolicy):
         self._estimate = measurement
 
         if diff >= self.threshold:
-            self._current_skip = 0
+            self._current_skip = self.min_skip
         else:
-            self._current_skip = min(self._current_skip + 1, self._max_skip)
+            self._current_skip = min(self._current_skip + 1, self.max_skip)
 
         self._sample_skip = self._current_skip
 
@@ -332,6 +346,7 @@ class AdaptiveLiteSense(AdaptivePolicy):
                  seq_length: int,
                  num_features: int,
                  max_skip: int,
+                 min_skip: int,
                  encryption_mode: EncryptionMode,
                  encoding_mode: EncodingMode,
                  should_compress: bool):
@@ -342,6 +357,7 @@ class AdaptiveLiteSense(AdaptivePolicy):
                          seq_length=seq_length,
                          num_features=num_features,
                          max_skip=max_skip,
+                         min_skip=min_skip,
                          encryption_mode=encryption_mode,
                          encoding_mode=encoding_mode,
                          should_compress=should_compress)
@@ -398,9 +414,9 @@ class AdaptiveDeviation(AdaptiveLiteSense):
         norm = np.sum(self._dev)
 
         if norm > self.threshold:
-            self._current_skip = max(int(self._current_skip / 2), 0)
+            self._current_skip = max(int(self._current_skip / 2), self.min_skip)
         else:
-            self._current_skip = min(self._current_skip + 1, self._max_skip)
+            self._current_skip = min(self._current_skip + 1, self.max_skip)
 
         self._estimate = measurement
         self._sample_skip = 0
@@ -816,6 +832,7 @@ def make_policy(name: str,
     precision = quantize_dict['precision']
     width = quantize_dict['width']
     max_skip = quantize_dict.get('max_skip', 1)
+    min_skip = quantize_dict.get('min_skip', 0)
 
     if name == 'random':
         return RandomPolicy(collection_rate=collection_rate,
@@ -859,7 +876,6 @@ def make_policy(name: str,
             if encoding_name == 'group':
                 threshold = threshold * 1.1
 
-
         if name == 'adaptive_heuristic':
             cls = AdaptiveHeuristic
         elif name == 'adaptive_litesense':
@@ -888,6 +904,7 @@ def make_policy(name: str,
                    seq_length=seq_length,
                    num_features=num_features,
                    max_skip=max_skip,
+                   min_skip=min_skip,
                    encryption_mode=encryption_mode,
                    encoding_mode=EncodingMode[str(kwargs['encoding']).upper()],
                    should_compress=should_compress)
