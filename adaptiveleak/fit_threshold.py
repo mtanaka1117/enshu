@@ -16,7 +16,8 @@ from adaptiveleak.utils.file_utils import iterate_dir, read_json, save_json_gz, 
 
 
 BatchResult = namedtuple('BatchResult', ['mae', 'did_exhaust'])
-VAL_BATCH_SIZE = 1024
+VAL_BATCH_SIZE = 2048
+MAX_ITER = 150  # Prevents any unexpected infinite looping
 THRESHOLD_FACTOR_UPPER = 1.5
 THRESHOLD_FACTOR_LOWER = 0.5
 TOLERANCE = 1e-5
@@ -78,7 +79,8 @@ def fit(policy: BudgetWrappedPolicy,
     if batch_size == len(sample_idx):
         batches_per_trial = 1
 
-    while (abs(upper - lower) > TOLERANCE):
+    iter_count = 0
+    while (iter_count < MAX_ITER) and (abs(upper - lower) > TOLERANCE):
         # Set the current threshold
         current = (upper + lower) / 2
         
@@ -125,6 +127,7 @@ def fit(policy: BudgetWrappedPolicy,
         temp = min(lower, upper)
         upper = max(lower, upper)
         lower = temp
+        iter_count += 1
 
     if should_print:
         print()
@@ -151,7 +154,7 @@ if __name__ == '__main__':
     parser.add_argument('--policy', type=str, required=True)
     parser.add_argument('--collection-rates', type=float, nargs='+', required=True)
     parser.add_argument('--encoding', type=str, required=True, choices=['standard' , 'group'])
-    parser.add_argument('--batch-size', type=int, default=128)
+    parser.add_argument('--batch-size', type=int, default=256)
     parser.add_argument('--batches-per-trial', type=int, default=3)
     parser.add_argument('--should-print', action='store_true')
     args = parser.parse_args()
@@ -182,21 +185,22 @@ if __name__ == '__main__':
     if encoding not in threshold_map[policy_name]:
         threshold_map[policy_name][encoding] = dict()
 
-    # Set the lower threshold based on the model type
-    if policy_name == 'skip_rnn':
-        lower = 0.0
-        upper = 1.0
-    else:
-        lower = -1 * max_threshold
-        upper = max_threshold
-
     # Create parameters for policy validation data splitting
     val_indices = np.arange(val_inputs.shape[0])
     rand = np.random.RandomState(seed=3485)
 
     for collection_rate in args.collection_rates:
-        if args.should_print:
-            print('Starting {0}'.format(collection_rate))
+
+        # Set the lower threshold based on the model type
+        if policy_name == 'skip_rnn':
+            lower = 0.0
+            upper = 1.0
+        else:
+            lower = -1 * max_threshold
+            upper = max_threshold
+
+        # Always log the progress for intermediate tracking
+        print('Starting {0}'.format(collection_rate))
 
         # Create the policy for which to fit thresholds
         policy = BudgetWrappedPolicy(name=policy_name,
