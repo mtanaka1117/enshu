@@ -251,8 +251,9 @@ class AdaptivePolicy(Policy):
 
             # Select the range shifts
             shifts = select_range_shifts_array(measurements=flattened,
-                                               width=min_width,
-                                               precision=min_width - self.non_fractional,
+                                               old_width=self.width,
+                                               old_precision=self.precision,
+                                               new_width=min_width,
                                                num_range_bits=SHIFT_BITS)
 
             # Merge the shift groups
@@ -315,7 +316,7 @@ class AdaptiveHeuristic(AdaptivePolicy):
         return PolicyType.ADAPTIVE_HEURISTIC
 
     def should_collect(self, seq_idx: int) -> bool:
-        if self._sample_skip > 0:
+        if (self._sample_skip > 0):
             self._sample_skip -= 1
             return False
 
