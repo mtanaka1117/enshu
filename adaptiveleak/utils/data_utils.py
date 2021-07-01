@@ -10,7 +10,7 @@ from adaptiveleak.utils.encryption import AES_BLOCK_SIZE, EncryptionMode, CHACHA
 
 
 MAX_ITER = 100
-ERROR_TOL = SMALL_NUMBER
+ERROR_TOL = 0
 
 
 def apply_dropout(mat: np.ndarray, drop_rate: float, rand: np.random.RandomState) -> np.ndarray:
@@ -183,28 +183,47 @@ def array_to_float_shifted(arr: Union[np.ndarray, List[int]], precision: int, sh
     return recovered
 
 
-def select_range_shift(measurement: float, width: int, precision: int, num_range_bits: int, prev_shift: int) -> int:
+def select_range_shift(measurement: int, old_width: int, old_precision: int, new_width: int, num_range_bits: int, prev_shift: int) -> int:
     """
     Selects the lowest-error range multiplier.
 
     Args:
-        measurement: The measurement feature
-        width: The width of each feature
-        precision: The precision of each feature
+        measurement: The fixed point measurement feature
+        old_width: The standard width of each feature
+        old_precision: The existing precision of each feature
+        new_width: The quantized width of each feature (this is how we will express values)
         num_range_bits: The number of bits for the range exponent
     Returns:
         The range exponent in [-2^{range_bits - 1}, 2^{range_bits - 1}]
     """
     assert num_range_bits >= 1, 'Number of range bits must be non-negative'
-    assert width >= 1, 'Number of width bits must be non-negative'
+    assert (old_width >= 1) and (new_width >= 1), 'Number of width bits must be non-negative'
 
-    abs_value = np.abs(measurement)
-    non_fractional = width - precision
+    # Create the constants necessary for selecting the range shift
+    non_fractional = old_width - old_precision
+    width_mask = (1 << (new_width - 1)) - 1  # Masks out all non-data bits (including the sign bit)
+    recovered_mask = 0x7FFF
+
+    # Get the new precision based on the (fixed) number of non-fractional bits 
+    #new_precision = new_width - non_fractional
+    base_shift = old_width - new_width
+
+    # Get the absolute value of the given fixed point measurement. The routine
+    # performs all operations on positive values for simplicity.
+    abs_value = abs(measurement)
 
     # Try the previous shift first for potential early-exiting with a greedy algorithm
-    shifted = precision - prev_shift
-    quantized = to_fixed_point(abs_value, width=width, precision=shifted)
-    recovered = to_float(quantized, precision=shifted)
+    conversion_shift = base_shift + prev_shift
+
+    if (conversion_shift >= 0):
+        quantized = (abs_value >> conversion_shift) & width_mask
+        recovered = (quantized << conversion_shift)
+    else:
+        conversion_shift *= -1
+        quantized = (abs_value << conversion_shift) & width_mask
+        recovered = (quantized >> conversion_shift)
+
+    recovered &= recovered_mask
 
     prev_error = abs(abs_value - recovered)
 
@@ -222,9 +241,17 @@ def select_range_shift(measurement: float, width: int, precision: int, num_range
         shift = idx - offset
         
         # Convert the value to and from floating point
-        shifted = precision - shift
-        quantized = to_fixed_point(abs_value, width=width, precision=shifted)
-        recovered = to_float(quantized, precision=shifted)
+        conversion_shift = base_shift + shift
+
+        if (conversion_shift >= 0):
+            quantized = (abs_value >> conversion_shift) & width_mask
+            recovered = (quantized << conversion_shift)
+        else:
+            conversion_shift *= -1
+            quantized = (abs_value << conversion_shift) & width_mask
+            recovered = (quantized >> conversion_shift)
+
+        recovered &= recovered_mask
 
         # Compute the error and save the best result
         error = abs(abs_value - recovered)
@@ -232,7 +259,8 @@ def select_range_shift(measurement: float, width: int, precision: int, num_range
         if (error < best_error):
             best_shift = shift
             best_error = error
-        elif (error > last_error):
+
+        if (error > last_error) or (best_error == 0):
             break  # Stop once the error starts to increase
 
         last_error = error
@@ -243,32 +271,41 @@ def select_range_shift(measurement: float, width: int, precision: int, num_range
     return best_shift
 
 
-def select_range_shifts_array(measurements: np.ndarray, width: int, precision: int, num_range_bits: int) -> np.ndarray:
+def select_range_shifts_array(measurements: np.ndarray, old_width: int, old_precision: int, new_width: int, num_range_bits: int) -> np.ndarray:
     """
     Selects the lowest-error range multiplier.
 
     Args:
         measurements: A 1d array of measurement features
-        width: The width of each feature
+        old_width: The standard width of existing features
+        old_precision: The precision of existing features
+        new_width: The new width of each feature (this is how values will be encoded)
         precision: The precision of each feature
         num_range_bits: The number of bits for the range exponent
     Returns:
         The range exponent in [-2^{range_bits - 1}, 2^{range_bits - 1}]
     """
     assert num_range_bits >= 1, 'Number of range bits must be non-negative'
-    assert width >= 1, 'Number of width bits must be non-negative'
+    assert (old_width >= 1) and (new_width >= 1), 'Number of width bits must be non-negative'
     assert len(measurements.shape) == 1, 'Must provide a 1d numpy array'
+
+    # Convert all values to fixed point
+    fp_values = array_to_fp(measurements, width=old_width, precision=old_precision)
 
     num_values = measurements.shape[0]
     best_shifts = np.empty(num_values)
     prev_shift = 0
 
+    elapsed = []
+
     for idx in range(num_values):
-        shift = select_range_shift(measurement=measurements[idx],
-                                   width=width,
-                                   precision=precision,
+        shift = select_range_shift(measurement=fp_values[idx],
+                                   old_width=old_width,
+                                   old_precision=old_precision,
+                                   new_width=new_width,
                                    num_range_bits=num_range_bits,
                                    prev_shift=prev_shift)
+
         best_shifts[idx] = int(shift)
         prev_shift = shift
 

@@ -227,74 +227,244 @@ class TestQuantization(unittest.TestCase):
 
 class TestRangeShift(unittest.TestCase):
 
+    def test_range_single_int(self):
+        old_width = 16
+        old_precision = 7
+        non_fractional = old_width - old_precision
+
+        new_width = 8
+        num_range_bits = 3
+
+        value = (1 << (old_precision + 1))
+        shift = data_utils.select_range_shift(measurement=value,
+                                              old_width=old_width,
+                                              old_precision=old_precision,
+                                              new_width=new_width,
+                                              num_range_bits=num_range_bits,
+                                              prev_shift=1)
+        self.assertEqual(shift, -4)
+
+        float_value = 2.0
+
+        new_precision = (new_width - non_fractional) - shift
+        quantized = data_utils.to_fixed_point(float_value, width=new_width, precision=new_precision)
+        recovered = data_utils.to_float(quantized, precision=new_precision)
+
+        self.assertEqual(recovered, float_value)
+
+    def test_range_single_large(self):
+        old_width = 16
+        old_precision = 7
+        non_fractional = old_width - old_precision
+
+        new_width = 8
+        num_range_bits = 3
+
+        value = 0x4080
+
+        shift = data_utils.select_range_shift(measurement=value,
+                                              old_width=old_width,
+                                              old_precision=old_precision,
+                                              new_width=new_width,
+                                              num_range_bits=num_range_bits,
+                                              prev_shift=1)
+        self.assertEqual(shift, 1)
+
+        float_value = 129.0
+
+        new_precision = (new_width - non_fractional) - shift
+        quantized = data_utils.to_fixed_point(float_value, width=new_width, precision=new_precision)
+        recovered = data_utils.to_float(quantized, precision=new_precision)
+
+        self.assertEqual(recovered, 128.0)
+    
+    def test_range_single_large_exact(self):
+        old_width = 16
+        old_precision = 7
+        non_fractional = old_width - old_precision
+
+        new_width = 8
+        num_range_bits = 3
+
+        value = 0x4100
+
+        shift = data_utils.select_range_shift(measurement=value,
+                                              old_width=old_width,
+                                              old_precision=old_precision,
+                                              new_width=new_width,
+                                              num_range_bits=num_range_bits,
+                                              prev_shift=1)
+        self.assertEqual(shift, 0)
+
+        float_value = data_utils.to_float(value, precision=old_precision)
+
+        new_precision = (new_width - non_fractional) - shift
+        quantized = data_utils.to_fixed_point(float_value, width=new_width, precision=new_precision)
+        recovered = data_utils.to_float(quantized, precision=new_precision)
+
+        self.assertEqual(recovered, float_value)
+
+    def test_range_single_frac(self):
+        old_width = 16
+        old_precision = 7
+        non_fractional = old_width - old_precision
+
+        new_width = 8
+        num_range_bits = 3
+
+        value = 0x0011
+
+        shift = data_utils.select_range_shift(measurement=value,
+                                              old_width=old_width,
+                                              old_precision=old_precision,
+                                              new_width=new_width,
+                                              num_range_bits=num_range_bits,
+                                              prev_shift=1)
+        self.assertEqual(shift, -4)
+
+        float_value = data_utils.to_float(value, precision=old_precision)
+
+        new_precision = (new_width - non_fractional) - shift
+        quantized = data_utils.to_fixed_point(float_value, width=new_width, precision=new_precision)
+        recovered = data_utils.to_float(quantized, precision=new_precision)
+
+        self.assertEqual(recovered, 0.125)
+
     def test_range_arr_integers(self):
         measurements = np.array([1.0, 2.0, -3.0, 4.0, -1.0, 3.0])
-        width = 8
-        precision = 7
+        old_width = 16
+        old_precision = 7
+        non_fractional = old_width - old_precision
+
+        new_width = 8
         num_range_bits = 3
 
         shifts = data_utils.select_range_shifts_array(measurements=measurements,
-                                                      width=width,
-                                                      precision=precision,
+                                                      old_width=old_width,
+                                                      old_precision=old_precision,
+                                                      new_width=new_width,
                                                       num_range_bits=num_range_bits)
         shifts_list = shifts.tolist()
 
-        self.assertEqual(shifts_list, [1, 2, 2, 3, 1, 2])
+        self.assertEqual(shifts_list, [-4, -4, -4, -4, -4, -4])
+
+        new_precision = new_width - non_fractional
+
+        quantized = data_utils.array_to_fp_shifted(measurements, width=new_width, precision=new_precision, shifts=shifts)
+        recovered = data_utils.array_to_float_shifted(quantized, precision=new_precision, shifts=shifts)
+
+        recovered_list = recovered.tolist()
+
+        self.assertEqual(recovered_list, [1.0, 2.0, -3.0, 4.0, -1.0, 3.0])
 
     def test_range_arr_mixed_one(self):
-        measurements = np.array([1.5, 2.0, -3.5, 4.75, -1.0, 0.0625])
-        width = 5
-        precision = 3
+        measurements = np.array([1.75, 2.0, -3.5, 4.75, -1.0, 0.1875])
+        old_width = 8
+        old_precision = 4
+        non_fractional = old_width - old_precision
+
+        new_width = 5
         num_range_bits = 3
 
         shifts = data_utils.select_range_shifts_array(measurements=measurements,
-                                                      width=width,
-                                                      precision=precision,
+                                                      old_width=old_width,
+                                                      old_precision=old_precision,
+                                                      new_width=new_width,
                                                       num_range_bits=num_range_bits)
         shifts_list = shifts.tolist()
+        
+        self.assertEqual(shifts_list, [-2, -1, -1, 0, 0, -4])
 
-        self.assertEqual(shifts_list, [0, 1, 1, 2, 0, -4])
+        new_precision = new_width - non_fractional
+        
+        quantized = data_utils.array_to_fp_shifted(measurements, width=new_width, precision=new_precision, shifts=shifts)
+        recovered = data_utils.array_to_float_shifted(quantized, precision=new_precision, shifts=shifts)
+
+        recovered_list = recovered.tolist()
+        
+        self.assertEqual(recovered_list, [1.75, 2.0, -3.5, 5.0, -1.0, 0.1875])
 
     def test_range_arr_mixed_two(self):
         measurements = np.array([1.5, 2.05, -3.5, 1.03125])
-        width = 7
-        precision = 4
+        old_width = 10
+        old_precision = 7
+        non_fractional = old_width - old_precision
+
+        new_width = 7
         num_range_bits = 4
 
         shifts = data_utils.select_range_shifts_array(measurements=measurements,
-                                                      width=width,
-                                                      precision=precision,
+                                                      old_width=old_width,
+                                                      old_precision=old_precision,
+                                                      new_width=new_width,
                                                       num_range_bits=num_range_bits)
         shifts_list = shifts.tolist()
 
-        self.assertEqual(shifts_list, [-1, 0, 0, -1])
+        self.assertEqual(shifts_list, [0, 0, 0, -1])
+
+        new_precision = new_width - non_fractional
+        
+        quantized = data_utils.array_to_fp_shifted(measurements, width=new_width, precision=new_precision, shifts=shifts)
+        recovered = data_utils.array_to_float_shifted(quantized, precision=new_precision, shifts=shifts)
+
+        recovered_list = recovered.tolist()
+        
+        self.assertEqual(recovered_list, [1.5, 2.0625, -3.5, 1.03125])
 
     def test_range_arr_border(self):
         measurements = np.array([1.75, 1.0])
-        width = 4
-        precision = 2
+
+        old_width = 6
+        old_precision = 4
+        non_fractional = old_width - old_precision
+
+        new_width = 4
         num_range_bits = 2
 
         shifts = data_utils.select_range_shifts_array(measurements=measurements,
-                                                      width=width,
-                                                      precision=precision,
+                                                      old_width=old_width,
+                                                      old_precision=old_precision,
+                                                      new_width=new_width,
                                                       num_range_bits=num_range_bits)
         shifts_list = shifts.tolist()
         self.assertEqual(shifts_list, [0, 0])
 
+        new_precision = new_width - non_fractional
+        
+        quantized = data_utils.array_to_fp_shifted(measurements, width=new_width, precision=new_precision, shifts=shifts)
+        recovered = data_utils.array_to_float_shifted(quantized, precision=new_precision, shifts=shifts)
+
+        recovered_list = recovered.tolist()
+        
+        self.assertEqual(recovered_list, [1.75, 1.0])
+
     def test_range_larger_integers(self):
-        measurements = np.array([65.0, 63.0, 63.0, 425.0, 425.0, 425.0])
-        width = 13
+        measurements = np.array([65.0, 63.0, 64.0, 8192.0, 9216.0, 8192.0])
+       
+        old_width = 16
+        old_precision = 0
+        non_fractional = old_width - old_precision
+        
+        new_width = 13
         num_range_bits = 3
-        precision = 0
 
         shifts = data_utils.select_range_shifts_array(measurements=measurements,
-                                                      width=width,
-                                                      precision=precision,
+                                                      old_width=old_width,
+                                                      old_precision=old_precision,
+                                                      new_width=new_width,
                                                       num_range_bits=num_range_bits)
 
         shifts_list = shifts.tolist()
-        self.assertEqual(shifts_list, [-4, -4, -4, -3, -3, -3])
+        self.assertEqual(shifts_list, [-4, -4, -4, -1, -1, -1])
+
+        new_precision = new_width - non_fractional
+
+        quantized = data_utils.array_to_fp_shifted(measurements, width=new_width, precision=new_precision, shifts=shifts)
+        recovered = data_utils.array_to_float_shifted(quantized, precision=new_precision, shifts=shifts)
+
+        recovered_list = recovered.tolist()
+        
+        self.assertEqual(recovered_list, measurements.tolist())
 
 
 class TestExtrapolation(unittest.TestCase):
