@@ -18,6 +18,8 @@ from adaptiveleak.utils.file_utils import iterate_dir, read_json, save_json_gz, 
 BatchResult = namedtuple('BatchResult', ['mae', 'did_exhaust'])
 VAL_BATCH_SIZE = 2048
 MAX_ITER = 150  # Prevents any unexpected infinite looping
+MAX_MARGIN = 15
+
 THRESHOLD_FACTOR_UPPER = 1.5
 THRESHOLD_FACTOR_LOWER = 0.5
 TOLERANCE = 1e-5
@@ -213,10 +215,10 @@ if __name__ == '__main__':
                                      should_compress=False)
 
         final_threshold = None
-        energy_margin = 1
+        energy_margin = 3
         did_exhaust = True
 
-        while (did_exhaust):
+        while (did_exhaust) and (energy_margin < MAX_MARGIN):
             # Fit the policy using the given rate and energy margin
             threshold = fit(policy=policy,
                             inputs=inputs,
