@@ -49,7 +49,6 @@ int8_t get_range_shift(FixedPoint value, uint8_t currentPrecision, uint8_t newWi
         return prevShift;
     }
 
-    volatile FixedPoint lastError = INT16_MAX;
     volatile FixedPoint bestError = prevError;
     volatile int8_t bestShift = prevShift;
 
@@ -79,11 +78,11 @@ int8_t get_range_shift(FixedPoint value, uint8_t currentPrecision, uint8_t newWi
         if (error <= bestError) {
             bestError = error;
             bestShift = shift;
-        } else if (error >= lastError) {
-            break;
         }
-
-        lastError = error;
+        
+        if (bestError == 0) {
+            break;  // Stop if we ever read zero error (can't do any better)
+        }
     }
 
     if (prevError <= bestError) {
@@ -187,7 +186,7 @@ void create_union_find(struct ShiftGroup *unionFind, uint8_t *leftParents, uint8
     for (groupIdx = 0; groupIdx < numGroups - 1; groupIdx++) {
         nextIdx = groupIdx + 1;
 
-        shiftDiff = fp_abs(shifts[groupIdx] - shifts[nextIdx]);
+        shiftDiff = abs8(shifts[groupIdx] - shifts[nextIdx]) << 1;
         score = (counts[groupIdx] + counts[nextIdx] + shiftDiff) * (shiftDiff > 0);
 
         finalIdx = numToMerge - 1;

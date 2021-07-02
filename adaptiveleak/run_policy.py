@@ -25,7 +25,7 @@ if __name__ == '__main__':
     parser.add_argument('--max-num-samples', type=int)
     args = parser.parse_args()
 
-    fold = 'test'
+    fold = 'validation'
 
     data_file = os.path.join('datasets', args.dataset, fold, 'data.h5')
     with h5py.File(data_file, 'r') as fin:
@@ -74,7 +74,7 @@ if __name__ == '__main__':
         # Run the policy
         policy_result = run_policy(policy=policy,
                                    sequence=sequence,
-                                   should_enforce_budget=True)
+                                   should_enforce_budget=False)
         policy.step(seq_idx=idx, count=policy_result.num_collected)
 
         # Decode the sequence (accounts for numerical errors)

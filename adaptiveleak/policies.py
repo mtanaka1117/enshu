@@ -8,10 +8,10 @@ from typing import Tuple, List, Dict, Any, Optional
 
 from adaptiveleak.energy_systems import EnergyUnit, convert_rate_to_energy
 from adaptiveleak.utils.constants import BITS_PER_BYTE, MIN_WIDTH, SMALL_NUMBER, MAX_WIDTH, SHIFT_BITS, MAX_SHIFT_GROUPS
-from adaptiveleak.utils.constants import MIN_SHIFT_GROUPS, PERIOD, LENGTH_BYTES
-from adaptiveleak.utils.data_utils import get_group_widths, get_num_groups, calculate_bytes, pad_to_length, sigmoid
+from adaptiveleak.utils.constants import MIN_SHIFT_GROUPS, PERIOD, LENGTH_BYTES, BT_FRAME_SIZE
+from adaptiveleak.utils.data_utils import get_group_widths, get_num_groups, calculate_bytes, pad_to_length, sigmoid, truncate_to_block
 from adaptiveleak.utils.data_utils import prune_sequence, get_max_collected, calculate_grouped_bytes, linear_extrapolate
-from adaptiveleak.utils.data_utils import balance_group_size, set_widths, select_range_shifts_array, num_bits_for_value
+from adaptiveleak.utils.data_utils import set_widths, select_range_shifts_array, num_bits_for_value
 from adaptiveleak.utils.shifting import merge_shift_groups
 from adaptiveleak.utils.message import encode_standard_measurements, decode_standard_measurements
 from adaptiveleak.utils.message import encode_stable_measurements, decode_stable_measurements
@@ -218,6 +218,10 @@ class AdaptivePolicy(Policy):
                                            num_features=self.num_features,
                                            seq_length=self.seq_length,
                                            encryption_mode=self.encryption_mode)
+
+            # Truncate target to the next smallest wireless frame. This 'compression' addresses
+            # any excess energy required by the encoding routine
+            target_bytes = truncate_to_block(target_bytes, block_size=BT_FRAME_SIZE) - 3
 
             # Conservatively Estimate the meta-data bytes associated with stable encoding
             size_width = num_bits_for_value(len(collected_indices))
@@ -443,6 +447,7 @@ class SkipRNN(AdaptivePolicy):
                          seq_length=seq_length,
                          num_features=num_features,
                          max_skip=0,
+                         min_skip=0,
                          encryption_mode=encryption_mode,
                          encoding_mode=encoding_mode,
                          should_compress=should_compress)
@@ -873,9 +878,9 @@ def make_policy(name: str,
                 threshold = thresholds[name][encoding_name][rate_str]
                 did_find_threshold = True
 
-            encoding_name = str(kwargs['encoding']).lower()
-            if encoding_name == 'group':
-                threshold = threshold * 1.1
+            #encoding_name = str(kwargs['encoding']).lower()
+            #if encoding_name == 'group':
+            #    threshold = threshold * 1.1
 
         if name == 'adaptive_heuristic':
             cls = AdaptiveHeuristic

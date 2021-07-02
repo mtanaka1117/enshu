@@ -161,313 +161,6 @@ class TestByte(unittest.TestCase):
         self.assertEqual(indices[1], collected_indices[1])
 
 
-class TestGroups(unittest.TestCase):
-
-    def test_encode_decode_two_groups(self):
-        measurements = np.array([[0.25, -0.125, 0.75], [-0.125, 0.625, -0.5]])
-        non_fractional = 2
-        seq_length = 8
-        collected_indices = [0, 1]
-        widths = [6, 5]
-        group_size = 3
-        max_group_size = 4
-
-        encoded = message.encode_grouped_measurements(measurements=measurements,
-                                                      collected_indices=collected_indices,
-                                                      seq_length=seq_length,
-                                                      widths=widths,
-                                                      non_fractional=non_fractional,
-                                                      group_size=group_size)
-
-        decoded, indices, _ = message.decode_grouped_measurements(encoded=encoded,
-                                                                  seq_length=seq_length,
-                                                                  num_features=measurements.shape[1],
-                                                                  non_fractional=non_fractional,
-                                                                  max_group_size=max_group_size)
-
-        # Check recovered values
-        error = mean_absolute_error(y_true=measurements, y_pred=decoded)
-        self.assertLess(error, 0.1)
-
-        # Check indices
-        self.assertEqual(len(indices), 2)
-        self.assertEqual(indices[0], collected_indices[0])
-        self.assertEqual(indices[1], collected_indices[1])
-
-    def test_encode_decode_two_groups_truncated(self):
-        measurements = np.array([[0.25, -0.125, 0.75], [-0.125, 0.625, -0.5]])
-        non_fractional = 2
-        seq_length = 8
-        collected_indices = [0, 5]
-        widths = [6, 4]
-        group_size = 3
-        max_group_size = 4
-
-        encoded = message.encode_grouped_measurements(measurements=measurements,
-                                                      collected_indices=collected_indices,
-                                                      seq_length=seq_length,
-                                                      widths=widths,
-                                                      non_fractional=non_fractional,
-                                                      group_size=group_size)
-
-        decoded, indices, _ = message.decode_grouped_measurements(encoded=encoded,
-                                                                  seq_length=seq_length,
-                                                                  num_features=measurements.shape[1],
-                                                                  non_fractional=non_fractional,
-                                                                  max_group_size=max_group_size)
-
-
-        # Check recovered values
-        error = mean_absolute_error(y_true=measurements, y_pred=decoded)
-        self.assertLess(error, 0.022)
-
-        # Check indices
-        self.assertEqual(len(indices), 2)
-        self.assertEqual(indices[0], collected_indices[0])
-        self.assertEqual(indices[1], collected_indices[1])
-
-    def test_encode_decode_two_groups_truncated_signed(self):
-        measurements = np.array([[0.25, -0.125, -0.75], [0.125, -0.625, -0.5]])
-        non_fractional = 2
-        seq_length = 8
-        collected_indices = [0, 5]
-        widths = [6, 4]
-        group_size = 3
-        max_group_size = 4
-
-        encoded = message.encode_grouped_measurements(measurements=measurements,
-                                                      collected_indices=collected_indices,
-                                                      seq_length=seq_length,
-                                                      widths=widths,
-                                                      non_fractional=non_fractional,
-                                                      group_size=group_size)
-
-        decoded, indices, _ = message.decode_grouped_measurements(encoded=encoded,
-                                                                  seq_length=seq_length,
-                                                                  num_features=measurements.shape[1],
-                                                                  non_fractional=non_fractional,
-                                                                  max_group_size=max_group_size)
-
-
-        # Check recovered values
-        error = mean_absolute_error(y_true=measurements, y_pred=decoded)
-        self.assertLess(error, 0.002)
-
-        # Check indices
-        self.assertEqual(len(indices), 2)
-        self.assertEqual(indices[0], collected_indices[0])
-        self.assertEqual(indices[1], collected_indices[1])
-
-    def test_encode_decode_three_groups(self):
-        measurements = np.array([[0.25, -0.125, 0.75], [-0.125, 0.625, -0.5]])
-        non_fractional = 2
-        seq_length = 8
-        collected_indices = [0, 7]
-        widths = [6, 5, 5]
-        group_size = 2
-        max_group_size = 2
-
-        encoded = message.encode_grouped_measurements(measurements=measurements,
-                                                      collected_indices=collected_indices,
-                                                      seq_length=seq_length,
-                                                      widths=widths,
-                                                      non_fractional=non_fractional,
-                                                      group_size=group_size)
-
-        decoded, indices, _ = message.decode_grouped_measurements(encoded=encoded,
-                                                                  seq_length=seq_length,
-                                                                  num_features=measurements.shape[1],
-                                                                  non_fractional=non_fractional,
-                                                                  max_group_size=max_group_size)
-
-        # Check recovered values
-        error = mean_absolute_error(y_true=measurements, y_pred=decoded)
-        self.assertLess(error, 0.012)
-
-        # Check indices
-        self.assertEqual(len(indices), 2)
-        self.assertEqual(indices[0], collected_indices[0])
-        self.assertEqual(indices[1], collected_indices[1])
-
-    def test_encode_decode_padded(self):
-        measurements = np.array([[0.25, -0.125, 0.75], [-0.125, 0.625, -0.5]])
-        non_fractional = 2
-        seq_length = 8
-        collected_indices = [0, 7]
-        widths = [6, 5, 5]
-        group_size = 2
-        max_group_size = 2
-
-        encoded = message.encode_grouped_measurements(measurements=measurements,
-                                                      collected_indices=collected_indices,
-                                                      seq_length=seq_length,
-                                                      widths=widths,
-                                                      non_fractional=non_fractional,
-                                                      group_size=group_size)
-
-        padded = pad_to_length(encoded, length=len(encoded) + 6)
-
-        decoded, indices, _ = message.decode_grouped_measurements(encoded=padded,
-                                                                  seq_length=seq_length,
-                                                                  num_features=measurements.shape[1],
-                                                                  non_fractional=non_fractional,
-                                                                  max_group_size=max_group_size)
-
-        # Check recovered values
-        error = mean_absolute_error(y_true=measurements, y_pred=decoded)
-        self.assertLess(error, 0.012)
-
-        # Check indices
-        self.assertEqual(len(indices), 2)
-        self.assertEqual(indices[0], collected_indices[0])
-        self.assertEqual(indices[1], collected_indices[1])
-
-    def test_encode_decode_large(self):
-        # Load the data
-        with h5py.File('../../datasets/uci_har/train/data.h5', 'r') as fin:
-            inputs = fin['inputs'][0]  # [50, 6]
-
-        widths = [9, 8, 8]
-        seq_length = inputs.shape[0]
-        collected_indices = list(range(seq_length))
-        non_fractional = 2
-        group_size = 100
-        max_group_size = 125
-
-        encoded = message.encode_grouped_measurements(measurements=inputs,
-                                                      collected_indices=collected_indices,
-                                                      seq_length=seq_length,
-                                                      widths=widths,
-                                                      non_fractional=non_fractional,
-                                                      group_size=group_size)
-
-        decoded, indices, _ = message.decode_grouped_measurements(encoded=encoded,
-                                                                  seq_length=seq_length,
-                                                                  num_features=inputs.shape[1],
-                                                                  non_fractional=non_fractional,
-                                                                  max_group_size=max_group_size)
-
-        error = mean_absolute_error(y_true=inputs, y_pred=decoded)
-        self.assertLessEqual(error, 0.01)
-
-    def test_encode_decode_large_two(self):
-        # Load the data
-        with h5py.File('../../datasets/uci_har/train/data.h5', 'r') as fin:
-            inputs = fin['inputs'][495]  # [50, 6]
-
-        widths = [9, 8, 8]
-        seq_length = inputs.shape[0]
-        collected_indices = list(range(seq_length))
-        non_fractional = 2
-        group_size = 100
-        max_group_size = 125
-
-        encoded = message.encode_grouped_measurements(measurements=inputs,
-                                                      collected_indices=collected_indices,
-                                                      seq_length=seq_length,
-                                                      widths=widths,
-                                                      non_fractional=non_fractional,
-                                                      group_size=group_size)
-
-        decoded, indices, _ = message.decode_grouped_measurements(encoded=encoded,
-                                                                  seq_length=seq_length,
-                                                                  num_features=inputs.shape[1],
-                                                                  non_fractional=non_fractional,
-                                                                  max_group_size=max_group_size)
-
-        error = np.average(np.sum(np.square(decoded - inputs), axis=-1))
-        self.assertLessEqual(error, 0.01)
-
-    def test_encode_decode_large_group(self):
-        # Load the data
-        with h5py.File('../../datasets/uci_har/train/data.h5', 'r') as fin:
-            inputs = fin['inputs'][495]  # [50, 6]
-
-        widths = [9, 8]
-        seq_length = inputs.shape[0]
-        collected_indices = list(range(seq_length))
-        non_fractional = 2
-        group_size = 150
-        max_group_size = 200
-
-        encoded = message.encode_grouped_measurements(measurements=inputs,
-                                                      collected_indices=collected_indices,
-                                                      seq_length=seq_length,
-                                                      widths=widths,
-                                                      non_fractional=non_fractional,
-                                                      group_size=group_size)
-
-        decoded, indices, _ = message.decode_grouped_measurements(encoded=encoded,
-                                                                  seq_length=seq_length,
-                                                                  num_features=inputs.shape[1],
-                                                                  non_fractional=non_fractional,
-                                                                  max_group_size=max_group_size)
-
-        error = mean_absolute_error(y_true=inputs, y_pred=decoded)
-        self.assertLessEqual(error, 0.01)
-
-    def test_encode_decode_large_tight(self):
-        # Load the data
-        with h5py.File('../../datasets/uci_har/train/data.h5', 'r') as fin:
-            inputs = fin['inputs'][495]  # [50, 6]
-
-        widths = [4, 4]
-        seq_length = inputs.shape[0]
-        collected_indices = list(range(seq_length))
-        non_fractional = 2
-        group_size = 150
-        max_group_size = 200
-
-        groups = create_groups(inputs, max_num_groups=10, max_group_size=200)
-
-        encoded = message.encode_grouped_measurements(measurements=inputs,
-                                                      collected_indices=collected_indices,
-                                                      seq_length=seq_length,
-                                                      widths=widths,
-                                                      non_fractional=non_fractional,
-                                                      group_size=group_size)
-
-        decoded, indices, _ = message.decode_grouped_measurements(encoded=encoded,
-                                                                  seq_length=seq_length,
-                                                                  num_features=inputs.shape[1],
-                                                                  non_fractional=non_fractional,
-                                                                  max_group_size=max_group_size)
-
-        error = mean_absolute_error(y_true=inputs, y_pred=decoded)
-
-        self.assertLessEqual(error, 0.15)
-
-    def test_encode_decode_large_padded(self):
-        # Load the data
-        with h5py.File('../../datasets/uci_har/train/data.h5', 'r') as fin:
-            inputs = fin['inputs'][0]  # [50, 6]
-
-        widths = [9, 8, 8]
-        seq_length = inputs.shape[0]
-        collected_indices = list(range(seq_length))
-        non_fractional = 2
-        group_size = 100
-        max_group_size = 125
-
-        encoded = message.encode_grouped_measurements(measurements=inputs,
-                                                      collected_indices=collected_indices,
-                                                      seq_length=seq_length,
-                                                      widths=widths,
-                                                      non_fractional=non_fractional,
-                                                      group_size=group_size)
-
-        padded = pad_to_length(encoded, len(encoded) + 6)
-
-        decoded, indices, _ = message.decode_grouped_measurements(encoded=padded,
-                                                                  seq_length=seq_length,
-                                                                  num_features=inputs.shape[1],
-                                                                  non_fractional=non_fractional,
-                                                                  max_group_size=max_group_size)
-
-        error = mean_absolute_error(y_true=inputs, y_pred=decoded)
-        self.assertLessEqual(error, 0.01)
-
-
 class TestGroupWidths(unittest.TestCase):
 
     def test_encode_decode_widths(self):
@@ -663,15 +356,15 @@ class TestStable(unittest.TestCase):
         width = 8
         seq_length = inputs.shape[0]
         collected_indices = list(range(seq_length))
-        non_fractional = 2
+        non_fractional = 3
 
         flattened = inputs.T.reshape(-1)
 
         # Set the shifts
-        precision = width - non_fractional
         shifts = select_range_shifts_array(measurements=flattened,
-                                           width=width,
-                                           precision=precision,
+                                           old_width=16,
+                                           old_precision=13,
+                                           new_width=width,
                                            num_range_bits=3)
 
         merged_shifts, sizes = merge_shift_groups(values=flattened,
@@ -708,15 +401,15 @@ class TestStable(unittest.TestCase):
         width = 8
         seq_length = inputs.shape[0]
         collected_indices = list(range(seq_length))
-        non_fractional = 2
+        non_fractional = 3
 
         flattened = inputs.T.reshape(-1)
 
         # Set the shifts
-        precision = width - non_fractional
         shifts = select_range_shifts_array(measurements=flattened,
-                                           width=width,
-                                           precision=precision,
+                                           old_width=16,
+                                           old_precision=13,
+                                           new_width=width,
                                            num_range_bits=3)
 
         merged_shifts, sizes = merge_shift_groups(values=flattened,
@@ -753,15 +446,15 @@ class TestStable(unittest.TestCase):
         width = 4
         seq_length = inputs.shape[0]
         collected_indices = list(range(seq_length))
-        non_fractional = 2
+        non_fractional = 3
 
         flattened = inputs.T.reshape(-1)
 
         # Set the shifts
-        precision = width - non_fractional
         shifts = select_range_shifts_array(measurements=flattened,
-                                           width=width,
-                                           precision=precision,
+                                           old_width=16,
+                                           old_precision=13,
+                                           new_width=width,
                                            num_range_bits=3)
 
         merged_shifts, sizes = merge_shift_groups(values=flattened,
@@ -798,15 +491,15 @@ class TestStable(unittest.TestCase):
         width = 8
         seq_length = inputs.shape[0]
         collected_indices = list(range(seq_length))
-        non_fractional = 2
+        non_fractional = 3
 
         flattened = inputs.T.reshape(-1)
 
         # Set the shifts
-        precision = width - non_fractional
         shifts = select_range_shifts_array(measurements=flattened,
-                                           width=width,
-                                           precision=precision,
+                                           old_width=16,
+                                           old_precision=13,
+                                           new_width=width,
                                            num_range_bits=3)
 
         merged_shifts, sizes = merge_shift_groups(values=flattened,

@@ -18,4 +18,6 @@ int8_t max8(int8_t x, int8_t y) {
 }
 
 
-
+int8_t abs8(int8_t x) {
+    return x * ((x > 0) - (x < 0));
+}

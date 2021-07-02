@@ -5,56 +5,7 @@ from Cryptodome.Random import get_random_bytes
 
 from adaptiveleak.utils import data_utils
 from adaptiveleak.utils.encryption import AES_BLOCK_SIZE, encrypt_aes128, EncryptionMode, encrypt
-from adaptiveleak.utils.message import encode_standard_measurements, encode_grouped_measurements
-
-
-class TestNeuralNetwork(unittest.TestCase):
-
-    def test_leaky_relu_quarter(self):
-        array = np.array([-1.0, 1.0, 0.25, 0.0, -0.75, 100.0, -1000.0])
-        result = data_utils.leaky_relu(array, alpha=0.25)
-        expected = np.array([-0.25, 1.0, 0.25, 0.0, -0.1875, 100.0, -250.0])
-
-        self.assertTrue(np.all(np.isclose(result, expected)))
-
-    def test_leaky_relu_half(self):
-        array = np.array([-3.0, -1.0, 0.14, -0.42, 0.0, -100.0, 1000.0])
-        result = data_utils.leaky_relu(array, alpha=0.5)
-        expected = np.array([-1.5, -0.5, 0.14, -0.21, 0.0, -50.0, 1000.0])
-
-        self.assertTrue(np.all(np.isclose(result, expected)))
-
-    def test_softmax_equal(self):
-        array = np.array([0.5, 0.5, 0.5, 0.5, 0.5])
-        result = data_utils.softmax(array, axis=-1)
-        expected = np.array([0.2, 0.2, 0.2, 0.2, 0.2])
-
-        self.assertTrue(np.all(np.isclose(result, expected)))
-
-    def test_softmax_unequal(self):
-        array = np.array([0.28700833, 0.95151288, 0.63029945, -0.61770699, 0.1945032, 0.49076853])
-        result = data_utils.softmax(array, axis=-1)
-        expected = np.array([0.14502396363014, 0.2818580414792, 0.20442274216539, 0.058684971692022, 0.13221030377376, 0.17779997725948])
-        self.assertTrue(np.all(np.isclose(result, expected)))
-
-    def test_softmax_last_axis(self):
-        array = np.array([[0.5, 0.5, 0.5, 0.5, 0.5, 0.5], [0.28700833, 0.95151288, 0.63029945, -0.61770699, 0.1945032, 0.49076853]])
-        result = data_utils.softmax(array, axis=-1)
-
-        one_sixth = 1.0 / 6.0
-        expected = np.array([[one_sixth, one_sixth, one_sixth, one_sixth, one_sixth, one_sixth], [0.14502396363014, 0.2818580414792, 0.20442274216539, 0.058684971692022, 0.13221030377376, 0.17779997725948]])
-
-        self.assertTrue(np.all(np.isclose(result, expected)))
-        
-    def test_softmax_first_axis(self):
-        array = np.array([[0.5, 0.5, 0.5, 0.5, 0.5, 0.5], [0.28700833, 0.95151288, 0.63029945, -0.61770699, 0.1945032, 0.49076853]])
-        result = data_utils.softmax(array, axis=0)
-
-        first_row = [0.55304752522136, 0.38900112554213, 0.46747114724301, 0.75356313896948, 0.57578570225175, 0.50230785111043]
-        last_row = [0.4469524747786, 0.61099887445787, 0.53252885275699, 0.24643686103052, 0.42421429774825, 0.49769214888957]
-        expected = np.array([first_row, last_row])
-
-        self.assertTrue(np.all(np.isclose(result, expected)))
+from adaptiveleak.utils.message import encode_standard_measurements
 
 
 class TestQuantization(unittest.TestCase):
@@ -251,6 +202,31 @@ class TestRangeShift(unittest.TestCase):
         recovered = data_utils.to_float(quantized, precision=new_precision)
 
         self.assertEqual(recovered, float_value)
+
+    def test_range_single_float(self):
+        old_width = 16
+        old_precision = 13
+        non_fractional = old_width - old_precision
+
+        new_width = 14
+        num_range_bits = 3
+
+        float_value = 2.7236943
+        value = data_utils.to_fixed_point(float_value, width=old_width, precision=old_precision)
+
+        shift = data_utils.select_range_shift(measurement=value,
+                                              old_width=old_width,
+                                              old_precision=old_precision,
+                                              new_width=new_width,
+                                              num_range_bits=num_range_bits,
+                                              prev_shift=-2)
+        self.assertEqual(shift, 0)
+
+        new_precision = (new_width - non_fractional) - shift
+        quantized = data_utils.to_fixed_point(float_value, width=new_width, precision=new_precision)
+        recovered = data_utils.to_float(quantized, precision=new_precision)
+
+        self.assertLess(abs(recovered - float_value), 1e-4)
 
     def test_range_single_large(self):
         old_width = 16
@@ -806,117 +782,117 @@ class TestCalculateBytes(unittest.TestCase):
                                                         encryption_mode=EncryptionMode.STREAM)
         self.assertEqual(data_bytes, 165)
 
-    def test_group_stream_end_to_end_one(self):
-        # Encode and encrypt measurements
-        measurements = np.ones(shape=(4, 3))
-        collected_indices = [0, 2, 6, 9]
-        seq_length = 12
-        non_fractional = 2
-        widths = [6, 7]
-        group_size = 6
+    #def test_group_stream_end_to_end_one(self):
+    #    # Encode and encrypt measurements
+    #    measurements = np.ones(shape=(4, 3))
+    #    collected_indices = [0, 2, 6, 9]
+    #    seq_length = 12
+    #    non_fractional = 2
+    #    widths = [6, 7]
+    #    group_size = 6
 
-        encoded = encode_grouped_measurements(measurements=measurements,
-                                              collected_indices=collected_indices,
-                                              widths=widths,
-                                              seq_length=seq_length,
-                                              non_fractional=non_fractional,
-                                              group_size=group_size)                                              
+    #    encoded = encode_grouped_measurements(measurements=measurements,
+    #                                          collected_indices=collected_indices,
+    #                                          widths=widths,
+    #                                          seq_length=seq_length,
+    #                                          non_fractional=non_fractional,
+    #                                          group_size=group_size)                                              
 
-        key = get_random_bytes(32)
-        encrypted = encrypt(message=encoded, key=key, mode=EncryptionMode.STREAM)
+    #    key = get_random_bytes(32)
+    #    encrypted = encrypt(message=encoded, key=key, mode=EncryptionMode.STREAM)
 
-        message_bytes = data_utils.calculate_grouped_bytes(widths=widths,
-                                                           num_features=measurements.shape[1],
-                                                           num_collected=measurements.shape[0],
-                                                           seq_length=seq_length,
-                                                           group_size=group_size,
-                                                           encryption_mode=EncryptionMode.STREAM)
+    #    message_bytes = data_utils.calculate_grouped_bytes(widths=widths,
+    #                                                       num_features=measurements.shape[1],
+    #                                                       num_collected=measurements.shape[0],
+    #                                                       seq_length=seq_length,
+    #                                                       group_size=group_size,
+    #                                                       encryption_mode=EncryptionMode.STREAM)
 
-        self.assertEqual(message_bytes, len(encrypted))
+    #    self.assertEqual(message_bytes, len(encrypted))
 
-    def test_group_stream_end_to_end_two(self):
-        # Encode and encrypt measurements
-        measurements = np.ones(shape=(5, 3))
-        collected_indices = [0, 2, 6, 9]
-        seq_length = 12
-        non_fractional = 2
-        widths = [6, 7, 7]
-        group_size = 6
+    #def test_group_stream_end_to_end_two(self):
+    #    # Encode and encrypt measurements
+    #    measurements = np.ones(shape=(5, 3))
+    #    collected_indices = [0, 2, 6, 9]
+    #    seq_length = 12
+    #    non_fractional = 2
+    #    widths = [6, 7, 7]
+    #    group_size = 6
 
-        encoded = encode_grouped_measurements(measurements=measurements,
-                                              collected_indices=collected_indices,
-                                              widths=widths,
-                                              seq_length=seq_length,
-                                              non_fractional=non_fractional,
-                                              group_size=group_size)
+    #    encoded = encode_grouped_measurements(measurements=measurements,
+    #                                          collected_indices=collected_indices,
+    #                                          widths=widths,
+    #                                          seq_length=seq_length,
+    #                                          non_fractional=non_fractional,
+    #                                          group_size=group_size)
 
-        key = get_random_bytes(32)
-        encrypted = encrypt(message=encoded, key=key, mode=EncryptionMode.STREAM)
+    #    key = get_random_bytes(32)
+    #    encrypted = encrypt(message=encoded, key=key, mode=EncryptionMode.STREAM)
 
-        message_bytes = data_utils.calculate_grouped_bytes(widths=widths,
-                                                           num_features=measurements.shape[1],
-                                                           num_collected=measurements.shape[0],
-                                                           seq_length=seq_length,
-                                                           group_size=group_size,
-                                                           encryption_mode=EncryptionMode.STREAM)
+    #    message_bytes = data_utils.calculate_grouped_bytes(widths=widths,
+    #                                                       num_features=measurements.shape[1],
+    #                                                       num_collected=measurements.shape[0],
+    #                                                       seq_length=seq_length,
+    #                                                       group_size=group_size,
+    #                                                       encryption_mode=EncryptionMode.STREAM)
 
-        self.assertEqual(message_bytes, len(encrypted))
+    #    self.assertEqual(message_bytes, len(encrypted))
 
-    def test_group_block_end_to_end_one(self):
-        # Encode and encrypt measurements
-        measurements = np.ones(shape=(4, 3))
-        collected_indices = [0, 2, 6, 9]
-        seq_length = 12
-        non_fractional = 2
-        widths = [6, 7]
-        group_size = 6
+    #def test_group_block_end_to_end_one(self):
+    #    # Encode and encrypt measurements
+    #    measurements = np.ones(shape=(4, 3))
+    #    collected_indices = [0, 2, 6, 9]
+    #    seq_length = 12
+    #    non_fractional = 2
+    #    widths = [6, 7]
+    #    group_size = 6
 
-        encoded = encode_grouped_measurements(measurements=measurements,
-                                              collected_indices=collected_indices,
-                                              widths=widths,
-                                              seq_length=seq_length,
-                                              non_fractional=non_fractional,
-                                              group_size=group_size)
+    #    encoded = encode_grouped_measurements(measurements=measurements,
+    #                                          collected_indices=collected_indices,
+    #                                          widths=widths,
+    #                                          seq_length=seq_length,
+    #                                          non_fractional=non_fractional,
+    #                                          group_size=group_size)
 
-        key = get_random_bytes(AES_BLOCK_SIZE)
-        encrypted = encrypt(message=encoded, key=key, mode=EncryptionMode.BLOCK)
+    #    key = get_random_bytes(AES_BLOCK_SIZE)
+    #    encrypted = encrypt(message=encoded, key=key, mode=EncryptionMode.BLOCK)
 
-        message_bytes = data_utils.calculate_grouped_bytes(widths=widths,
-                                                           num_features=measurements.shape[1],
-                                                           num_collected=measurements.shape[0],
-                                                           seq_length=seq_length,
-                                                           group_size=group_size,
-                                                           encryption_mode=EncryptionMode.BLOCK)
+    #    message_bytes = data_utils.calculate_grouped_bytes(widths=widths,
+    #                                                       num_features=measurements.shape[1],
+    #                                                       num_collected=measurements.shape[0],
+    #                                                       seq_length=seq_length,
+    #                                                       group_size=group_size,
+    #                                                       encryption_mode=EncryptionMode.BLOCK)
 
-        self.assertEqual(message_bytes, len(encrypted))
+    #    self.assertEqual(message_bytes, len(encrypted))
 
-    def test_group_block_end_to_end_two(self):
-        # Encode and encrypt measurements
-        measurements = np.ones(shape=(5, 3))
-        collected_indices = [0, 2, 6, 9]
-        seq_length = 12
-        non_fractional = 2
-        widths = [6, 7, 7]
-        group_size = 6
+    #def test_group_block_end_to_end_two(self):
+    #    # Encode and encrypt measurements
+    #    measurements = np.ones(shape=(5, 3))
+    #    collected_indices = [0, 2, 6, 9]
+    #    seq_length = 12
+    #    non_fractional = 2
+    #    widths = [6, 7, 7]
+    #    group_size = 6
 
-        encoded = encode_grouped_measurements(measurements=measurements,
-                                              collected_indices=collected_indices,
-                                              widths=widths,
-                                              seq_length=seq_length,
-                                              non_fractional=non_fractional,
-                                              group_size=group_size)
+    #    encoded = encode_grouped_measurements(measurements=measurements,
+    #                                          collected_indices=collected_indices,
+    #                                          widths=widths,
+    #                                          seq_length=seq_length,
+    #                                          non_fractional=non_fractional,
+    #                                          group_size=group_size)
 
-        key = get_random_bytes(AES_BLOCK_SIZE)
-        encrypted = encrypt(message=encoded, key=key, mode=EncryptionMode.BLOCK)
+    #    key = get_random_bytes(AES_BLOCK_SIZE)
+    #    encrypted = encrypt(message=encoded, key=key, mode=EncryptionMode.BLOCK)
 
-        message_bytes = data_utils.calculate_grouped_bytes(widths=widths,
-                                                           num_features=measurements.shape[1],
-                                                           num_collected=measurements.shape[0],
-                                                           seq_length=seq_length,
-                                                           group_size=group_size,
-                                                           encryption_mode=EncryptionMode.BLOCK)
+    #    message_bytes = data_utils.calculate_grouped_bytes(widths=widths,
+    #                                                       num_features=measurements.shape[1],
+    #                                                       num_collected=measurements.shape[0],
+    #                                                       seq_length=seq_length,
+    #                                                       group_size=group_size,
+    #                                                       encryption_mode=EncryptionMode.BLOCK)
 
-        self.assertEqual(message_bytes, len(encrypted))
+    #    self.assertEqual(message_bytes, len(encrypted))
 
 
 class TestGroupWidths(unittest.TestCase):

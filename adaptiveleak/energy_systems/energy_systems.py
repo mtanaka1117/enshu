@@ -1,13 +1,12 @@
 import os.path
 import numpy as np
 
+from adaptiveleak.utils.constants import BT_FRAME_SIZE
+from adaptiveleak.utils.data_utils import round_to_block, truncate_to_block
 from adaptiveleak.utils.file_utils import iterate_dir, read_json
-from adaptiveleak.utils.data_utils import round_to_block
 from adaptiveleak.utils.types import PolicyType, EncodingMode, CollectMode, EncryptionMode
 
 
-BT_FRAME_SIZE = 20
-OP_TRIALS = 5
 BASELINE_PERIOD = 10
 GROUP_FACTOR = 2
 
@@ -35,7 +34,7 @@ class BluetoothEnergy:
         Returns the energy (in mJ) associated with sending the given number of bytes.
         """
         # Round the energy to the nearest frame
-        num_bytes = int(num_bytes / BT_FRAME_SIZE) * BT_FRAME_SIZE
+        num_bytes = truncate_to_block(num_bytes, block_size=BT_FRAME_SIZE)
 
         # Use the linear model to predict the energy amount
         energy = self._comm_w * num_bytes + self._comm_b

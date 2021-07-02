@@ -2,10 +2,13 @@ import unittest
 import numpy as np
 from sklearn.metrics import mean_absolute_error
 
-from adaptiveleak.policies import AdaptiveHeuristic, EncodingMode, SkipRNN
+from adaptiveleak.policies import AdaptiveHeuristic, EncodingMode, SkipRNN, run_policy, BudgetWrappedPolicy
+from adaptiveleak.server import reconstruct_sequence
+from adaptiveleak.utils.constants import SMALL_NUMBER
 from adaptiveleak.utils.encryption import EncryptionMode, CHACHA_NONCE_LEN, AES_BLOCK_SIZE
 from adaptiveleak.utils.data_utils import round_to_block
 from adaptiveleak.utils.file_utils import read_pickle_gz
+from adaptiveleak.utils.loading import load_data
 
 
 class TestAdaptiveEncode(unittest.TestCase):
@@ -14,7 +17,7 @@ class TestAdaptiveEncode(unittest.TestCase):
          # Load the data
         sample = read_pickle_gz('chlorine_sample.pkl.gz')
 
-        policy = AdaptiveHeuristic(target=0.7,
+        policy = AdaptiveHeuristic(collection_rate=0.7,
                                    threshold=0.0,
                                    precision=5,
                                    width=8,
@@ -23,7 +26,8 @@ class TestAdaptiveEncode(unittest.TestCase):
                                    encryption_mode=EncryptionMode.STREAM,
                                    encoding_mode=EncodingMode.STANDARD,
                                    should_compress=True,
-                                   max_skip=0)
+                                   max_skip=0,
+                                   min_skip=0)
         
         encoded = policy.encode(measurements=sample['measurements'],
                                 collected_indices=sample['indices'])
@@ -39,7 +43,7 @@ class TestAdaptiveEncode(unittest.TestCase):
         # Load the data
         sample = read_pickle_gz('chlorine_sample.pkl.gz')
 
-        policy = AdaptiveHeuristic(target=0.7,
+        policy = AdaptiveHeuristic(collection_rate=0.7,
                                    threshold=0.0,
                                    precision=6,
                                    width=8,
@@ -48,7 +52,8 @@ class TestAdaptiveEncode(unittest.TestCase):
                                    encryption_mode=EncryptionMode.STREAM,
                                    encoding_mode=EncodingMode.GROUP,
                                    should_compress=False,
-                                   max_skip=0)
+                                   max_skip=0,
+                                   min_skip=0)
         
         encoded = policy.encode(measurements=sample['measurements'],
                                 collected_indices=sample['indices'])
@@ -60,7 +65,7 @@ class TestAdaptiveEncode(unittest.TestCase):
         # Load the data
         sample = read_pickle_gz('chlorine_sample.pkl.gz')
 
-        policy = AdaptiveHeuristic(target=0.7,
+        policy = AdaptiveHeuristic(collection_rate=0.7,
                                    threshold=0.0,
                                    precision=6,
                                    width=8,
@@ -69,7 +74,8 @@ class TestAdaptiveEncode(unittest.TestCase):
                                    encryption_mode=EncryptionMode.BLOCK,
                                    encoding_mode=EncodingMode.GROUP,
                                    should_compress=False,
-                                   max_skip=0)
+                                   max_skip=0,
+                                   min_skip=0)
 
         encoded = policy.encode(measurements=sample['measurements'],
                                 collected_indices=sample['indices'])
@@ -81,7 +87,7 @@ class TestAdaptiveEncode(unittest.TestCase):
         # Read the data
         sample = read_pickle_gz('activity_sample.pkl.gz')
 
-        policy = AdaptiveHeuristic(target=0.5,
+        policy = AdaptiveHeuristic(collection_rate=0.5,
                                    threshold=0.0,
                                    precision=6,
                                    width=8,
@@ -90,7 +96,8 @@ class TestAdaptiveEncode(unittest.TestCase):
                                    encryption_mode=EncryptionMode.STREAM,
                                    encoding_mode=EncodingMode.GROUP,
                                    should_compress=False,
-                                   max_skip=0)
+                                   max_skip=0,
+                                   min_skip=0)
 
         encoded = policy.encode(measurements=sample['measurements'],
                                 collected_indices=sample['indices'])
@@ -102,7 +109,7 @@ class TestAdaptiveEncode(unittest.TestCase):
          # Read the data
         sample = read_pickle_gz('epilepsy_sample.pkl.gz')
 
-        policy = AdaptiveHeuristic(target=0.3,
+        policy = AdaptiveHeuristic(collection_rate=0.3,
                                    threshold=0.0,
                                    precision=6,
                                    width=8,
@@ -111,7 +118,8 @@ class TestAdaptiveEncode(unittest.TestCase):
                                    encryption_mode=EncryptionMode.STREAM,
                                    encoding_mode=EncodingMode.GROUP,
                                    should_compress=False,
-                                   max_skip=0)
+                                   max_skip=0,
+                                   min_skip=0)
 
         encoded = policy.encode(measurements=sample['measurements'],
                                 collected_indices=sample['indices'])
@@ -124,7 +132,7 @@ class TestAdaptiveEncode(unittest.TestCase):
          # Read the data
         sample = read_pickle_gz('tiselac_sample.pkl.gz')
 
-        policy = AdaptiveHeuristic(target=0.9,
+        policy = AdaptiveHeuristic(collection_rate=0.9,
                                    threshold=0.0,
                                    precision=0,
                                    width=13,
@@ -133,7 +141,8 @@ class TestAdaptiveEncode(unittest.TestCase):
                                    encryption_mode=EncryptionMode.STREAM,
                                    encoding_mode=EncodingMode.GROUP,
                                    should_compress=False,
-                                   max_skip=0)
+                                   max_skip=0,
+                                   min_skip=0)
 
         encoded = policy.encode(measurements=sample['measurements'],
                                 collected_indices=sample['indices'])
@@ -146,7 +155,7 @@ class TestAdaptiveEncode(unittest.TestCase):
         # Read the data
         sample = read_pickle_gz('haptics_sample.pkl.gz')
 
-        policy = AdaptiveHeuristic(target=0.2,
+        policy = AdaptiveHeuristic(collection_rate=0.2,
                                    threshold=0.0,
                                    precision=5,
                                    width=10,
@@ -155,7 +164,8 @@ class TestAdaptiveEncode(unittest.TestCase):
                                    encryption_mode=EncryptionMode.STREAM,
                                    encoding_mode=EncodingMode.GROUP,
                                    should_compress=False,
-                                   max_skip=0)
+                                   max_skip=0,
+                                   min_skip=0)
 
         encoded = policy.encode(measurements=sample['measurements'],
                                 collected_indices=sample['indices'])
@@ -166,22 +176,60 @@ class TestAdaptiveEncode(unittest.TestCase):
         # Read the data
         sample = read_pickle_gz('uci_har_sample_1109.pkl.gz')
 
-        policy = SkipRNN(target=0.2,
-                                   threshold=0.0,
-                                   precision=13,
-                                   width=16,
-                                   seq_length=50,
-                                   num_features=6,
-                                   encryption_mode=EncryptionMode.STREAM,
-                                   encoding_mode=EncodingMode.GROUP,
-                                   should_compress=False,
-                                   dataset_name='uci_har')
+        policy = SkipRNN(collection_rate=0.2,
+                         threshold=0.0,
+                         precision=13,
+                         width=16,
+                         seq_length=50,
+                         num_features=6,
+                         encryption_mode=EncryptionMode.STREAM,
+                         encoding_mode=EncodingMode.GROUP,
+                         should_compress=False,
+                         dataset_name='uci_har')
 
         encoded = policy.encode(measurements=sample['measurements'],
                                 collected_indices=sample['indices'])
 
         self.assertEqual(len(encoded), 127)  # Target is 139, subtract 12 for ChaCha20 Nonce
 
+    def test_strawberry_e2e_56(self):
+        # Read the data
+        inputs, _ = load_data(dataset_name='strawberry', fold='validation')
+        inputs = inputs[56]
+
+        # Make the policy
+        policy = BudgetWrappedPolicy(name='adaptive_heuristic',
+                                     seq_length=inputs.shape[0],
+                                     num_features=inputs.shape[1],
+                                     encryption_mode=EncryptionMode.STREAM,
+                                     encoding='group',
+                                     collection_rate=0.5,
+                                     dataset='strawberry',
+                                     should_compress=False)
+        
+        # Run the policy (we care about sampling correctness here, not the budget)
+        policy.init_for_experiment(num_sequences=1)  
+        policy_result = run_policy(policy, sequence=inputs, should_enforce_budget=False)
+
+        # Decode the result
+        decoded, collected_indices, _ = policy.decode(message=policy_result.encoded)
+
+        # Compare the decoded sequences to the original sampled sequence
+        diff = np.abs(decoded - policy_result.measurements)
+        max_idx = np.argmax(diff)
+
+        comparison = np.average(diff)
+        self.assertLessEqual(comparison, 1e-4)
+
+        # Reconstruct the sequence
+        recovered = reconstruct_sequence(measurements=decoded,
+                                         collected_indices=collected_indices,
+                                         seq_length=inputs.shape[0])
+
+        # Compute the error
+        error = np.average(np.abs(recovered - inputs))
+
+        self.assertLess(error, 0.02)
 
 if __name__ == '__main__':
     unittest.main()
