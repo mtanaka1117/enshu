@@ -7,7 +7,7 @@ from typing import List, Tuple
 
 from adaptiveleak.utils.constants import SHIFT_BITS, BITS_PER_BYTE, BOUND_BITS, BOUND_ORDER, SMALL_NUMBER, MAX_SHIFT_GROUPS
 from adaptiveleak.utils.data_utils import array_to_fp, array_to_float, pack, unpack, select_range_shift, to_fixed_point, to_float, get_signs, num_bits_for_value
-from adaptiveleak.utils.data_utils import array_to_fp_unsigned, run_length_encode, run_length_decode, integer_part, fractional_part, apply_signs, select_range_shifts_array
+from adaptiveleak.utils.data_utils import run_length_encode, run_length_decode, integer_part, fractional_part, apply_signs, select_range_shifts_array
 from adaptiveleak.utils.data_utils import fixed_point_integer_part, fixed_point_frac_part, balance_group_size, array_to_fp_shifted, array_to_float_shifted, set_widths
 from adaptiveleak.utils.shifting import merge_shift_groups
 
@@ -99,12 +99,6 @@ def encode_standard_measurements(measurements: np.ndarray, collected_indices: Li
 
         encoded_integers = run_length_encode(integer_values, integer_signs)
 
-        # Encode the fractional parts in fixed-point representation
-        #fixed_point_fracs = array_to_fp_unsigned(fractional_parts,
-        #                                         precision=precision,
-        #                                         width=precision)
-
-        # encoded_fracs = pack(fixed_point_fracs.astype(int).tolist(), width=precision)
         encoded_fracs = pack(fractional_parts.astype(int).tolist(), width=precision)
 
         int_part_length = len(encoded_integers).to_bytes(2, 'little')
@@ -165,9 +159,6 @@ def decode_standard_measurements(byte_str: bytes, seq_length: int, num_features:
                                width=precision,
                                num_values=(len(collected_indices) * num_features))
 
-        # Convert the fractional parts to floats
-        # decoded_fracs = array_to_float(decoded_fracs, precision=precision)
-        
         # Combine the numerical parts
         combined = [(v << precision) | frac for v, frac in zip(decoded_integers, decoded_fracs)]
         combined = apply_signs(combined, decoded_signs)
@@ -176,8 +167,6 @@ def decode_standard_measurements(byte_str: bytes, seq_length: int, num_features:
         decoded = delta_decode(np.array(combined))
 
         decoded = array_to_float(decoded, precision=precision)
-
-        # decoded = np.array(combined)
     else:
         decoded_values = unpack(encoded=byte_str[num_mask_bytes:],
                                 width=width,

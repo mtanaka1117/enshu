@@ -80,7 +80,7 @@ class UnionFind:
             left = self._union_find[group_id]
             right = self._union_find[group_id + 1]
 
-            shift_diff = abs(left.shift - right.shift)
+            shift_diff = 2 * abs(left.shift - right.shift)
             score = (left.count + right.count + shift_diff) * int(shift_diff > 0)
 
             if (len(scores) < num_to_merge) or (score < scores[num_to_merge - 1]):

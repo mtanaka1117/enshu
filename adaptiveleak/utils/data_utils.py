@@ -13,49 +13,8 @@ MAX_ITER = 100
 ERROR_TOL = 0
 
 
-def apply_dropout(mat: np.ndarray, drop_rate: float, rand: np.random.RandomState) -> np.ndarray:
-    rand_mat = rand.uniform(low=0.0, high=1.0, size=mat.shape)
-    mask = np.less(rand_mat, drop_rate).astype(float)
-
-    scale = 1.0 / (1.0 - drop_rate)
-    scaled_mask = mask * scale
-    
-    return mat * scaled_mask
-
-
-def leaky_relu(x: np.ndarray, alpha: float) -> np.ndarray:
-    return np.where(x > 0, x, alpha * x)
-
-
-def softmax(x: np.ndarray, axis: int) -> np.ndarray:
-    max_x = np.max(x, axis=axis, keepdims=True)
-    exp_x = np.exp(x - max_x)
-    return exp_x / np.sum(exp_x, axis=axis, keepdims=True)
-
-
 def sigmoid(x: np.ndarray) -> np.ndarray:
     return 1.0 / (1.0 + np.exp(-1 * x))
-
-
-def linear_sigmoid(x: np.ndarray) -> np.ndarray:
-    cond1 = (x < -3).astype(float)
-    cond2 = np.logical_and(x >= -3, x < -1).astype(float)
-    cond3 = np.logical_and(x >= -1, x < 1).astype(float)
-    cond4 = np.logical_and(x >= 1, x <= 3).astype(float)
-    cond5 = (x > 3).astype(float)
-
-    part1 = 0
-    part2 = 0.125 * x + 0.375
-    part3 = 0.25 * x + 0.5
-    part4 = 0.125 * x + 0.625
-    part5 = 1
-
-    return (part1 * cond1) + (part2 * cond2) + (part3 * cond3) + (part4 * cond4) + (part5 * cond5)
-
-
-def linear_tanh(x: np.ndarray) -> np.ndarray:
-    return 2 * linear_sigmoid(2 * x) - 1
-
 
 def to_fixed_point(x: float, precision: int, width: int) -> int:
     assert width >= 1, 'Must have a non-negative width'
@@ -78,34 +37,6 @@ def to_float(fp: int, precision: int) -> float:
     return float(fp) / multiplier if precision > 0 else float(fp) * multiplier
 
 
-def precision_change_error(fixed_point: int, old_precision: int, new_precision: int) -> float:
-    """
-    Calculates the error induced by changing the given fixed point value to a new precision.
-
-    Args:
-        fixed_point: The current fixed point value
-        old_precision: The old precision value
-        new_precision: The new precision value
-    Returns:
-        The error (pos if worse, neg if better) when changing to the new precision.
-    """
-    return to_float(fixed_point, old_precision) - to_float(fixed_point, new_precision)
-
-
-def precision_change_error_array(fixed_point: np.ndarray, old_precision: int, new_precision: int) -> float:
-    """
-    Calculates the error induced by changing the given fixed point value to a new precision.
-
-    Args:
-        fixed_point: The current fixed point value
-        old_precision: The old precision value
-        new_precision: The new precision value
-    Returns:
-        The error (pos if worse, neg if better) when changing to the new precision.
-    """
-    return np.sum(array_to_float(fixed_point, old_precision) - array_to_float(fixed_point, new_precision))
-
-
 def array_to_fp(arr: np.ndarray, precision: int, width: int) -> np.ndarray:
     multiplier = 1 << abs(precision)
     
@@ -118,22 +49,6 @@ def array_to_fp(arr: np.ndarray, precision: int, width: int) -> np.ndarray:
 
     max_val = (1 << (width - 1)) - 1
     min_val = -max_val
-
-    return np.clip(quantized, a_min=min_val, a_max=max_val)
-
-
-def array_to_fp_unsigned(arr: np.ndarray, precision: int, width: int) -> np.ndarray:
-    multiplier = 1 << abs(precision)
-
-    if (precision > 0):
-        quantized = arr * multiplier
-    else:
-        quantized = arr / multiplier
-
-    quantized = np.round(quantized).astype(int)
-
-    max_val = (1 << width) - 1
-    min_val = 0
 
     return np.clip(quantized, a_min=min_val, a_max=max_val)
 
@@ -212,7 +127,7 @@ def select_range_shift(measurement: int, old_width: int, old_precision: int, new
     # performs all operations on positive values for simplicity.
     abs_value = abs(measurement)
 
-    # Try the previous shift first for potential early-exiting with a greedy algorithm
+    # Try the previous shift first for potential early-exiting
     conversion_shift = base_shift + prev_shift
 
     if (conversion_shift >= 0):
@@ -230,6 +145,7 @@ def select_range_shift(measurement: int, old_width: int, old_precision: int, new
     if (prev_error <= ERROR_TOL):
         return prev_shift
 
+    # Perform an exhaustive search over all potential shifts
     last_error = BIG_NUMBER
     best_error = prev_error
     best_shift = prev_shift
@@ -260,8 +176,8 @@ def select_range_shift(measurement: int, old_width: int, old_precision: int, new
             best_shift = shift
             best_error = error
 
-        if (error > last_error) or (best_error == 0):
-            break  # Stop once the error starts to increase
+        if (best_error == 0):
+            break  # Stop if we ever get zero error (can't do any better)
 
         last_error = error
 
@@ -310,27 +226,6 @@ def select_range_shifts_array(measurements: np.ndarray, old_width: int, old_prec
         prev_shift = shift
 
     return best_shifts.astype(int)
-
-    #abs_values = np.abs(measurements)
-    #max_representable_fp = (1 << (width - 1)) - 1
-    #non_fractional = width - precision
-
-    #best_errors = np.ones_like(abs_values) * BIG_NUMBER
-    #best_shifts = np.ones_like(abs_values) * ((1 << (num_range_bits - 1)) - 1)
-
-    #offset = 1 << (num_range_bits - 1)
-
-    #for idx in range(pow(2, num_range_bits)):
-    #    shift = idx - offset
-    #    
-    #    shifted_max = to_float(max_representable_fp, precision=precision - shift)
-    #    errors = np.abs(shifted_max - abs_values)
-
-    #    cond = np.logical_and(errors < best_errors, shifted_max >= abs_values)
-    #    best_errors = np.where(cond, errors, best_errors)
-    #    best_shifts = np.where(cond, shift, best_shifts)
-
-    #return best_shifts.astype(int)
 
 
 def linear_extrapolate(prev: np.ndarray, curr: np.ndarray, delta: float, num_steps: int) -> np.ndarray:
