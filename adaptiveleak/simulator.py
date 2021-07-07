@@ -3,6 +3,7 @@ import pexpect
 import sys
 import random
 import numpy as np
+import time
 from argparse import ArgumentParser
 from datetime import datetime
 from typing import List
@@ -11,11 +12,31 @@ from adaptiveleak.utils.constants import POLICIES
 from adaptiveleak.utils.file_utils import make_dir
 
 
+MAX_RETRIES = 10
+RETRY_SLEEP = 0.1
+TIMEOUT = 10
+
 SERVER_CMD_ALL = 'python server.py --dataset {0} --encryption {1} --policy {2} --encoding {3} --collection-rate {4} --output-folder {5} --port {6}'
 SERVER_CMD_SAMPLES = 'python server.py --dataset {0} --encryption {1} --policy {2} --encoding {3} --collection-rate {4} --output-folder {5} --port {6} --max-num-seq {7}'
 
 SENSOR_CMD_ALL = 'python sensor.py --dataset {0} --encryption {1} --policy {2} --encoding {3} --collection-rate {4} --port {5}'
 SENSOR_CMD_SAMPLES = 'python sensor.py --dataset {0} --encryption {1} --policy {2} --encoding {3} --collection-rate {4} --port {5} --max-num-seq {6}'
+
+
+def expect_with_retry(comm_module: pexpect.spawn, expected: str):
+    has_recieved = False
+    retry_counter = 0
+
+    while (not has_recieved) and (retry_counter < MAX_RETRIES):
+        try:
+            server.expect(expected, timeout=TIMEOUT)
+            has_recieved = True
+        except pexpect.exceptions.TIMEOUT:
+            retry_counter += 1
+            time.sleep(RETRY_SLEEP)
+
+    if (retry_counter >= MAX_RETRIES):
+        raise ValueError('Retry count exceeded when expecting: {0}'.format(expected))
 
 
 if __name__ == '__main__':
@@ -27,6 +48,7 @@ if __name__ == '__main__':
     parser.add_argument('--collection-rate', type=float, required=True, nargs='+')
     parser.add_argument('--should-compress', action='store_true')
     parser.add_argument('--max-num-samples', type=int)
+    parser.add_argument('--should-print', action='store_true')
     args = parser.parse_args()
 
     # Unpack the target collection rates
@@ -50,9 +72,10 @@ if __name__ == '__main__':
 
         collection_rate = round(collection_rate, 2)
 
-        print('==========')
-        print('Starting {0:.2f}'.format(collection_rate))
-        print('==========')
+        if args.should_print:
+            print('==========')
+            print('Starting {0:.2f}'.format(collection_rate))
+            print('==========')
 
         port = random.randint(50000, 60000)
 
@@ -73,20 +96,22 @@ if __name__ == '__main__':
         try:
             # Start the server
             server = pexpect.spawn(server_cmd)
-            server.expect('Started Server.')
+
+            expect_with_retry(comm_module=server, expected='Started Server.')
 
             # Start the sensor
             sensor = pexpect.spawn(sensor_cmd)
-
-            server.expect('Accepted connection', timeout=5)
+            
+            expect_with_retry(comm_module=server, expected='Accepted connection')
 
             # Print out progress
             for line in server:
                 progress = line.decode().strip()
-                if progress.startswith('Completed'):
+                if progress.startswith('Completed') and args.should_print:
                     print(progress, end='\r')
 
-            print()
+            if args.should_print:
+                print()
 
             # Wait for completion
             sensor.expect('Completed Sensor.')

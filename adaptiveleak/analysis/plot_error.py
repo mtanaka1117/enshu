@@ -36,10 +36,10 @@ def plot(sim_results: Dict[str, Dict[float, float]], dataset_name: str, output_f
                     policy_name = name
 
                 model_results = sim_results[policy_name]
-                targets = list(sorted(model_results.keys()))
-                errors = [model_results[t] for t in targets]
+                energy_per_seq = list(sorted(model_results.keys()))
+                errors = [model_results[e] for e in energy_per_seq]
 
-                ax.plot(targets, errors, marker=MARKER, linewidth=LINE_WIDTH, markersize=MARKER_SIZE, label=to_label(policy_name), color=COLORS[policy_name])
+                ax.plot(energy_per_seq, errors, marker=MARKER, linewidth=LINE_WIDTH, markersize=MARKER_SIZE, label=to_label(policy_name), color=COLORS[policy_name])
 
                 avg = np.average(errors)
                 if metric in ('norm_mae', 'norm_rmse'):
@@ -57,7 +57,7 @@ def plot(sim_results: Dict[str, Dict[float, float]], dataset_name: str, output_f
         print(' & '.join(labels))
         print(' & '.join((('{0:.5f}'.format(x) if i != min_error else '\\textbf{{{0:.5f}}}'.format(x)) for i, x in enumerate(agg_errors))))
 
-        ax.set_xlabel('Fraction of Measurements', fontsize=AXIS_FONT)
+        ax.set_xlabel('Average Energy per Seq (mJ)', fontsize=AXIS_FONT)
         ax.set_ylabel(metric.upper(), fontsize=AXIS_FONT)
         ax.set_title('Average Reconstruction Error on the {0} Dataset'.format(dataset_label(dataset_name)), fontsize=TITLE_FONT)
 

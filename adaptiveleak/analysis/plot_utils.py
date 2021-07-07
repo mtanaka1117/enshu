@@ -17,8 +17,8 @@ PLOT_SIZE = (8, 6)
 
 
 COLORS = {
-    'random': '#d73027',
-    'uniform': '#fc8d59',
+    'random_standard': '#d73027',
+    'uniform_standard': '#fc8d59',
     'adaptive_heuristic_standard': '#9ecae1',
     'adaptive_heuristic_group': '#08519c',
     'adaptive_deviation_standard': '#c2a5cf',
@@ -59,16 +59,11 @@ def extract_results(folder: str, field: str, aggregate_mode: Optional[str], defa
 
     name = ''
 
-    for file_name in sorted(os.listdir(folder)):
-        path = os.path.join(folder, file_name)
-
-        if not path.endswith('.json.gz'):
-            continue
-
+    for path in iterate_dir(folder, '.*json.gz'):
         serialized = read_json_gz(path)
 
-        target = serialized['policy']['target']
-        name = serialized['policy']['name']
+        energy_per_seq = serialized['policy']['energy_per_seq']
+        name = '{0}_{1}'.format(serialized['policy']['policy_name'].lower(), serialized['policy']['encoding_mode'].lower())
 
         if field not in serialized:
             value = default_value
@@ -86,7 +81,7 @@ def extract_results(folder: str, field: str, aggregate_mode: Optional[str], defa
             else:
                 raise ValueError('Unknown aggregation mode: {0}'.format(aggregate_mode))
 
-        result[target] = value
+        result[energy_per_seq] = value
 
     return name, result
 
