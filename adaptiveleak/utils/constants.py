@@ -18,3 +18,6 @@ PERIOD = 7
 BT_FRAME_SIZE = 20
 
 POLICIES = ['random', 'uniform', 'adaptive_heuristic', 'adaptive_deviation', 'skip_rnn']
+ENCODING = ['standard', 'group', 'group_unshifted']
+ENCRYPTION = ['stream', 'block']
+COLLECTION = ['tiny', 'low', 'med', 'high']

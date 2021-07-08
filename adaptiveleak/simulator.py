@@ -8,7 +8,7 @@ from argparse import ArgumentParser
 from datetime import datetime
 from typing import List
 
-from adaptiveleak.utils.constants import POLICIES
+from adaptiveleak.utils.constants import POLICIES, ENCODING, ENCRYPTION, COLLECTION
 from adaptiveleak.utils.file_utils import make_dir
 
 
@@ -43,9 +43,9 @@ if __name__ == '__main__':
     parser = ArgumentParser()
     parser.add_argument('--dataset', type=str, required=True)
     parser.add_argument('--policy', type=str, required=True, choices=POLICIES)
-    parser.add_argument('--encoding', type=str, required=True, choices=['standard', 'group'])
-    parser.add_argument('--encryption', type=str, required=True, choices=['block', 'stream'])
-    parser.add_argument('--collect', type=str, required=True, choices=['tiny', 'low', 'med', 'high'])
+    parser.add_argument('--encoding', type=str, required=True, choices=ENCODING)
+    parser.add_argument('--encryption', type=str, required=True, choices=ENCRYPTION)
+    parser.add_argument('--collect', type=str, required=True, choices=COLLECTION)
     parser.add_argument('--collection-rate', type=float, required=True, nargs='+')
     parser.add_argument('--should-compress', action='store_true')
     parser.add_argument('--max-num-samples', type=int)

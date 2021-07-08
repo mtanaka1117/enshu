@@ -288,9 +288,9 @@ uint16_t calculate_grouped_size(uint8_t *groupWidths, uint16_t numCollected, uin
     totalBytes += numGroups + get_num_bytes(seqLength) + 1;
 
     if (isBlock) {
-        return AES_BLOCK_SIZE + round_to_aes_block(totalBytes);        
+        return AES_BLOCK_SIZE + LENGTH_SIZE + round_to_aes_block(totalBytes);
     } else {
-        return CHACHA_NONCE_LEN + totalBytes;
+        return CHACHA_NONCE_LEN + LENGTH_SIZE + totalBytes;
     }
 }
 

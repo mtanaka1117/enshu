@@ -9,7 +9,7 @@ from sklearn.metrics import mean_absolute_error, r2_score, mean_squared_error
 from typing import Optional, List, Tuple
 
 from adaptiveleak.policies import BudgetWrappedPolicy
-from adaptiveleak.utils.constants import LENGTH_SIZE, LENGTH_ORDER, SMALL_NUMBER
+from adaptiveleak.utils.constants import LENGTH_SIZE, LENGTH_ORDER, SMALL_NUMBER, ENCODING, ENCRYPTION, COLLECTION, POLICIES
 from adaptiveleak.utils.analysis import normalized_mae, normalized_rmse
 from adaptiveleak.utils.encryption import decrypt, verify_hmac, SHA256_LEN
 from adaptiveleak.utils.loading import load_data
@@ -273,10 +273,10 @@ if __name__ == '__main__':
     parser = ArgumentParser()
     parser.add_argument('--dataset', type=str, required=True)
     parser.add_argument('--collection-rate', type=float, required=True)
-    parser.add_argument('--encryption', type=str, choices=['block', 'stream'], required=True)
-    parser.add_argument('--policy', type=str, required=True)
-    parser.add_argument('--encoding', type=str, choices=['standard', 'group'], required=True)
-    parser.add_argument('--collect', type=str, choices=['tiny', 'low', 'med', 'high'], required=True)
+    parser.add_argument('--encryption', type=str, choices=ENCRYPTION, required=True)
+    parser.add_argument('--policy', type=str, choices=POLICIES, required=True)
+    parser.add_argument('--encoding', type=str, choices=ENCODING, required=True)
+    parser.add_argument('--collect', type=str, choices=COLLECTION, required=True)
     parser.add_argument('--output-folder', type=str, required=True)
     parser.add_argument('--port', type=int, default=50000)
     parser.add_argument('--max-num-seq', type=int)

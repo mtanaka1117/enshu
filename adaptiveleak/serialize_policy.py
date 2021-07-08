@@ -8,7 +8,7 @@ from adaptiveleak.policies import make_policy, Policy, UniformPolicy, AdaptiveHe
 from adaptiveleak.utils.data_utils import to_fixed_point, array_to_fp, calculate_bytes, num_bits_for_value
 from adaptiveleak.utils.constants import BITS_PER_BYTE, MAX_SHIFT_GROUPS, MIN_WIDTH
 from adaptiveleak.utils.encryption import AES_BLOCK_SIZE, CHACHA_NONCE_LEN
-from adaptiveleak.utils.types import EncodingMode, EncryptionMode
+from adaptiveleak.utils.data_types import EncodingMode, EncryptionMode, CollectMode
 
 
 OUTPUT_PATH = 'policy_parameters.h'
@@ -65,11 +65,7 @@ def write_policy(policy: Policy, is_msp: bool):
 
     # Calculate the target number of bytes (same for all sequences)
     target_collected = int(policy.collection_rate * policy.seq_length)
-    target_bytes = calculate_bytes(width=16,
-                                   num_collected=target_collected,
-                                   num_features=policy.num_features,
-                                   seq_length=policy.seq_length,
-                                   encryption_mode=EncryptionMode.BLOCK)
+    target_bytes = policy.target_bytes
 
     with open(OUTPUT_PATH, 'w') as fout:
         # Import necessary libraries
@@ -217,7 +213,8 @@ if __name__ == '__main__':
     policy = make_policy(name=args.policy,
                          seq_length=seq_length,
                          num_features=num_features,
-                         encryption_mode=EncryptionMode.BLOCK,
+                         encryption_mode='block',
+                         collect_mode='tiny',
                          encoding=args.encoding,
                          collection_rate=args.collection_rate,
                          dataset=args.dataset,

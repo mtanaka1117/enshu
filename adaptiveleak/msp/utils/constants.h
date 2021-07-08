@@ -14,4 +14,6 @@
 #define SHIFT_MASK 0x7
 #define WIDTH_MASK 0x1F
 
+#define LENGTH_SIZE 2
+
 #endif

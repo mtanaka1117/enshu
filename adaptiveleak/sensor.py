@@ -7,7 +7,7 @@ from argparse import ArgumentParser
 from typing import Optional
 
 from adaptiveleak.policies import BudgetWrappedPolicy, run_policy
-from adaptiveleak.utils.constants import LENGTH_SIZE, LENGTH_ORDER
+from adaptiveleak.utils.constants import LENGTH_SIZE, LENGTH_ORDER, ENCODING, ENCRYPTION, COLLECTION, POLICIES
 from adaptiveleak.utils.data_utils import array_to_fp, array_to_float
 from adaptiveleak.utils.encryption import encrypt, EncryptionMode, add_hmac
 from adaptiveleak.utils.loading import load_data
@@ -96,10 +96,10 @@ if __name__ == '__main__':
     parser = ArgumentParser()
     parser.add_argument('--dataset', type=str, required=True)
     parser.add_argument('--collection-rate', type=float, required=True)
-    parser.add_argument('--encryption', type=str, choices=['block', 'stream'], required=True)
-    parser.add_argument('--collect', type=str, choices=['tiny', 'low', 'med', 'high'], required=True)
-    parser.add_argument('--policy', type=str, required=True)
-    parser.add_argument('--encoding', type=str, choices=['standard', 'group'], required=True)
+    parser.add_argument('--encryption', type=str, choices=ENCRYPTION, required=True)
+    parser.add_argument('--collect', type=str, choices=COLLECTION, required=True)
+    parser.add_argument('--policy', type=str, choices=POLICIES, required=True)
+    parser.add_argument('--encoding', type=str, choices=ENCODING, required=True)
     parser.add_argument('--port', type=int, default=50000)
     parser.add_argument('--max-num-seq', type=int)
     parser.add_argument('--should-compress', action='store_true')

@@ -58,6 +58,11 @@ class Policy:
                                        num_features=num_features,
                                        period=PERIOD)
 
+        self._target_bytes = calculate_bytes(width=self.width,
+                                             num_collected=int(self.collection_rate * self.seq_length),
+                                             num_features=self.num_features,
+                                             seq_length=self.seq_length,
+                                             encryption_mode=self.encryption_mode)
 
     @property
     def width(self) -> int:
@@ -102,6 +107,10 @@ class Policy:
     @property
     def should_compress(self) -> bool:
         return self._should_compress
+
+    @property
+    def target_bytes(self) -> int:
+        return self._target_bytes
 
     def collect(self, measurement: np.ndarray):
         self._estimate = np.copy(measurement.reshape(-1))  # [D]
@@ -208,14 +217,14 @@ class AdaptivePolicy(Policy):
                                                         encryption_mode=self.encryption_mode,
                                                         energy_unit=self.energy_unit,
                                                         target_energy=self._energy_per_seq)
-        elif self.encoding_mode in (EncodingMode.GROUP_UNSHIFTED, EncodingMode.STANDARD):
-            self._target_bytes = calculate_bytes(width=self.width,
-                                                 num_collected=int(self.collection_rate * self.seq_length),
-                                                 num_features=self.num_features,
-                                                 seq_length=self.seq_length,
-                                                 encryption_mode=self.encryption_mode)
-        else:
-            raise ValueError('Unknown encoding mode: {0}'.format(self.encoding_mode))
+        #elif self.encoding_mode in (EncodingMode.GROUP_UNSHIFTED, EncodingMode.STANDARD):
+        #    self._target_bytes = calculate_bytes(width=self.width,
+        #                                         num_collected=int(self.collection_rate * self.seq_length),
+        #                                         num_features=self.num_features,
+        #                                         seq_length=self.seq_length,
+        #                                         encryption_mode=self.encryption_mode)
+        #else:
+        #    raise ValueError('Unknown encoding mode: {0}'.format(self.encoding_mode))
 
     @property
     def max_skip(self) -> int:
