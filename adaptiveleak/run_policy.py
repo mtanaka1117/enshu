@@ -19,7 +19,7 @@ if __name__ == '__main__':
     parser.add_argument('--dataset', type=str, required=True)
     parser.add_argument('--policy', type=str, required=True)
     parser.add_argument('--collection-rate', type=float, required=True)
-    parser.add_argument('--encoding', type=str, choices=['standard', 'group'], default='standard')
+    parser.add_argument('--encoding', type=str, choices=['standard', 'group', 'group_unshifted'], default='standard')
     parser.add_argument('--feature', type=int, default=0)
     parser.add_argument('--max-num-samples', type=int)
     args = parser.parse_args()

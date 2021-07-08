@@ -18,6 +18,7 @@ class EncryptionMode(Enum):
 class EncodingMode(Enum):
     STANDARD = auto()
     GROUP = auto()
+    GROUP_UNSHIFTED = auto()
 
 
 class CollectMode(Enum):

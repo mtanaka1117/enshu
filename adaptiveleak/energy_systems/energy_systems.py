@@ -112,6 +112,11 @@ class EncryptionEnergy:
 class EncodingEnergy:
 
     def __init__(self, encoding_mode: EncodingMode):
+        # As a conservative estimate, we set the group un-shifted variant
+        # to the cost of the standard encoding algorithm
+        if encoding_mode == EncodingMode.GROUP_UNSHIFTED:
+            encoding_mode = EncodingMode.STANDARD
+
         self._encoding_mode = encoding_mode
 
         # Get the base directory

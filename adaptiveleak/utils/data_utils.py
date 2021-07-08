@@ -118,7 +118,8 @@ def select_range_shift(measurement: int, old_width: int, old_precision: int, new
     # Create the constants necessary for selecting the range shift
     non_fractional = old_width - old_precision
     width_mask = (1 << (new_width - 1)) - 1  # Masks out all non-data bits (including the sign bit)
-    recovered_mask = 0x7FFF
+    recovered_mask = (1 << (old_width - 1)) - 1  # Mask out all non-data bits in the old size (including sign bit)
+    #recovered_mask = 0x7FFF
 
     # Get the new precision based on the (fixed) number of non-fractional bits 
     #new_precision = new_width - non_fractional

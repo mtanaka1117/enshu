@@ -200,13 +200,22 @@ class AdaptivePolicy(Policy):
                                                       seq_length=seq_length,
                                                       num_features=num_features)
 
-        self._target_bytes = get_group_target_bytes(width=self.width,
-                                                    collection_rate=self.collection_rate,
-                                                    num_features=self.num_features,
-                                                    seq_length=self.seq_length,
-                                                    encryption_mode=self.encryption_mode,
-                                                    energy_unit=self.energy_unit,
-                                                    target_energy=self._energy_per_seq)
+        if self.encoding_mode == EncodingMode.GROUP:
+            self._target_bytes = get_group_target_bytes(width=self.width,
+                                                        collection_rate=self.collection_rate,
+                                                        num_features=self.num_features,
+                                                        seq_length=self.seq_length,
+                                                        encryption_mode=self.encryption_mode,
+                                                        energy_unit=self.energy_unit,
+                                                        target_energy=self._energy_per_seq)
+        elif self.encoding_mode in (EncodingMode.GROUP_UNSHIFTED, EncodingMode.STANDARD):
+            self._target_bytes = calculate_bytes(width=self.width,
+                                                 num_collected=int(self.collection_rate * self.seq_length),
+                                                 num_features=self.num_features,
+                                                 seq_length=self.seq_length,
+                                                 encryption_mode=self.encryption_mode)
+        else:
+            raise ValueError('Unknown encoding mode: {0}'.format(self.encoding_mode))
 
     @property
     def max_skip(self) -> int:
@@ -220,6 +229,10 @@ class AdaptivePolicy(Policy):
     def threshold(self) -> float:
         return self._threshold
 
+    @property
+    def target_bytes(self) -> int:
+        return self._target_bytes
+
     def reset(self):
         super().reset()
         self._current_skip = 0
@@ -228,7 +241,7 @@ class AdaptivePolicy(Policy):
     def encode(self, measurements: np.ndarray, collected_indices: List[int]) -> bytes:
         if self.encoding_mode == EncodingMode.STANDARD:
             return super().encode(measurements, collected_indices)
-        elif self.encoding_mode == EncodingMode.GROUP:
+        elif self.encoding_mode in (EncodingMode.GROUP, EncodingMode.GROUP_UNSHIFTED):
             target_bytes = self._target_bytes
 
             # Conservatively Estimate the meta-data bytes associated with stable encoding
@@ -237,7 +250,7 @@ class AdaptivePolicy(Policy):
             mask_bytes = int(math.ceil(self.seq_length / BITS_PER_BYTE))
 
             shift_bytes = 1 + MAX_SHIFT_GROUPS + size_bytes
-            metadata_bytes = shift_bytes + mask_bytes
+            metadata_bytes = shift_bytes + mask_bytes + LENGTH_SIZE
 
             if self.encryption_mode == EncryptionMode.STREAM:
                 metadata_bytes += CHACHA_NONCE_LEN
@@ -261,17 +274,35 @@ class AdaptivePolicy(Policy):
             flattened = measurements.T.reshape(-1)
             min_width = int(target_data_bits / (self.num_features * len(collected_indices)))
 
-            # Select the range shifts
-            shifts = select_range_shifts_array(measurements=flattened,
-                                               old_width=self.width,
-                                               old_precision=self.precision,
-                                               new_width=min_width,
-                                               num_range_bits=SHIFT_BITS)
+            group_sizes: List[int] = []
+            merged_shifts: List[int] = []
 
-            # Merge the shift groups
-            merged_shifts, group_sizes = merge_shift_groups(values=flattened,
-                                                            shifts=shifts,
-                                                            max_num_groups=MAX_SHIFT_GROUPS)
+            if self.encoding_mode == EncodingMode.GROUP:
+                # Select the range shifts
+                shifts = select_range_shifts_array(measurements=flattened,
+                                                   old_width=self.width,
+                                                   old_precision=self.precision,
+                                                   new_width=min_width,
+                                                   num_range_bits=SHIFT_BITS)
+
+                # Merge the shift groups
+                merged_shifts, group_sizes = merge_shift_groups(values=flattened,
+                                                                shifts=shifts,
+                                                                max_num_groups=MAX_SHIFT_GROUPS)
+            else:
+                # Set the group sizes 'evenly'
+                features_per_group = int(round(len(flattened) / MAX_SHIFT_GROUPS))
+
+                feature_count = 0
+                for group_idx in range(MAX_SHIFT_GROUPS - 1):
+                    group_sizes.append(features_per_group)
+                    feature_count += features_per_group
+
+                # Include the remaining elements in the last group
+                group_sizes.append(len(flattened) - feature_count)
+
+                # For the 'un-shifted' variant, we set all the shift values to zero
+                merged_shifts = [0 for _ in group_sizes]
 
             # Re-calculate the meta-data size based on the given shift groups. Smaller
             # ranges allow for greater savings.
@@ -279,7 +310,7 @@ class AdaptivePolicy(Policy):
             size_bytes = int(math.ceil((size_width * MAX_SHIFT_GROUPS) / BITS_PER_BYTE))
 
             shift_bytes = 1 + MAX_SHIFT_GROUPS + size_bytes
-            metadata_bytes = shift_bytes + mask_bytes
+            metadata_bytes = shift_bytes + mask_bytes + LENGTH_SIZE
 
             if self.encryption_mode == EncryptionMode.STREAM:
                 metadata_bytes += CHACHA_NONCE_LEN
@@ -300,7 +331,7 @@ class AdaptivePolicy(Policy):
                                                  seq_length=self.seq_length)
 
             if self.encryption_mode == EncryptionMode.STREAM:
-                return pad_to_length(encoded, length=target_bytes - CHACHA_NONCE_LEN)
+                return pad_to_length(encoded, length=target_bytes - CHACHA_NONCE_LEN - LENGTH_SIZE)
 
             return encoded
         else:
@@ -309,7 +340,7 @@ class AdaptivePolicy(Policy):
     def decode(self, message: bytes) -> Tuple[np.ndarray, List[int]]:
         if self.encoding_mode == EncodingMode.STANDARD:
             return super().decode(message)
-        elif self.encoding_mode == EncodingMode.GROUP:
+        elif self.encoding_mode in (EncodingMode.GROUP, EncodingMode.GROUP_UNSHIFTED):
             non_fractional = self.width - self.precision
             max_group_size = max(int(BITS_PER_BYTE * AES_BLOCK_SIZE), 1)
 
@@ -890,14 +921,13 @@ def make_policy(name: str,
             threshold = 0.0
         else:
             thresholds = read_json_gz(threshold_path)
-            rate_str = str(collection_rate)
-            encoding_name = 'standard'  # all policies use the standard thresholds
+            rate_str = str(round(collection_rate, 2))
 
-            if (name not in thresholds) or (encoding_name not in thresholds[name]) or (rate_str not in thresholds[name][encoding_name]):
+            if (name not in thresholds) or (collect_mode not in thresholds[name]) or (rate_str not in thresholds[name][collect_mode]):
                 print('WARNING: No threshold path exists.')
                 threshold = 0.0
             else:
-                threshold = thresholds[name][encoding_name][rate_str]
+                threshold = thresholds[name][collect_mode][rate_str]
                 did_find_threshold = True
 
         if name == 'adaptive_heuristic':

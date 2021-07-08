@@ -2,10 +2,11 @@ import unittest
 import numpy as np
 from sklearn.metrics import mean_absolute_error
 
-from adaptiveleak.policies import AdaptiveHeuristic, EncodingMode, SkipRNN, run_policy, BudgetWrappedPolicy
+from adaptiveleak.policies import AdaptiveHeuristic, SkipRNN, run_policy, BudgetWrappedPolicy
 from adaptiveleak.server import reconstruct_sequence
-from adaptiveleak.utils.constants import SMALL_NUMBER
-from adaptiveleak.utils.encryption import EncryptionMode, CHACHA_NONCE_LEN, AES_BLOCK_SIZE
+from adaptiveleak.utils.constants import SMALL_NUMBER, LENGTH_SIZE
+from adaptiveleak.utils.encryption import CHACHA_NONCE_LEN, AES_BLOCK_SIZE
+from adaptiveleak.utils.data_types import EncodingMode, EncryptionMode, CollectMode
 from adaptiveleak.utils.data_utils import round_to_block
 from adaptiveleak.utils.file_utils import read_pickle_gz
 from adaptiveleak.utils.loading import load_data
@@ -25,6 +26,7 @@ class TestAdaptiveEncode(unittest.TestCase):
                                    num_features=1,
                                    encryption_mode=EncryptionMode.STREAM,
                                    encoding_mode=EncodingMode.STANDARD,
+                                   collect_mode=CollectMode.LOW,
                                    should_compress=True,
                                    max_skip=0,
                                    min_skip=0)
@@ -51,6 +53,7 @@ class TestAdaptiveEncode(unittest.TestCase):
                                    num_features=1,
                                    encryption_mode=EncryptionMode.STREAM,
                                    encoding_mode=EncodingMode.GROUP,
+                                   collect_mode=CollectMode.LOW,
                                    should_compress=False,
                                    max_skip=0,
                                    min_skip=0)
@@ -58,8 +61,8 @@ class TestAdaptiveEncode(unittest.TestCase):
         encoded = policy.encode(measurements=sample['measurements'],
                                 collected_indices=sample['indices'])
 
-        encoded_bytes = CHACHA_NONCE_LEN + len(encoded)
-        self.assertEqual(encoded_bytes, 149)
+        encoded_bytes = CHACHA_NONCE_LEN + LENGTH_SIZE + len(encoded)
+        self.assertEqual(encoded_bytes, 139)
 
     def test_chlorine_block(self):
         # Load the data
@@ -73,6 +76,7 @@ class TestAdaptiveEncode(unittest.TestCase):
                                    num_features=1,
                                    encryption_mode=EncryptionMode.BLOCK,
                                    encoding_mode=EncodingMode.GROUP,
+                                   collect_mode=CollectMode.LOW,
                                    should_compress=False,
                                    max_skip=0,
                                    min_skip=0)
@@ -95,6 +99,7 @@ class TestAdaptiveEncode(unittest.TestCase):
                                    num_features=6,
                                    encryption_mode=EncryptionMode.STREAM,
                                    encoding_mode=EncodingMode.GROUP,
+                                   collect_mode=CollectMode.LOW,
                                    should_compress=False,
                                    max_skip=0,
                                    min_skip=0)
@@ -102,8 +107,10 @@ class TestAdaptiveEncode(unittest.TestCase):
         encoded = policy.encode(measurements=sample['measurements'],
                                 collected_indices=sample['indices'])
 
-        encoded_bytes = CHACHA_NONCE_LEN + len(encoded)
-        self.assertEqual(encoded_bytes, 169)
+        encoded_bytes = CHACHA_NONCE_LEN + LENGTH_SIZE + len(encoded)
+
+        # Should be 171, rounded down to lower frame leads to 159
+        self.assertEqual(encoded_bytes, 159)
 
     def test_epilepsy_stream(self):
          # Read the data
@@ -117,6 +124,7 @@ class TestAdaptiveEncode(unittest.TestCase):
                                    num_features=3,
                                    encryption_mode=EncryptionMode.STREAM,
                                    encoding_mode=EncodingMode.GROUP,
+                                   collect_mode=CollectMode.LOW,
                                    should_compress=False,
                                    max_skip=0,
                                    min_skip=0)
@@ -126,7 +134,7 @@ class TestAdaptiveEncode(unittest.TestCase):
 
         decoded_measurements, decoded_collected, _ = policy.decode(encoded)
 
-        self.assertEqual(len(decoded_measurements), 87)
+        self.assertEqual(len(decoded_measurements), 85)
 
     def test_tiselac_stream(self):
          # Read the data
@@ -140,6 +148,7 @@ class TestAdaptiveEncode(unittest.TestCase):
                                    num_features=10,
                                    encryption_mode=EncryptionMode.STREAM,
                                    encoding_mode=EncodingMode.GROUP,
+                                   collect_mode=CollectMode.LOW,
                                    should_compress=False,
                                    max_skip=0,
                                    min_skip=0)
@@ -163,6 +172,7 @@ class TestAdaptiveEncode(unittest.TestCase):
                                    num_features=1,
                                    encryption_mode=EncryptionMode.STREAM,
                                    encoding_mode=EncodingMode.GROUP,
+                                   collect_mode=CollectMode.LOW,
                                    should_compress=False,
                                    max_skip=0,
                                    min_skip=0)
@@ -170,7 +180,7 @@ class TestAdaptiveEncode(unittest.TestCase):
         encoded = policy.encode(measurements=sample['measurements'],
                                 collected_indices=sample['indices'])
 
-        self.assertEqual(len(encoded), 410)
+        self.assertEqual(len(encoded), 405)
 
     def test_activity_stream_1109(self):
         # Read the data
@@ -184,13 +194,16 @@ class TestAdaptiveEncode(unittest.TestCase):
                          num_features=6,
                          encryption_mode=EncryptionMode.STREAM,
                          encoding_mode=EncodingMode.GROUP,
+                         collect_mode=CollectMode.LOW,
                          should_compress=False,
                          dataset_name='uci_har')
 
         encoded = policy.encode(measurements=sample['measurements'],
                                 collected_indices=sample['indices'])
 
-        self.assertEqual(len(encoded), 127)  # Target is 139, subtract 12 for ChaCha20 Nonce
+        encoded_bytes = len(encoded) + CHACHA_NONCE_LEN + LENGTH_SIZE
+
+        self.assertEqual(encoded_bytes, 119)  # Target is 139, round down to lower frame
 
     def test_strawberry_e2e_56(self):
         # Read the data
@@ -201,9 +214,10 @@ class TestAdaptiveEncode(unittest.TestCase):
         policy = BudgetWrappedPolicy(name='adaptive_heuristic',
                                      seq_length=inputs.shape[0],
                                      num_features=inputs.shape[1],
-                                     encryption_mode=EncryptionMode.STREAM,
+                                     encryption_mode='stream',
                                      encoding='group',
                                      collection_rate=0.5,
+                                     collect_mode='low',
                                      dataset='strawberry',
                                      should_compress=False)
         
@@ -230,6 +244,47 @@ class TestAdaptiveEncode(unittest.TestCase):
         error = np.average(np.abs(recovered - inputs))
 
         self.assertLess(error, 0.02)
+
+    def test_eog_e2e_44(self):
+        # Read the data
+        inputs, _ = load_data(dataset_name='eog', fold='validation')
+        inputs = inputs[44]
+
+        # Make the policy
+        policy = BudgetWrappedPolicy(name='adaptive_heuristic',
+                                     seq_length=inputs.shape[0],
+                                     num_features=inputs.shape[1],
+                                     encryption_mode='stream',
+                                     encoding='group',
+                                     collection_rate=0.7,
+                                     collect_mode='low',
+                                     dataset='eog',
+                                     should_compress=False)
+        
+        # Run the policy (we care about sampling correctness here, not the budget)
+        policy.init_for_experiment(num_sequences=1)  
+        policy_result = run_policy(policy, sequence=inputs, should_enforce_budget=False)
+
+        # Decode the result
+        decoded, collected_indices, _ = policy.decode(message=policy_result.encoded)
+
+        # Compare the decoded sequences to the original sampled sequence
+        diff = np.abs(decoded - policy_result.measurements)
+        max_idx = np.argmax(diff)
+
+        comparison = np.average(diff)
+        self.assertLessEqual(comparison, 0.1)
+
+        # Reconstruct the sequence
+        recovered = reconstruct_sequence(measurements=decoded,
+                                         collected_indices=collected_indices,
+                                         seq_length=inputs.shape[0])
+
+        # Compute the error
+        error = np.average(np.abs(recovered - inputs))
+
+        self.assertLess(error, 1.0)
+
 
 if __name__ == '__main__':
     unittest.main()
