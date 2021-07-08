@@ -915,7 +915,7 @@ def make_policy(name: str,
                            seq_length=seq_length,
                            num_features=num_features,
                            dataset_name=dataset,
-                           encryption_mode=EncryptionMode[encryption_mode.uper()],
+                           encryption_mode=EncryptionMode[encryption_mode.upper()],
                            collect_mode=CollectMode[collect_mode.upper()],
                            encoding_mode=EncodingMode[str(kwargs['encoding']).upper()],
                            should_compress=should_compress)
