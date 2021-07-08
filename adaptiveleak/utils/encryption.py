@@ -4,7 +4,7 @@ from Cryptodome.Hash import HMAC, SHA256
 from Cryptodome.Random import get_random_bytes
 from Cryptodome.Util.Padding import pad, unpad
 
-from .types import EncryptionMode
+from .data_types import EncryptionMode
 
 
 AES_BLOCK_SIZE = 16

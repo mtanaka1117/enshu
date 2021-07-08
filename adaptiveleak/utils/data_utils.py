@@ -5,8 +5,9 @@ from functools import partial
 from Cryptodome.Random import get_random_bytes
 from typing import List, Union, Tuple, Iterable
 
-from adaptiveleak.utils.constants import BITS_PER_BYTE, BIG_NUMBER, MIN_WIDTH, SMALL_NUMBER, BOUND_BITS, MAX_WIDTH
-from adaptiveleak.utils.encryption import AES_BLOCK_SIZE, EncryptionMode, CHACHA_NONCE_LEN
+from adaptiveleak.utils.constants import BITS_PER_BYTE, BIG_NUMBER, MIN_WIDTH, SMALL_NUMBER, MAX_WIDTH, LENGTH_SIZE
+from adaptiveleak.utils.encryption import AES_BLOCK_SIZE, CHACHA_NONCE_LEN
+from adaptiveleak.utils.data_types import EncryptionMode
 
 
 MAX_ITER = 100
@@ -567,12 +568,17 @@ def calculate_bytes(width: int, num_collected: int, num_features: int, seq_lengt
 
     if encryption_mode == EncryptionMode.BLOCK:
         # Account for the IV
-        return round_to_block(message_bytes + AES_BLOCK_SIZE, block_size=AES_BLOCK_SIZE)
+        total_bytes = round_to_block(message_bytes + AES_BLOCK_SIZE, block_size=AES_BLOCK_SIZE)
     elif encryption_mode == EncryptionMode.STREAM:
         # Account for the nonce
-        return message_bytes + CHACHA_NONCE_LEN
+        total_bytes = message_bytes + CHACHA_NONCE_LEN
     else:
         raise ValueError('Unknown encryption mode: {0}'.format(encryption_mode.name))
+
+    # Account for the length field
+    total_bytes += LENGTH_SIZE
+
+    return total_bytes
 
 
 def get_num_groups(num_collected: int, num_features: int, group_size: int) -> int:
@@ -634,22 +640,27 @@ def calculate_grouped_bytes(widths: List[int],
         group_elements = min(group_size, total_features - so_far)
 
         data_bits = width * group_elements
-        data_bytes = int(math.ceil(data_bits / 8))
+        data_bytes = int(math.ceil(data_bits / BITS_PER_BYTE))
 
         total_bytes += data_bytes
         so_far += group_elements
 
     # Include the meta-data (group widths) and the sequence mask
-    total_bytes += num_groups + int(math.ceil(seq_length / 8)) + 1
+    total_bytes += num_groups + int(math.ceil(seq_length / BITS_PER_BYTE)) + 1
 
     if encryption_mode == EncryptionMode.BLOCK:
         # Include the IV
-        return AES_BLOCK_SIZE + round_to_block(total_bytes, AES_BLOCK_SIZE)
+        total_bytes = AES_BLOCK_SIZE + round_to_block(total_bytes, AES_BLOCK_SIZE)
     elif encryption_mode == EncryptionMode.STREAM:
         # Include the Nonce
-        return CHACHA_NONCE_LEN + total_bytes
+        total_bytes += CHACHA_NONCE_LEN
     else:
         raise ValueError('Unknown encryption mode: {0}'.format(encryption_mode.name))
+
+    # Account for the length field
+    total_bytes += LENGTH_SIZE
+
+    return total_bytes
 
 
 def prune_sequence(measurements: np.ndarray, collected_indices: List[int], max_collected: int, seq_length: int) -> Tuple[np.ndarray, List[int]]:

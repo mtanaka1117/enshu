@@ -9,11 +9,11 @@ from sklearn.metrics import mean_absolute_error, r2_score, mean_squared_error
 from typing import Optional, List, Tuple
 
 from adaptiveleak.policies import BudgetWrappedPolicy
-from adaptiveleak.utils.constants import LENGTH_BYTES, LENGTH_ORDER, SMALL_NUMBER
+from adaptiveleak.utils.constants import LENGTH_SIZE, LENGTH_ORDER, SMALL_NUMBER
 from adaptiveleak.utils.analysis import normalized_mae, normalized_rmse
 from adaptiveleak.utils.encryption import decrypt, verify_hmac, SHA256_LEN
 from adaptiveleak.utils.loading import load_data
-from adaptiveleak.utils.types import EncryptionMode
+from adaptiveleak.utils.data_types import EncryptionMode
 from adaptiveleak.utils.file_utils import read_json, save_json_gz, read_pickle_gz
 
 
@@ -33,8 +33,8 @@ def parse_message(message_buffer: bytes) -> Tuple[Message, int]:
                 should be advanced by this amount.
     """
     collected_start = SHA256_LEN
-    length_start = collected_start + LENGTH_BYTES
-    data_start = length_start + LENGTH_BYTES
+    length_start = collected_start + LENGTH_SIZE
+    data_start = length_start + LENGTH_SIZE
 
     mac = message_buffer[:collected_start]
 
@@ -48,7 +48,7 @@ def parse_message(message_buffer: bytes) -> Tuple[Message, int]:
                       length=length,
                       data=data,
                       full=full,
-                      num_bytes=len(full) - LENGTH_BYTES,  # Remove the true collected field (only included for logging purposes in the simulator)
+                      num_bytes=len(full) - LENGTH_SIZE,  # Remove the true collected field (only included for logging purposes in the simulator)
                       true_num_collected=true_collected)
 
     return message, length + data_start
@@ -104,7 +104,7 @@ class Server:
     def port(self) -> int:
         return self._port
 
-    def run(self, inputs: np.ndarray, labels: np.ndarray, policy: BudgetWrappedPolicy, num_sequences: int, encryption_mode: EncryptionMode, should_print: bool, output_folder: str):
+    def run(self, inputs: np.ndarray, labels: np.ndarray, policy: BudgetWrappedPolicy, num_sequences: int, should_print: bool, output_folder: str):
         """
         Opens the server for connections.
         """
@@ -172,8 +172,8 @@ class Server:
                         break
 
                     # Decrypt the message
-                    key = self._aes_key if encryption_mode == EncryptionMode.BLOCK else self._chacha_key
-                    message = decrypt(ciphertext=parsed.data, key=key, mode=encryption_mode)
+                    key = self._aes_key if policy.encryption_mode == EncryptionMode.BLOCK else self._chacha_key
+                    message = decrypt(ciphertext=parsed.data, key=key, mode=policy.encryption_mode)
 
                     # Decode the measurements
                     measurements, collected_indices, widths = policy.decode(message=message)
@@ -261,7 +261,7 @@ class Server:
             'num_bytes': num_bytes_list,
             'num_measurements': num_measurements_list,
             'labels': label_list,
-            'encryption_mode': encryption_mode.name,
+            'encryption_mode': policy.encryption_mode.name,
             'policy': policy.as_dict()
         }
 
@@ -276,6 +276,7 @@ if __name__ == '__main__':
     parser.add_argument('--encryption', type=str, choices=['block', 'stream'], required=True)
     parser.add_argument('--policy', type=str, required=True)
     parser.add_argument('--encoding', type=str, choices=['standard', 'group'], required=True)
+    parser.add_argument('--collect', type=str, choices=['tiny', 'low', 'med', 'high'], required=True)
     parser.add_argument('--output-folder', type=str, required=True)
     parser.add_argument('--port', type=int, default=50000)
     parser.add_argument('--max-num-seq', type=int)
@@ -284,9 +285,6 @@ if __name__ == '__main__':
 
     # Load the test data
     inputs, labels = load_data(dataset_name=args.dataset, fold='test')
-
-    # Set the encryption mode
-    encryption_mode = EncryptionMode[args.encryption.upper()]
 
     # Make the server
     server = Server(host='localhost', port=args.port)
@@ -301,7 +299,8 @@ if __name__ == '__main__':
                                  num_features=num_features,
                                  seq_length=seq_length,
                                  dataset=args.dataset,
-                                 encryption_mode=encryption_mode,
+                                 encryption_mode=args.encryption,
+                                 collect_mode=args.collect,
                                  encoding=args.encoding,
                                  should_compress=args.should_compress)
 
@@ -313,5 +312,4 @@ if __name__ == '__main__':
                num_sequences=num_seq,
                should_print=True,
                policy=policy,
-               encryption_mode=encryption_mode,
                output_folder=args.output_folder)

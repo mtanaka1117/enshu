@@ -3,8 +3,11 @@ import numpy as np
 import h5py
 from Cryptodome.Random import get_random_bytes
 
+from adaptiveleak.energy_systems import get_group_target_bytes, EnergyUnit, convert_rate_to_energy
 from adaptiveleak.utils import data_utils
-from adaptiveleak.utils.encryption import AES_BLOCK_SIZE, encrypt_aes128, EncryptionMode, encrypt
+from adaptiveleak.utils.constants import LENGTH_SIZE
+from adaptiveleak.utils.encryption import AES_BLOCK_SIZE, encrypt_aes128, encrypt
+from adaptiveleak.utils.data_types import EncryptionMode, CollectMode, PolicyType, EncodingMode
 from adaptiveleak.utils.message import encode_standard_measurements
 
 
@@ -616,26 +619,125 @@ class TestPacking(unittest.TestCase):
         self.assertEqual(values[1], 0x092)
 
 
+class TestGroupTargetBytes(unittest.TestCase):
+
+    def test_target_block(self):
+        encryption_mode = EncryptionMode.BLOCK
+        width = 7
+        num_features = 3
+        seq_length = 10
+        period = 10
+        rate = 0.2
+
+        energy_unit = EnergyUnit(policy_type=PolicyType.ADAPTIVE_HEURISTIC,
+                                 encoding_mode=EncodingMode.GROUP,
+                                 encryption_mode=encryption_mode,
+                                 collect_mode=CollectMode.LOW,
+                                 seq_length=seq_length,
+                                 num_features=num_features,
+                                 period=period)
+
+        target_energy = convert_rate_to_energy(collection_rate=rate,
+                                               width=width,
+                                               encryption_mode=encryption_mode,
+                                               seq_length=seq_length,
+                                               num_features=num_features)
+
+        target_bytes = get_group_target_bytes(width=width,
+                                              collection_rate=rate,
+                                              num_features=num_features,
+                                              seq_length=seq_length,
+                                              encryption_mode=encryption_mode,
+                                              energy_unit=energy_unit,
+                                              target_energy=target_energy)
+
+        self.assertEqual(target_bytes, 19)
+
+    def test_target_stream(self):
+        encryption_mode = EncryptionMode.STREAM
+        width = 7
+        num_features = 3
+        seq_length = 10
+        period = 10
+        rate = 0.2
+
+        energy_unit = EnergyUnit(policy_type=PolicyType.ADAPTIVE_HEURISTIC,
+                                 encoding_mode=EncodingMode.GROUP,
+                                 encryption_mode=encryption_mode,
+                                 collect_mode=CollectMode.LOW,
+                                 seq_length=seq_length,
+                                 num_features=num_features,
+                                 period=period)
+
+        target_energy = convert_rate_to_energy(collection_rate=rate,
+                                               width=width,
+                                               encryption_mode=encryption_mode,
+                                               seq_length=seq_length,
+                                               num_features=num_features)
+
+        target_bytes = get_group_target_bytes(width=width,
+                                              collection_rate=rate,
+                                              num_features=num_features,
+                                              seq_length=seq_length,
+                                              encryption_mode=encryption_mode,
+                                              energy_unit=energy_unit,
+                                              target_energy=target_energy)
+
+        self.assertEqual(target_bytes, 19)
+
+    def test_target_stream_large(self):
+        encryption_mode = EncryptionMode.STREAM
+        width = 16
+        num_features = 1
+        seq_length = 1250
+        period = 10
+        rate = 0.7
+
+        energy_unit = EnergyUnit(policy_type=PolicyType.ADAPTIVE_HEURISTIC,
+                                 encoding_mode=EncodingMode.GROUP,
+                                 encryption_mode=encryption_mode,
+                                 collect_mode=CollectMode.LOW,
+                                 seq_length=seq_length,
+                                 num_features=num_features,
+                                 period=period)
+
+        target_energy = convert_rate_to_energy(collection_rate=rate,
+                                               width=width,
+                                               encryption_mode=encryption_mode,
+                                               seq_length=seq_length,
+                                               num_features=num_features)
+
+        target_bytes = get_group_target_bytes(width=width,
+                                              collection_rate=rate,
+                                              num_features=num_features,
+                                              seq_length=seq_length,
+                                              encryption_mode=encryption_mode,
+                                              energy_unit=energy_unit,
+                                              target_energy=target_energy)
+
+        self.assertEqual(target_bytes, 1759)
+
+
 class TestCalculateBytes(unittest.TestCase):
 
     def test_byte_block(self):
-        # 42 bits -> 6 bytes of data, 1 meta-data, 2 for sequence mask, 16 for IV = 25 bytes -> 32 bytes
+        # 42 bits -> 6 bytes of data, 2 for sequence mask, 2 for length, 16 for IV = 26 bytes -> 32 bytes
         data_bytes = data_utils.calculate_bytes(width=7,
                                                 num_features=3,
                                                 num_collected=2,
                                                 encryption_mode=EncryptionMode.BLOCK,
                                                 seq_length=10)
-        self.assertEqual(data_bytes, 32)
+        self.assertEqual(data_bytes, 34)
 
     def test_byte_stream(self):
-        # 42 bits -> 6 bytes of data, 1 meta-data, 2 for sequence mask, 12 for nonce = 21 bytes
+        # 42 bits -> 6 bytes of data, 2 for sequence mask, 2 for length, 12 for nonce = 22 bytes
         data_bytes = data_utils.calculate_bytes(width=7,
                                                 num_features=3,
                                                 num_collected=2,
                                                 seq_length=9,
                                                 encryption_mode=EncryptionMode.STREAM)
 
-        self.assertEqual(data_bytes, 20)
+        self.assertEqual(data_bytes, 22)
 
     def test_byte_stream_end_to_end_one(self):
         # Encode and encrypt measurements
@@ -661,7 +763,7 @@ class TestCalculateBytes(unittest.TestCase):
                                                    seq_length=seq_length,
                                                    encryption_mode=EncryptionMode.STREAM)
 
-        self.assertEqual(message_bytes, len(encrypted))
+        self.assertEqual(message_bytes, len(encrypted) + LENGTH_SIZE)
 
     def test_byte_stream_end_to_end_two(self):
         # Encode and encrypt measurements
@@ -687,7 +789,7 @@ class TestCalculateBytes(unittest.TestCase):
                                                    seq_length=seq_length,
                                                    encryption_mode=EncryptionMode.STREAM)
 
-        self.assertEqual(message_bytes, len(encrypted))
+        self.assertEqual(message_bytes, len(encrypted) + LENGTH_SIZE)
 
     def test_byte_block_end_to_end_one(self):
         # Encode and encrypt measurements
@@ -713,7 +815,7 @@ class TestCalculateBytes(unittest.TestCase):
                                                    seq_length=seq_length,
                                                    encryption_mode=EncryptionMode.BLOCK)
 
-        self.assertEqual(message_bytes, len(encrypted))
+        self.assertEqual(message_bytes, len(encrypted) + LENGTH_SIZE)
 
     def test_byte_block_end_to_end_two(self):
         # Encode and encrypt measurements
@@ -739,7 +841,7 @@ class TestCalculateBytes(unittest.TestCase):
                                                    seq_length=seq_length,
                                                    encryption_mode=EncryptionMode.BLOCK)
 
-        self.assertEqual(message_bytes, len(encrypted))
+        self.assertEqual(message_bytes, len(encrypted) + LENGTH_SIZE)
 
     def test_group_block(self):
         # 11 bytes of data, 3 meta-data, 2 for sequence mask = 16 bytes -> 16 bytes + 16 byte IV = 32 bytes
@@ -749,7 +851,7 @@ class TestCalculateBytes(unittest.TestCase):
                                                         seq_length=10,
                                                         group_size=6,
                                                         encryption_mode=EncryptionMode.BLOCK)
-        self.assertEqual(data_bytes, 32)
+        self.assertEqual(data_bytes, 34)
 
     def test_group_stream(self):
         # 11 bytes of data, 3 meta-data, 2 for sequence mask, 12 for nonce = 28 bytes
@@ -760,7 +862,7 @@ class TestCalculateBytes(unittest.TestCase):
                                                         group_size=6,
                                                         encryption_mode=EncryptionMode.STREAM)
 
-        self.assertEqual(data_bytes, 28)
+        self.assertEqual(data_bytes, 30)
 
     def test_group_stream_unbalanced(self):
         # 11 bytes of data, 3 meta-data, 2 for sequence mask, 12 for nonce = 29 bytes
@@ -771,7 +873,7 @@ class TestCalculateBytes(unittest.TestCase):
                                                         group_size=6,
                                                         encryption_mode=EncryptionMode.STREAM)
 
-        self.assertEqual(data_bytes, 28)
+        self.assertEqual(data_bytes, 30)
 
     def test_group_stream_large(self):
         data_bytes = data_utils.calculate_grouped_bytes(widths=[7, 9],
@@ -780,119 +882,7 @@ class TestCalculateBytes(unittest.TestCase):
                                                         seq_length=50,
                                                         group_size=132,
                                                         encryption_mode=EncryptionMode.STREAM)
-        self.assertEqual(data_bytes, 165)
-
-    #def test_group_stream_end_to_end_one(self):
-    #    # Encode and encrypt measurements
-    #    measurements = np.ones(shape=(4, 3))
-    #    collected_indices = [0, 2, 6, 9]
-    #    seq_length = 12
-    #    non_fractional = 2
-    #    widths = [6, 7]
-    #    group_size = 6
-
-    #    encoded = encode_grouped_measurements(measurements=measurements,
-    #                                          collected_indices=collected_indices,
-    #                                          widths=widths,
-    #                                          seq_length=seq_length,
-    #                                          non_fractional=non_fractional,
-    #                                          group_size=group_size)                                              
-
-    #    key = get_random_bytes(32)
-    #    encrypted = encrypt(message=encoded, key=key, mode=EncryptionMode.STREAM)
-
-    #    message_bytes = data_utils.calculate_grouped_bytes(widths=widths,
-    #                                                       num_features=measurements.shape[1],
-    #                                                       num_collected=measurements.shape[0],
-    #                                                       seq_length=seq_length,
-    #                                                       group_size=group_size,
-    #                                                       encryption_mode=EncryptionMode.STREAM)
-
-    #    self.assertEqual(message_bytes, len(encrypted))
-
-    #def test_group_stream_end_to_end_two(self):
-    #    # Encode and encrypt measurements
-    #    measurements = np.ones(shape=(5, 3))
-    #    collected_indices = [0, 2, 6, 9]
-    #    seq_length = 12
-    #    non_fractional = 2
-    #    widths = [6, 7, 7]
-    #    group_size = 6
-
-    #    encoded = encode_grouped_measurements(measurements=measurements,
-    #                                          collected_indices=collected_indices,
-    #                                          widths=widths,
-    #                                          seq_length=seq_length,
-    #                                          non_fractional=non_fractional,
-    #                                          group_size=group_size)
-
-    #    key = get_random_bytes(32)
-    #    encrypted = encrypt(message=encoded, key=key, mode=EncryptionMode.STREAM)
-
-    #    message_bytes = data_utils.calculate_grouped_bytes(widths=widths,
-    #                                                       num_features=measurements.shape[1],
-    #                                                       num_collected=measurements.shape[0],
-    #                                                       seq_length=seq_length,
-    #                                                       group_size=group_size,
-    #                                                       encryption_mode=EncryptionMode.STREAM)
-
-    #    self.assertEqual(message_bytes, len(encrypted))
-
-    #def test_group_block_end_to_end_one(self):
-    #    # Encode and encrypt measurements
-    #    measurements = np.ones(shape=(4, 3))
-    #    collected_indices = [0, 2, 6, 9]
-    #    seq_length = 12
-    #    non_fractional = 2
-    #    widths = [6, 7]
-    #    group_size = 6
-
-    #    encoded = encode_grouped_measurements(measurements=measurements,
-    #                                          collected_indices=collected_indices,
-    #                                          widths=widths,
-    #                                          seq_length=seq_length,
-    #                                          non_fractional=non_fractional,
-    #                                          group_size=group_size)
-
-    #    key = get_random_bytes(AES_BLOCK_SIZE)
-    #    encrypted = encrypt(message=encoded, key=key, mode=EncryptionMode.BLOCK)
-
-    #    message_bytes = data_utils.calculate_grouped_bytes(widths=widths,
-    #                                                       num_features=measurements.shape[1],
-    #                                                       num_collected=measurements.shape[0],
-    #                                                       seq_length=seq_length,
-    #                                                       group_size=group_size,
-    #                                                       encryption_mode=EncryptionMode.BLOCK)
-
-    #    self.assertEqual(message_bytes, len(encrypted))
-
-    #def test_group_block_end_to_end_two(self):
-    #    # Encode and encrypt measurements
-    #    measurements = np.ones(shape=(5, 3))
-    #    collected_indices = [0, 2, 6, 9]
-    #    seq_length = 12
-    #    non_fractional = 2
-    #    widths = [6, 7, 7]
-    #    group_size = 6
-
-    #    encoded = encode_grouped_measurements(measurements=measurements,
-    #                                          collected_indices=collected_indices,
-    #                                          widths=widths,
-    #                                          seq_length=seq_length,
-    #                                          non_fractional=non_fractional,
-    #                                          group_size=group_size)
-
-    #    key = get_random_bytes(AES_BLOCK_SIZE)
-    #    encrypted = encrypt(message=encoded, key=key, mode=EncryptionMode.BLOCK)
-
-    #    message_bytes = data_utils.calculate_grouped_bytes(widths=widths,
-    #                                                       num_features=measurements.shape[1],
-    #                                                       num_collected=measurements.shape[0],
-    #                                                       seq_length=seq_length,
-    #                                                       group_size=group_size,
-    #                                                       encryption_mode=EncryptionMode.BLOCK)
-
-    #    self.assertEqual(message_bytes, len(encrypted))
+        self.assertEqual(data_bytes, 167)
 
 
 class TestGroupWidths(unittest.TestCase):
@@ -952,113 +942,113 @@ class TestGroupWidths(unittest.TestCase):
         self.assertEqual(widths[1], 10)
 
 
-class TestMaxGroups(unittest.TestCase):
-
-    def test_size_one_feature(self):
-        target_frac = 0.2
-        seq_length = 235
-        num_features = 1
-        min_width = 3
-        group_size = 100
-        standard_width = 8
-        encryption_mode = EncryptionMode.STREAM
-
-        target_collected = int(seq_length * target_frac)
-        target_size = data_utils.calculate_bytes(width=standard_width,
-                                                 num_collected=target_collected,
-                                                 num_features=num_features,
-                                                 seq_length=seq_length,
-                                                 encryption_mode=encryption_mode)
-
-        max_collected = data_utils.get_max_collected(seq_length=seq_length,
-                                                     num_features=num_features,
-                                                     group_size=group_size,
-                                                     min_width=min_width,
-                                                     target_size=target_size,
-                                                     encryption_mode=encryption_mode)
-
-        # Verify the count
-        self.assertEqual(max_collected, 113)
-
-        # Verify the number of bytes
-        grouped_size = data_utils.calculate_grouped_bytes(widths=[min_width, min_width],
-                                                          num_collected=max_collected,
-                                                          num_features=num_features,
-                                                          group_size=group_size,
-                                                          encryption_mode=encryption_mode,
-                                                          seq_length=seq_length)
-
-        self.assertLessEqual(grouped_size, target_size)
-
-    def test_size_multi_feature(self):
-        target_frac = 0.2
-        seq_length = 50
-        num_features = 8
-        min_width = 3
-        group_size = 128
-        encryption_mode = EncryptionMode.STREAM
-
-        target_collected = int(seq_length * target_frac)
-        target_size = data_utils.calculate_bytes(width=8,
-                                                 num_collected=target_collected,
-                                                 num_features=num_features,
-                                                 seq_length=seq_length,
-                                                 encryption_mode=encryption_mode)
-
-        max_collected = data_utils.get_max_collected(seq_length=seq_length,
-                                                     num_features=num_features,
-                                                     group_size=group_size,
-                                                     min_width=min_width,
-                                                     target_size=target_size,
-                                                     encryption_mode=encryption_mode)
-
-        # Verify the count
-        self.assertEqual(max_collected, 25)
-
-        # Verify the number of bytes
-        grouped_size = data_utils.calculate_grouped_bytes(widths=[min_width, min_width],
-                                                          num_collected=max_collected,
-                                                          num_features=num_features,
-                                                          group_size=group_size,
-                                                          encryption_mode=encryption_mode,
-                                                          seq_length=seq_length)
-
-        self.assertLessEqual(grouped_size, target_size)
-
-    def test_size_long_seq(self):
-        target_frac = 0.3
-        seq_length = 206
-        num_features = 3
-        min_width = 4
-        group_size = 119
-        encryption_mode = EncryptionMode.STREAM
-
-        target_collected = int(seq_length * target_frac)
-        target_size = data_utils.calculate_bytes(width=8,
-                                                 num_collected=target_collected,
-                                                 num_features=num_features,
-                                                 seq_length=seq_length,
-                                                 encryption_mode=encryption_mode)
-
-        max_collected = data_utils.get_max_collected(seq_length=seq_length,
-                                                     num_features=num_features,
-                                                     group_size=group_size,
-                                                     min_width=min_width,
-                                                     target_size=target_size,
-                                                     encryption_mode=encryption_mode)
-
-        # Verify the count
-        self.assertEqual(max_collected, 118)
-
-        # Verify the number of bytes
-        grouped_size = data_utils.calculate_grouped_bytes(widths=[min_width, min_width, min_width],
-                                                          num_collected=max_collected,
-                                                          num_features=num_features,
-                                                          group_size=group_size,
-                                                          encryption_mode=encryption_mode,
-                                                          seq_length=seq_length)
-
-        self.assertLessEqual(grouped_size, target_size)
+#class TestMaxGroups(unittest.TestCase):
+#
+#    def test_size_one_feature(self):
+#        target_frac = 0.2
+#        seq_length = 235
+#        num_features = 1
+#        min_width = 3
+#        group_size = 100
+#        standard_width = 8
+#        encryption_mode = EncryptionMode.STREAM
+#
+#        target_collected = int(seq_length * target_frac)
+#        target_size = data_utils.calculate_bytes(width=standard_width,
+#                                                 num_collected=target_collected,
+#                                                 num_features=num_features,
+#                                                 seq_length=seq_length,
+#                                                 encryption_mode=encryption_mode)
+#
+#        max_collected = data_utils.get_max_collected(seq_length=seq_length,
+#                                                     num_features=num_features,
+#                                                     group_size=group_size,
+#                                                     min_width=min_width,
+#                                                     target_size=target_size,
+#                                                     encryption_mode=encryption_mode)
+#
+#        # Verify the count
+#        self.assertEqual(max_collected, 113)
+#
+#        # Verify the number of bytes
+#        grouped_size = data_utils.calculate_grouped_bytes(widths=[min_width, min_width],
+#                                                          num_collected=max_collected,
+#                                                          num_features=num_features,
+#                                                          group_size=group_size,
+#                                                          encryption_mode=encryption_mode,
+#                                                          seq_length=seq_length)
+#
+#        self.assertLessEqual(grouped_size, target_size)
+#
+#    def test_size_multi_feature(self):
+#        target_frac = 0.2
+#        seq_length = 50
+#        num_features = 8
+#        min_width = 3
+#        group_size = 128
+#        encryption_mode = EncryptionMode.STREAM
+#
+#        target_collected = int(seq_length * target_frac)
+#        target_size = data_utils.calculate_bytes(width=8,
+#                                                 num_collected=target_collected,
+#                                                 num_features=num_features,
+#                                                 seq_length=seq_length,
+#                                                 encryption_mode=encryption_mode)
+#
+#        max_collected = data_utils.get_max_collected(seq_length=seq_length,
+#                                                     num_features=num_features,
+#                                                     group_size=group_size,
+#                                                     min_width=min_width,
+#                                                     target_size=target_size,
+#                                                     encryption_mode=encryption_mode)
+#
+#        # Verify the count
+#        self.assertEqual(max_collected, 25)
+#
+#        # Verify the number of bytes
+#        grouped_size = data_utils.calculate_grouped_bytes(widths=[min_width, min_width],
+#                                                          num_collected=max_collected,
+#                                                          num_features=num_features,
+#                                                          group_size=group_size,
+#                                                          encryption_mode=encryption_mode,
+#                                                          seq_length=seq_length)
+#
+#        self.assertLessEqual(grouped_size, target_size)
+#
+#    def test_size_long_seq(self):
+#        target_frac = 0.3
+#        seq_length = 206
+#        num_features = 3
+#        min_width = 4
+#        group_size = 119
+#        encryption_mode = EncryptionMode.STREAM
+#
+#        target_collected = int(seq_length * target_frac)
+#        target_size = data_utils.calculate_bytes(width=8,
+#                                                 num_collected=target_collected,
+#                                                 num_features=num_features,
+#                                                 seq_length=seq_length,
+#                                                 encryption_mode=encryption_mode)
+#
+#        max_collected = data_utils.get_max_collected(seq_length=seq_length,
+#                                                     num_features=num_features,
+#                                                     group_size=group_size,
+#                                                     min_width=min_width,
+#                                                     target_size=target_size,
+#                                                     encryption_mode=encryption_mode)
+#
+#        # Verify the count
+#        self.assertEqual(max_collected, 118)
+#
+#        # Verify the number of bytes
+#        grouped_size = data_utils.calculate_grouped_bytes(widths=[min_width, min_width, min_width],
+#                                                          num_collected=max_collected,
+#                                                          num_features=num_features,
+#                                                          group_size=group_size,
+#                                                          encryption_mode=encryption_mode,
+#                                                          seq_length=seq_length)
+#
+#        self.assertLessEqual(grouped_size, target_size)
 
 
 class TestPruning(unittest.TestCase):

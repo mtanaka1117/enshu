@@ -16,11 +16,11 @@ MAX_RETRIES = 10
 RETRY_SLEEP = 0.1
 TIMEOUT = 10
 
-SERVER_CMD_ALL = 'python server.py --dataset {0} --encryption {1} --policy {2} --encoding {3} --collection-rate {4} --output-folder {5} --port {6}'
-SERVER_CMD_SAMPLES = 'python server.py --dataset {0} --encryption {1} --policy {2} --encoding {3} --collection-rate {4} --output-folder {5} --port {6} --max-num-seq {7}'
+SERVER_CMD_ALL = 'python server.py --dataset {0} --encryption {1} --policy {2} --encoding {3} --collect {4} --collection-rate {5} --output-folder {6} --port {7}'
+SERVER_CMD_SAMPLES = 'python server.py --dataset {0} --encryption {1} --policy {2} --encoding {3} --collect {4} --collection-rate {5} --output-folder {6} --port {7} --max-num-seq {8}'
 
-SENSOR_CMD_ALL = 'python sensor.py --dataset {0} --encryption {1} --policy {2} --encoding {3} --collection-rate {4} --port {5}'
-SENSOR_CMD_SAMPLES = 'python sensor.py --dataset {0} --encryption {1} --policy {2} --encoding {3} --collection-rate {4} --port {5} --max-num-seq {6}'
+SENSOR_CMD_ALL = 'python sensor.py --dataset {0} --encryption {1} --policy {2} --encoding {3} --collect {4} --collection-rate {5} --port {6}'
+SENSOR_CMD_SAMPLES = 'python sensor.py --dataset {0} --encryption {1} --policy {2} --encoding {3} --collect {4} --collection-rate {5} --port {6} --max-num-seq {7}'
 
 
 def expect_with_retry(comm_module: pexpect.spawn, expected: str):
@@ -45,6 +45,7 @@ if __name__ == '__main__':
     parser.add_argument('--policy', type=str, required=True, choices=POLICIES)
     parser.add_argument('--encoding', type=str, required=True, choices=['standard', 'group'])
     parser.add_argument('--encryption', type=str, required=True, choices=['block', 'stream'])
+    parser.add_argument('--collect', type=str, required=True, choices=['tiny', 'low', 'med', 'high'])
     parser.add_argument('--collection-rate', type=float, required=True, nargs='+')
     parser.add_argument('--should-compress', action='store_true')
     parser.add_argument('--max-num-samples', type=int)
@@ -81,11 +82,11 @@ if __name__ == '__main__':
 
         # Set the commands
         if args.max_num_samples is None:
-            server_cmd = SERVER_CMD_ALL.format(args.dataset, args.encryption, args.policy, args.encoding, collection_rate, output_folder, port)
-            sensor_cmd = SENSOR_CMD_ALL.format(args.dataset, args.encryption, args.policy, args.encoding, collection_rate, port)
+            server_cmd = SERVER_CMD_ALL.format(args.dataset, args.encryption, args.policy, args.encoding, args.collect, collection_rate, output_folder, port)
+            sensor_cmd = SENSOR_CMD_ALL.format(args.dataset, args.encryption, args.policy, args.encoding, args.collect, collection_rate, port)
         else:
-            server_cmd = SERVER_CMD_SAMPLES.format(args.dataset, args.encryption, args.policy, args.encoding, collection_rate, output_folder, port, args.max_num_samples)
-            sensor_cmd = SENSOR_CMD_SAMPLES.format(args.dataset, args.encryption, args.policy, args.encoding, collection_rate, port, args.max_num_samples)
+            server_cmd = SERVER_CMD_SAMPLES.format(args.dataset, args.encryption, args.policy, args.encoding, args.collect, collection_rate, output_folder, port, args.max_num_samples)
+            sensor_cmd = SENSOR_CMD_SAMPLES.format(args.dataset, args.encryption, args.policy, args.encoding, args.collect, collection_rate, port, args.max_num_samples)
 
         if args.should_compress:
             server_cmd += ' --should-compress'

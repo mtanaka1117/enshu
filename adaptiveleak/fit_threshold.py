@@ -8,9 +8,7 @@ from argparse import ArgumentParser
 
 from adaptiveleak.server import reconstruct_sequence
 from adaptiveleak.policies import run_policy, BudgetWrappedPolicy
-from adaptiveleak.energy_systems import convert_rate_to_energy
 from adaptiveleak.utils.constants import SMALL_NUMBER, BIG_NUMBER
-from adaptiveleak.utils.types import EncodingMode, EncryptionMode
 from adaptiveleak.utils.loading import load_data
 from adaptiveleak.utils.file_utils import iterate_dir, read_json, save_json_gz, read_json_gz
 
@@ -114,7 +112,7 @@ def fit(policy: BudgetWrappedPolicy,
             best_error = error
 
         if should_print:
-            print('Best Error: {0:.4f}, Best Threshold: {1:.4f}'.format(best_error, best_threshold), end='\r')
+            print('Best Error: {0:.7f}, Best Threshold: {1:.7f}'.format(best_error, best_threshold), end='\r')
 
         # Get the search direction based on the budget use
         budget = policy.budget
@@ -156,7 +154,8 @@ if __name__ == '__main__':
     parser.add_argument('--policy', type=str, required=True)
     parser.add_argument('--collection-rates', type=float, nargs='+', required=True)
     parser.add_argument('--encoding', type=str, required=True, choices=['standard' , 'group'])
-    parser.add_argument('--batch-size', type=int, default=256)
+    parser.add_argument('--collect', type=str, required=True, choices=['tiny', 'low', 'med', 'high'])
+    parser.add_argument('--batch-size', type=int, default=512)
     parser.add_argument('--batches-per-trial', type=int, default=3)
     parser.add_argument('--should-print', action='store_true')
     args = parser.parse_args()
@@ -179,13 +178,13 @@ if __name__ == '__main__':
     threshold_map = read_json_gz(output_file) if os.path.exists(output_file) else dict()
 
     policy_name = args.policy
-    encoding = args.encoding
+    collect_mode = args.collect
 
     if policy_name not in threshold_map:
         threshold_map[policy_name] = dict()
 
-    if encoding not in threshold_map[policy_name]:
-        threshold_map[policy_name][encoding] = dict()
+    if collect_mode not in threshold_map[policy_name]:
+        threshold_map[policy_name][collect_mode] = dict()
 
     # Create parameters for policy validation data splitting
     val_indices = np.arange(val_inputs.shape[0])
@@ -209,8 +208,9 @@ if __name__ == '__main__':
                                      collection_rate=collection_rate,
                                      seq_length=seq_length,
                                      num_features=num_features,
-                                     encryption_mode=EncryptionMode.STREAM,
-                                     encoding=encoding,
+                                     encryption_mode='stream',
+                                     collect_mode=collect_mode,
+                                     encoding=args.encoding,
                                      dataset=args.dataset,
                                      should_compress=False)
 
@@ -251,12 +251,10 @@ if __name__ == '__main__':
 
             energy_margin += 1
 
-        threshold_map[policy_name][encoding][str(collection_rate)] = final_threshold
+        threshold_map[policy_name][collect_mode][str(collection_rate)] = final_threshold
 
         if args.should_print:
             print('==========')
-
-    print(threshold_map)
 
     # Save the results
     save_json_gz(threshold_map, output_file)

@@ -1,6 +1,7 @@
 from enum import Enum, auto
 from collections import namedtuple
 
+
 class PolicyType(Enum):
     ADAPTIVE_HEURISTIC = auto()
     ADAPTIVE_DEVIATION = auto()
@@ -20,7 +21,10 @@ class EncodingMode(Enum):
 
 
 class CollectMode(Enum):
-    LOW = auto()  # Data in FRAM
+    TINY = auto()  # Data in FRAM
+    LOW = auto()
+    MED = auto()
+    HIGH = auto()
 
 
 PolicyResult = namedtuple('PolicyResult', ['measurements', 'collected_indices', 'encoded', 'energy', 'num_bytes', 'num_collected'])

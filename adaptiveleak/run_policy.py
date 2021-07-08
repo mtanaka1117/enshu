@@ -10,7 +10,6 @@ from typing import List, Tuple
 
 from adaptiveleak.server import reconstruct_sequence
 from adaptiveleak.policies import BudgetWrappedPolicy, Policy, run_policy
-from adaptiveleak.utils.encryption import EncryptionMode
 from adaptiveleak.utils.analysis import normalized_mae, normalized_rmse
 from adaptiveleak.utils.file_utils import read_pickle_gz, save_pickle_gz
 
@@ -48,7 +47,8 @@ if __name__ == '__main__':
                                  num_features=num_features,
                                  dataset=args.dataset,
                                  collection_rate=args.collection_rate,
-                                 encryption_mode=EncryptionMode.STREAM,
+                                 encryption_mode='stream',
+                                 collect_mode='low',
                                  encoding=args.encoding,
                                  should_compress=False)
 

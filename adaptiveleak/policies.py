@@ -6,19 +6,18 @@ from collections import deque
 from enum import Enum, auto
 from typing import Tuple, List, Dict, Any, Optional
 
-from adaptiveleak.energy_systems import EnergyUnit, convert_rate_to_energy
+
+from adaptiveleak.energy_systems import EnergyUnit, convert_rate_to_energy, get_group_target_bytes
 from adaptiveleak.utils.constants import BITS_PER_BYTE, MIN_WIDTH, SMALL_NUMBER, MAX_WIDTH, SHIFT_BITS, MAX_SHIFT_GROUPS
-from adaptiveleak.utils.constants import MIN_SHIFT_GROUPS, PERIOD, LENGTH_BYTES, BT_FRAME_SIZE
+from adaptiveleak.utils.constants import MIN_SHIFT_GROUPS, PERIOD, LENGTH_SIZE, BT_FRAME_SIZE
 from adaptiveleak.utils.data_utils import get_group_widths, get_num_groups, calculate_bytes, pad_to_length, sigmoid, truncate_to_block
-from adaptiveleak.utils.data_utils import prune_sequence, get_max_collected, calculate_grouped_bytes, linear_extrapolate
-from adaptiveleak.utils.data_utils import set_widths, select_range_shifts_array, num_bits_for_value
+from adaptiveleak.utils.data_utils import prune_sequence, calculate_grouped_bytes, set_widths, select_range_shifts_array, num_bits_for_value
 from adaptiveleak.utils.shifting import merge_shift_groups
 from adaptiveleak.utils.message import encode_standard_measurements, decode_standard_measurements
 from adaptiveleak.utils.message import encode_stable_measurements, decode_stable_measurements
 from adaptiveleak.utils.encryption import AES_BLOCK_SIZE, CHACHA_NONCE_LEN
 from adaptiveleak.utils.file_utils import read_json, read_pickle_gz, read_json_gz
-from adaptiveleak.utils.types import EncodingMode, EncryptionMode, PolicyType, PolicyResult, CollectMode
-
+from adaptiveleak.utils.data_types import EncodingMode, EncryptionMode, PolicyType, PolicyResult, CollectMode
 
 
 class Policy:
@@ -31,6 +30,7 @@ class Policy:
                  seq_length: int,
                  encryption_mode: EncryptionMode,
                  encoding_mode: EncodingMode,
+                 collect_mode: CollectMode,
                  should_compress: bool):
         self._estimate = np.zeros((num_features, ))  # [D]
         self._precision = precision
@@ -40,7 +40,7 @@ class Policy:
         self._collection_rate = collection_rate
         self._encryption_mode = encryption_mode
         self._encoding_mode = encoding_mode
-        self._collect_mode = CollectMode.LOW
+        self._collect_mode = collect_mode
         self._should_compress = should_compress
 
         self._rand = np.random.RandomState(seed=78362)
@@ -57,6 +57,7 @@ class Policy:
                                        seq_length=self.seq_length,
                                        num_features=num_features,
                                        period=PERIOD)
+
 
     @property
     def width(self) -> int:
@@ -168,6 +169,7 @@ class AdaptivePolicy(Policy):
                  max_skip: int,
                  encryption_mode: EncryptionMode,
                  encoding_mode: EncodingMode,
+                 collect_mode: CollectMode,
                  should_compress: bool):
         super().__init__(precision=precision,
                          width=width,
@@ -176,6 +178,7 @@ class AdaptivePolicy(Policy):
                          seq_length=seq_length,
                          encryption_mode=encryption_mode,
                          encoding_mode=encoding_mode,
+                         collect_mode=collect_mode,
                          should_compress=should_compress)
         assert min_skip >= 0, 'Must provide a non-negative minimum skip value'
 
@@ -189,6 +192,21 @@ class AdaptivePolicy(Policy):
         self._sample_skip = 0
 
         self._threshold = threshold
+
+        self._energy_per_seq = convert_rate_to_energy(collection_rate=collection_rate,
+                                                      width=self.width,
+                                                      encryption_mode=encryption_mode,
+                                                      collect_mode=collect_mode,
+                                                      seq_length=seq_length,
+                                                      num_features=num_features)
+
+        self._target_bytes = get_group_target_bytes(width=self.width,
+                                                    collection_rate=self.collection_rate,
+                                                    num_features=self.num_features,
+                                                    seq_length=self.seq_length,
+                                                    encryption_mode=self.encryption_mode,
+                                                    energy_unit=self.energy_unit,
+                                                    target_energy=self._energy_per_seq)
 
     @property
     def max_skip(self) -> int:
@@ -211,17 +229,7 @@ class AdaptivePolicy(Policy):
         if self.encoding_mode == EncodingMode.STANDARD:
             return super().encode(measurements, collected_indices)
         elif self.encoding_mode == EncodingMode.GROUP:
-            # Get the maximum number of collected measurements to still
-            # meet the target size
-            target_bytes = calculate_bytes(width=self.width,
-                                           num_collected=int(self.collection_rate * self.seq_length),
-                                           num_features=self.num_features,
-                                           seq_length=self.seq_length,
-                                           encryption_mode=self.encryption_mode)
-
-            # Truncate target to the next smallest wireless frame. This 'compression' addresses
-            # any excess energy required by the encoding routine
-            target_bytes = truncate_to_block(target_bytes, block_size=BT_FRAME_SIZE) - 3
+            target_bytes = self._target_bytes
 
             # Conservatively Estimate the meta-data bytes associated with stable encoding
             size_width = num_bits_for_value(len(collected_indices))
@@ -354,6 +362,7 @@ class AdaptiveLiteSense(AdaptivePolicy):
                  min_skip: int,
                  encryption_mode: EncryptionMode,
                  encoding_mode: EncodingMode,
+                 collect_mode: CollectMode,
                  should_compress: bool):
         super().__init__(collection_rate=collection_rate,
                          threshold=threshold,
@@ -365,6 +374,7 @@ class AdaptiveLiteSense(AdaptivePolicy):
                          min_skip=min_skip,
                          encryption_mode=encryption_mode,
                          encoding_mode=encoding_mode,
+                         collect_mode=collect_mode,
                          should_compress=should_compress)
         self._alpha = 0.7
         self._beta = 0.7
@@ -438,6 +448,7 @@ class SkipRNN(AdaptivePolicy):
                  num_features: int,
                  encryption_mode: EncryptionMode,
                  encoding_mode: EncodingMode,
+                 collect_mode: CollectMode,
                  should_compress: bool,
                  dataset_name: str):
         super().__init__(collection_rate=collection_rate,
@@ -450,6 +461,7 @@ class SkipRNN(AdaptivePolicy):
                          min_skip=0,
                          encryption_mode=encryption_mode,
                          encoding_mode=encoding_mode,
+                         collect_mode=collect_mode,
                          should_compress=should_compress)
 
         # Fetch the parameters
@@ -536,6 +548,7 @@ class RandomPolicy(Policy):
                  seq_length: int,
                  num_features: int,
                  encryption_mode: EncryptionMode,
+                 collect_mode: CollectMode,
                  should_compress: bool):
         super().__init__(precision=precision,
                          width=width,
@@ -543,6 +556,7 @@ class RandomPolicy(Policy):
                          num_features=num_features,
                          seq_length=seq_length,
                          encryption_mode=encryption_mode,
+                         collect_mode=collect_mode,
                          encoding_mode=EncodingMode.STANDARD,
                          should_compress=should_compress)
 
@@ -568,6 +582,7 @@ class UniformPolicy(Policy):
                  seq_length: int,
                  num_features: int,
                  encryption_mode: EncryptionMode,
+                 collect_mode: CollectMode,
                  should_compress: bool):
         super().__init__(precision=precision,
                          width=width,
@@ -576,6 +591,7 @@ class UniformPolicy(Policy):
                          seq_length=seq_length,
                          encryption_mode=encryption_mode,
                          encoding_mode=EncodingMode.STANDARD,
+                         collect_mode=collect_mode,
                          should_compress=should_compress)
         target_samples = int(collection_rate * seq_length)
 
@@ -622,7 +638,8 @@ class BudgetWrappedPolicy(Policy):
                  name: str,
                  seq_length: int,
                  num_features: int,
-                 encryption_mode: EncryptionMode,
+                 encryption_mode: str,
+                 collect_mode: str,
                  collection_rate: float,
                  dataset: str,
                  should_compress: bool,
@@ -632,6 +649,7 @@ class BudgetWrappedPolicy(Policy):
                                    seq_length=seq_length,
                                    num_features=num_features,
                                    encryption_mode=encryption_mode,
+                                   collect_mode=collect_mode,
                                    collection_rate=collection_rate,
                                    dataset=dataset,
                                    should_compress=should_compress,
@@ -640,8 +658,9 @@ class BudgetWrappedPolicy(Policy):
         # Call the base constructor to set the internal fields
         super().__init__(seq_length=seq_length,
                          num_features=num_features,
-                         encryption_mode=encryption_mode,
+                         encryption_mode=self._policy.encryption_mode,
                          encoding_mode=self._policy.encoding_mode,
+                         collect_mode=self._policy.collect_mode,
                          width=self._policy.width,
                          precision=self._policy.precision,
                          collection_rate=collection_rate,
@@ -650,9 +669,10 @@ class BudgetWrappedPolicy(Policy):
         # Convert the target rate into an energy rate per sequences
         self._energy_per_seq = convert_rate_to_energy(collection_rate=collection_rate,
                                                       width=self.width,
-                                                      encryption_mode=encryption_mode,
-                                                      seq_length=seq_length,
-                                                      num_features=num_features)
+                                                      encryption_mode=self.encryption_mode,
+                                                      collect_mode=self.collect_mode,
+                                                      seq_length=self.seq_length,
+                                                      num_features=self.num_features)
 
         # Counters for tracking the energy consumption
         self._consumed_energy = 0.0
@@ -789,7 +809,7 @@ def run_policy(policy: BudgetWrappedPolicy, sequence: np.ndarray, should_enforce
                             collected_indices=collected_indices)
 
     # Compute the number of bytes accounting for the length and encryption nonces
-    num_bytes = len(encoded) + LENGTH_BYTES
+    num_bytes = len(encoded) + LENGTH_SIZE
 
     if policy.encryption_mode == EncryptionMode.STREAM:
         num_bytes += CHACHA_NONCE_LEN
@@ -823,7 +843,8 @@ def run_policy(policy: BudgetWrappedPolicy, sequence: np.ndarray, should_enforce
 def make_policy(name: str,
                 seq_length: int,
                 num_features: int,
-                encryption_mode: EncryptionMode,
+                encryption_mode: str,
+                collect_mode: str,
                 collection_rate: float,
                 dataset: str,
                 should_compress: bool,
@@ -846,7 +867,8 @@ def make_policy(name: str,
                             width=width,
                             num_features=num_features,
                             seq_length=seq_length,
-                            encryption_mode=encryption_mode,
+                            encryption_mode=EncryptionMode[encryption_mode.upper()],
+                            collect_mode=CollectMode[collect_mode.upper()],
                             should_compress=should_compress)
     elif name == 'uniform':
         return UniformPolicy(collection_rate=collection_rate,
@@ -854,7 +876,8 @@ def make_policy(name: str,
                              width=width,
                              num_features=num_features,
                              seq_length=seq_length,
-                             encryption_mode=encryption_mode,
+                             encryption_mode=EncryptionMode[encryption_mode.upper()],
+                             collect_mode=CollectMode[collect_mode.upper()],
                              should_compress=should_compress)
     elif name.startswith('adaptive') or name == 'skip_rnn':
         # Look up the threshold path
@@ -868,8 +891,7 @@ def make_policy(name: str,
         else:
             thresholds = read_json_gz(threshold_path)
             rate_str = str(collection_rate)
-            #encoding_name = str(kwargs['encoding']).lower()
-            encoding_name = 'standard'
+            encoding_name = 'standard'  # all policies use the standard thresholds
 
             if (name not in thresholds) or (encoding_name not in thresholds[name]) or (rate_str not in thresholds[name][encoding_name]):
                 print('WARNING: No threshold path exists.')
@@ -877,10 +899,6 @@ def make_policy(name: str,
             else:
                 threshold = thresholds[name][encoding_name][rate_str]
                 did_find_threshold = True
-
-            #encoding_name = str(kwargs['encoding']).lower()
-            #if encoding_name == 'group':
-            #    threshold = threshold * 1.1
 
         if name == 'adaptive_heuristic':
             cls = AdaptiveHeuristic
@@ -897,7 +915,8 @@ def make_policy(name: str,
                            seq_length=seq_length,
                            num_features=num_features,
                            dataset_name=dataset,
-                           encryption_mode=encryption_mode,
+                           encryption_mode=EncryptionMode[encryption_mode.uper()],
+                           collect_mode=CollectMode[collect_mode.upper()],
                            encoding_mode=EncodingMode[str(kwargs['encoding']).upper()],
                            should_compress=should_compress)
         else:
@@ -911,7 +930,8 @@ def make_policy(name: str,
                    num_features=num_features,
                    max_skip=max_skip,
                    min_skip=min_skip,
-                   encryption_mode=encryption_mode,
+                   encryption_mode=EncryptionMode[encryption_mode.upper()],
+                   collect_mode=CollectMode[collect_mode.upper()],
                    encoding_mode=EncodingMode[str(kwargs['encoding']).upper()],
                    should_compress=should_compress)
     else:

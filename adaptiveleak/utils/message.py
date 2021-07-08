@@ -5,7 +5,7 @@ import bz2
 from functools import reduce, partial
 from typing import List, Tuple
 
-from adaptiveleak.utils.constants import SHIFT_BITS, BITS_PER_BYTE, BOUND_BITS, BOUND_ORDER, SMALL_NUMBER, MAX_SHIFT_GROUPS
+from adaptiveleak.utils.constants import SHIFT_BITS, BITS_PER_BYTE, SMALL_NUMBER, MAX_SHIFT_GROUPS
 from adaptiveleak.utils.data_utils import array_to_fp, array_to_float, pack, unpack, select_range_shift, to_fixed_point, to_float, get_signs, num_bits_for_value
 from adaptiveleak.utils.data_utils import run_length_encode, run_length_decode, integer_part, fractional_part, apply_signs, select_range_shifts_array
 from adaptiveleak.utils.data_utils import fixed_point_integer_part, fixed_point_frac_part, balance_group_size, array_to_fp_shifted, array_to_float_shifted, set_widths

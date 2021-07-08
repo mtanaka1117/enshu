@@ -3,8 +3,9 @@ import numpy as np
 
 from adaptiveleak.utils.constants import BT_FRAME_SIZE
 from adaptiveleak.utils.data_utils import round_to_block, truncate_to_block
+from adaptiveleak.utils.encryption import AES_BLOCK_SIZE
 from adaptiveleak.utils.file_utils import iterate_dir, read_json
-from adaptiveleak.utils.types import PolicyType, EncodingMode, CollectMode, EncryptionMode
+from adaptiveleak.utils.data_types import PolicyType, EncodingMode, CollectMode, EncryptionMode
 
 
 BASELINE_PERIOD = 10
@@ -145,17 +146,26 @@ class EncodingEnergy:
 class CollectEnergy:
 
     def __init__(self, collect_mode: CollectMode):
-        # Get the path
-        #dir_name = os.path.dirname(__file__)
-        #energy_path = os.path.join(dir_name, '..', 'traces', 'collect', 'energy.json')
-        #energy_dict = read_json(energy_path)
+        if (collect_mode == CollectMode.TINY):
+            # Get the path
+            dir_name = os.path.dirname(__file__)
+            energy_path = os.path.join(dir_name, '..', 'traces', 'collect', 'energy.json')
+            energy_dict = read_json(energy_path)
 
-        ## Read the energy value
-        #self._energy = np.median(energy_dict['energy'])
-        #self._scale = np.std(energy_dict['energy'])
-        
-        self._energy = 0.1
-        self._scale = 0.001
+            # Read the energy value
+            self._energy = np.median(energy_dict['energy'])
+            self._scale = np.std(energy_dict['energy'])
+        elif (collect_mode == CollectMode.LOW):
+            self._energy = 0.1
+            self._scale = 0.001
+        elif (collect_mode == CollectMode.MED):
+            self._energy = 1.0
+            self._scale = 0.01
+        elif (collect_mode == CollectMode.HIGH):
+            self._energy = 10.0
+            self._scale = 0.1
+        else:
+            raise ValueError('Unknown collection mode: {0}'.format(collect_mode.name))
 
         self._rand = np.random.RandomState(seed=8753)
 

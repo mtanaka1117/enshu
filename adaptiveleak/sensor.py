@@ -7,7 +7,7 @@ from argparse import ArgumentParser
 from typing import Optional
 
 from adaptiveleak.policies import BudgetWrappedPolicy, run_policy
-from adaptiveleak.utils.constants import LENGTH_BYTES, LENGTH_ORDER
+from adaptiveleak.utils.constants import LENGTH_SIZE, LENGTH_ORDER
 from adaptiveleak.utils.data_utils import array_to_fp, array_to_float
 from adaptiveleak.utils.encryption import encrypt, EncryptionMode, add_hmac
 from adaptiveleak.utils.loading import load_data
@@ -35,7 +35,7 @@ class Sensor:
     def port(self) -> int:
         return self._server_port
 
-    def run(self, inputs: np.ndarray, policy: BudgetWrappedPolicy, encryption_mode: EncryptionMode, num_sequences: int):
+    def run(self, inputs: np.ndarray, policy: BudgetWrappedPolicy, num_sequences: int):
         """
         Execute the sensor on the given number of sequences.
 
@@ -69,14 +69,14 @@ class Sensor:
                                         collected_indices=policy_result.collected_indices)
 
                 # Encrypt and send the message
-                key = self._aes_key if encryption_mode == EncryptionMode.BLOCK else self._chacha_key
-                encrypted_message = encrypt(message=message, key=key, mode=encryption_mode)
+                key = self._aes_key if policy.encryption_mode == EncryptionMode.BLOCK else self._chacha_key
+                encrypted_message = encrypt(message=message, key=key, mode=policy.encryption_mode)
 
                 # Include the true number of collected measurements for proper energy logging
-                true_num_collected = policy_result.num_collected.to_bytes(LENGTH_BYTES, byteorder=LENGTH_ORDER)
+                true_num_collected = policy_result.num_collected.to_bytes(LENGTH_SIZE, byteorder=LENGTH_ORDER)
 
                 # Include the message length to the front (2 bytes)
-                length = len(encrypted_message).to_bytes(LENGTH_BYTES, byteorder=LENGTH_ORDER)
+                length = len(encrypted_message).to_bytes(LENGTH_SIZE, byteorder=LENGTH_ORDER)
 
                 # Concatenate all message fields
                 encrypted_message = true_num_collected + length + encrypted_message
@@ -97,6 +97,7 @@ if __name__ == '__main__':
     parser.add_argument('--dataset', type=str, required=True)
     parser.add_argument('--collection-rate', type=float, required=True)
     parser.add_argument('--encryption', type=str, choices=['block', 'stream'], required=True)
+    parser.add_argument('--collect', type=str, choices=['tiny', 'low', 'med', 'high'], required=True)
     parser.add_argument('--policy', type=str, required=True)
     parser.add_argument('--encoding', type=str, choices=['standard', 'group'], required=True)
     parser.add_argument('--port', type=int, default=50000)
@@ -106,9 +107,6 @@ if __name__ == '__main__':
 
     # Load the data
     inputs, _ = load_data(dataset_name=args.dataset, fold='test')
-
-    # Extract the encryption mode
-    encryption_mode = EncryptionMode[args.encryption.upper()]
 
     # Unpack the input shape
     num_seq, seq_length, num_features = inputs.shape
@@ -120,7 +118,8 @@ if __name__ == '__main__':
                                  num_features=num_features,
                                  seq_length=seq_length,
                                  dataset=args.dataset,
-                                 encryption_mode=encryption_mode,
+                                 encryption_mode=args.encryption,
+                                 collect_mode=args.collect,
                                  encoding=args.encoding,
                                  should_compress=args.should_compress)
 
@@ -135,7 +134,6 @@ if __name__ == '__main__':
     sensor = Sensor(server_host='localhost', server_port=args.port)
     sensor.run(inputs=inputs,
                policy=policy,
-               num_sequences=num_seq,
-               encryption_mode=encryption_mode)
+               num_sequences=num_seq)
 
     print('Completed Sensor.')
