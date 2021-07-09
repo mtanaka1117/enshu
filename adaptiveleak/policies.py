@@ -209,7 +209,7 @@ class AdaptivePolicy(Policy):
                                                       seq_length=seq_length,
                                                       num_features=num_features)
 
-        if self.encoding_mode == EncodingMode.GROUP:
+        if self.encoding_mode in (EncodingMode.GROUP, EncodingMode.GROUP_UNSHIFTED):
             self._target_bytes = get_group_target_bytes(width=self.width,
                                                         collection_rate=self.collection_rate,
                                                         num_features=self.num_features,
@@ -217,14 +217,6 @@ class AdaptivePolicy(Policy):
                                                         encryption_mode=self.encryption_mode,
                                                         energy_unit=self.energy_unit,
                                                         target_energy=self._energy_per_seq)
-        #elif self.encoding_mode in (EncodingMode.GROUP_UNSHIFTED, EncodingMode.STANDARD):
-        #    self._target_bytes = calculate_bytes(width=self.width,
-        #                                         num_collected=int(self.collection_rate * self.seq_length),
-        #                                         num_features=self.num_features,
-        #                                         seq_length=self.seq_length,
-        #                                         encryption_mode=self.encryption_mode)
-        #else:
-        #    raise ValueError('Unknown encoding mode: {0}'.format(self.encoding_mode))
 
     @property
     def max_skip(self) -> int:
@@ -341,8 +333,11 @@ class AdaptivePolicy(Policy):
 
             if self.encryption_mode == EncryptionMode.STREAM:
                 return pad_to_length(encoded, length=target_bytes - CHACHA_NONCE_LEN - LENGTH_SIZE)
+            elif self.encryption_mode == EncryptionMode.BLOCK:
+                return pad_to_length(encoded, length=target_bytes - AES_BLOCK_SIZE - LENGTH_SIZE)
+            else:
+                raise ValueError('Unknown encryption mode {0}'.format(self.encryption_mode.name))
 
-            return encoded
         else:
             raise ValueError('Unknown encoding type {0}'.format(self.encoding_mode.name))
 
