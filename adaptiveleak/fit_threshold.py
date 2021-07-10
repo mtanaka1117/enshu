@@ -83,6 +83,9 @@ def fit(policy: BudgetWrappedPolicy,
     while (iter_count < MAX_ITER) and (abs(upper - lower) > TOLERANCE):
         # Set the current threshold
         current = (upper + lower) / 2
+
+        if (current > 1):
+            print('Current: {0}, Upper: {1}, Lower: {2}'.format(current, upper, lower))
         
         # Set the threshold for the policy
         policy.set_threshold(threshold=current)
@@ -246,8 +249,17 @@ if __name__ == '__main__':
             final_threshold = threshold
 
             # Reset the bounds to speed up the next iteration
-            upper = threshold * THRESHOLD_FACTOR_UPPER
-            lower = threshold * THRESHOLD_FACTOR_LOWER
+            if policy_name == 'skip_rnn':
+                upper = 1.0
+                lower = 0.0
+            else:
+                upper = threshold * THRESHOLD_FACTOR_UPPER
+                lower = threshold * THRESHOLD_FACTOR_LOWER
+
+            # Skip RNNs have an upper-bound on the policy, so there is no need to continue
+            # sometimes
+            if abs(threshold - 1.0) < 1e-4:
+                break
 
             energy_margin += 1
 

@@ -234,6 +234,9 @@ class AdaptivePolicy(Policy):
     def target_bytes(self) -> int:
         return self._target_bytes
 
+    def set_threshold(self, threshold: float):
+        self._threshold = threshold
+
     def reset(self):
         super().reset()
         self._current_skip = 0
@@ -486,6 +489,9 @@ class SkipRNN(AdaptivePolicy):
                  collect_mode: CollectMode,
                  should_compress: bool,
                  dataset_name: str):
+        # Enforce that the threshold is in [0, 1]
+        assert threshold >= 0 and threshold <= 1, 'Must have a threshold in [0, 1]'
+
         super().__init__(collection_rate=collection_rate,
                          threshold=threshold,
                          precision=precision,
@@ -530,6 +536,10 @@ class SkipRNN(AdaptivePolicy):
     @property
     def policy_type(self) -> PolicyType:
         return PolicyType.SKIP_RNN
+
+    def set_threshold(self, threshold: float):
+        assert threshold >= 0 and threshold <= 1, 'Must have threshold in [0, 1]. Got {0:.5f}'.format(threshold)
+        self._threshold = threshold
 
     def should_collect(self, seq_idx: int) -> bool:
         self._seq_idx += 1
@@ -739,7 +749,7 @@ class BudgetWrappedPolicy(Policy):
         return self._consumed_energy
 
     def set_threshold(self, threshold: float):
-        self._policy._threshold = threshold
+        self._policy.set_threshold(threshold)
 
     def encode(self, measurements: np.ndarray, collected_indices: List[int]) -> bytes:
         return self._policy.encode(measurements=measurements,
@@ -835,6 +845,10 @@ def run_policy(policy: BudgetWrappedPolicy, sequence: np.ndarray, should_enforce
 
             collected_list.append(measurement.reshape(1, -1))
             collected_indices.append(seq_idx)
+
+    if len(collected_list) == 0:
+        print()
+        print('Threshold: {0}'.format(policy._policy._threshold))
 
     # Stack collected features into a numpy array
     collected = np.vstack(collected_list)  # [K, D]
