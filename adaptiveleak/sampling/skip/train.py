@@ -5,21 +5,19 @@ import numpy as np
 from argparse import ArgumentParser
 
 from skip_rnn import SkipRNN
-from skip_esn import SkipESN
 from test import test_model
 
 
 #UPDATE_WEIGHTS = [2.25, 1.75, 1.5, 1.25, 1.0, 0.75, 0.5, 0.1, 0.0]
 #TARGETS = [0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0]
 
-UPDATE_WEIGHTS = [1.5, 1.25, 1.0]
-TARGETS = [0.4, 0.5, 0.6]
+UPDATE_WEIGHTS = [0.5]
+TARGETS = [0.4]
 
 
 SAVE_FOLDER = 'saved_models'
-RNN_UNITS = 24
+RNN_UNITS = 4
 NAME = 'skip-rnn'
-#NAME = 'skip-esn'
 
 
 if __name__ == '__main__':
@@ -46,10 +44,9 @@ if __name__ == '__main__':
 
         print('===== Starting {0:.2f} ====='.format(target))
 
-        hypers = dict(rnn_units=RNN_UNITS, update_weight=weight, target=target, warmup=3)
+        hypers = dict(rnn_units=RNN_UNITS, update_weight=weight, target=target, warmup=0)
 
         model = SkipRNN(hypers=hypers, name=NAME)
-        #model = SkipESN(hypers=hypers, name=NAME)
 
         save_folder, model_name = model.train(train_inputs=train_inputs,
                                               val_inputs=val_inputs,

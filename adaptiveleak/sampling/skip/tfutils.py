@@ -31,6 +31,19 @@ def linear_sigmoid(x: tf.Tensor):
     result = (part1 * cond1) + (part2 * cond2) + (part3 * cond3) + (part4 * cond4) + (part5 * cond5)
     return result
 
+
+@tf.custom_gradient
+def quantize(x: tf.Tensor, precision: int):
+    factor = 1 << precision
+
+    def grad(dy: tf.Tensor):
+        rounded = tf.cast(dy / factor, dtype=tf.int64)
+        return tf.cast(rounded, dtype=dy.dtype) * factor
+
+    quantized = tf.cast(x / factor, dtype=tf.int64)
+    return tf.cast(quantized, dtype=x.dtype) * factor
+
+
 def interpolate_predictions(skip_predictions: tf.Tensor, update_gates: tf.Tensor) -> tf.Tensor:
     """
     Gets the collected indices from the given Skip RNN update gates.

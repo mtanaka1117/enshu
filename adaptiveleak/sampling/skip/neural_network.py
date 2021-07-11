@@ -14,13 +14,13 @@ from adaptiveleak.utils.file_utils import save_pickle_gz, read_pickle_gz, make_d
 
 
 DEFAULT_HYPERS = {
-    'batch_size': 32,
+    'batch_size': 128,
     'val_batch_size': 128,
     'learning_rate': 0.001,
     'learning_rate_decay': 0.9,
     'decay_patience': 2,
     'gradient_clip': 1,
-    'num_epochs': 25,
+    'num_epochs': 5,
     'patience': 10
 }
 
@@ -205,6 +205,8 @@ class NeuralNetwork:
         # Compute the gradients
         gradients = tf.gradients(self._ops[LOSS_OP], trainable_vars)
 
+        self._ops['gradients'] = gradients
+
         # Clip Gradients
         clipped_gradients, _ = tf.clip_by_global_norm(gradients, self.gradient_clip)
 
@@ -277,11 +279,6 @@ class NeuralNetwork:
             batch_result = self.execute(ops=test_ops, feed_dict=feed_dict)
             batch_end = time.perf_counter()
 
-            if batch_idx == 0:
-               # print(batch_result[PREDICTION_OP])
-                print(batch_result['skip_gates'][0:5])
-                print(feed_dict[self._placeholders['inputs']][0:5])
-
             if batch_idx > 0:
                 test_exec_time += (batch_end - batch_start)
                 exec_batches += 1
@@ -295,7 +292,11 @@ class NeuralNetwork:
             loss_sum += batch_result[LOSS_OP] * len(batch_features)
             num_samples += len(batch_features)
 
+            if ((batch_idx + 1) % 100) == 0:
+                print('Completed {0} test batches.'.format(batch_idx + 1), end='\r')
+        
         end_time = datetime.now()
+        print()
 
         # Un-normalize the predictions
         preds = np.vstack(pred_list)  # [M, T, D]
@@ -318,9 +319,13 @@ class NeuralNetwork:
                                   y_true=expected,
                                   squared=False)
 
+        print('MAE: {0}'.format(mae))
+
         loss = loss_sum / num_samples
         avg_updates = num_updates / (num_samples * self.input_shape[0])
         time_per_batch = test_exec_time / max(exec_batches, 1.0)
+
+        print('Collection Rate: {0}'.format(avg_updates))
 
         return {
             'mae': float(mae),
