@@ -1,6 +1,5 @@
 import matplotlib.pyplot as plt
 import numpy as np
-import h5py
 import os.path
 import time
 from argparse import ArgumentParser
@@ -12,6 +11,7 @@ from adaptiveleak.server import reconstruct_sequence
 from adaptiveleak.policies import BudgetWrappedPolicy, Policy, run_policy
 from adaptiveleak.utils.analysis import normalized_mae, normalized_rmse
 from adaptiveleak.utils.file_utils import read_pickle_gz, save_pickle_gz
+from adaptiveleak.utils.loading import load_data
 
 
 if __name__ == '__main__':
@@ -24,17 +24,11 @@ if __name__ == '__main__':
     parser.add_argument('--max-num-samples', type=int)
     args = parser.parse_args()
 
-    fold = 'validation'
-
-    data_file = os.path.join('datasets', args.dataset, fold, 'data.h5')
-    with h5py.File(data_file, 'r') as fin:
-        inputs = fin['inputs'][:]
-        labels = fin['output'][:]
+    # Load the data
+    fold = 'test'
+    inputs, labels = load_data(dataset_name=args.dataset, fold=fold)
 
     labels = labels.reshape(-1)
-
-    if len(inputs.shape) == 2:
-        inputs = np.expand_dims(inputs, axis=-1)
 
     # Unpack the shape
     num_seq, seq_length, num_features = inputs.shape
@@ -48,7 +42,7 @@ if __name__ == '__main__':
                                  dataset=args.dataset,
                                  collection_rate=args.collection_rate,
                                  encryption_mode='stream',
-                                 collect_mode='low',
+                                 collect_mode='tiny',
                                  encoding=args.encoding,
                                  should_compress=False)
 
