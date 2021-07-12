@@ -15,16 +15,16 @@ from adaptiveleak.utils.file_utils import iterate_dir, read_json, save_json_gz, 
 
 
 BatchResult = namedtuple('BatchResult', ['mae', 'did_exhaust'])
-VAL_BATCH_SIZE = 256
-MAX_ITER = 150  # Prevents any unexpected infinite looping
+VAL_BATCH_SIZE = 512
+MAX_ITER = 100  # Prevents any unexpected infinite looping
 
-MAX_MARGIN_FACTOR = 0.01  # Limit the padding to 1% of the overall budget
-VAL_MARGIN_FACTOR = 0.9
-MARGIN_FACTOR = 0.0001  # Go in increments of 0.01% of the total budget
+MAX_MARGIN_FACTOR = 0.01  # Limit the padding to 1% of the overall budget (~ 100 mJ)
+VAL_MARGIN_FACTOR = 0.75
+MARGIN_FACTOR = 0.0001  # Go in increments of 0.01% of the total budget (~ 1mJ)
 
-THRESHOLD_FACTOR_UPPER = 1.5
+THRESHOLD_FACTOR_UPPER = 1.75  # Bias toward reducing the energy rate every time we increase the margin
 THRESHOLD_FACTOR_LOWER = 0.5
-TOLERANCE = 1e-3
+TOLERANCE = 1e-4
 
 
 def execute_on_batch(policy: BudgetWrappedPolicy, batch: np.ndarray, energy_margin: float) -> BatchResult:
@@ -125,9 +125,9 @@ def fit(policy: BudgetWrappedPolicy,
         consumed_energy = policy.consumed_energy
 
         if did_exhaust:
-            lower = current
+            lower = current  # Reduce the energy consumption
         else:
-            upper = current
+            upper = current  # Increase the energy consumption
 
         # Ensure that lower <= upper
         temp = min(lower, upper)
@@ -159,13 +159,17 @@ def validate_thresholds(policy: BudgetWrappedPolicy,
     # Reduce the energy margin to account for some variance
     energy_margin *= VAL_MARGIN_FACTOR
 
+    batch_size = VAL_BATCH_SIZE
+
+    if len(inputs) <= VAL_BATCH_SIZE:
+        batch_size = len(inputs)
+        num_batches = 1
+
     results: List[BatchResult] = []
     for _ in range(num_batches):
         # Make the validation batch
-        batch_idx = rand.choice(sample_idx, size=VAL_BATCH_SIZE, replace=True)
+        batch_idx = rand.choice(sample_idx, size=batch_size, replace=False)
         batch = inputs[batch_idx]
-
-        print('Batch Size: {0}'.format(batch.shape))
 
         # Run the policy on the given batch
         val_result = execute_on_batch(policy=policy, batch=batch, energy_margin=energy_margin)
@@ -251,14 +255,7 @@ if __name__ == '__main__':
                             energy_margin=energy_margin,
                             should_print=args.should_print)
 
-            # Make the validation batches
-            #if len(val_indices) > VAL_BATCH_SIZE:
-            #    val_batch_idx = rand.choice(val_indices, size=VAL_BATCH_SIZE, replace=True)
-            #else:
-            #    val_batch_idx = val_indices
-
-            #val_margin = energy_margin * VAL_FACTOR  # Give more room for the validation set (handles some variance)
-            #val_batch = val_inputs[val_batch_idx]
+            # Run on the validation set
             val_results = validate_thresholds(policy=policy,
                                               threshold=threshold,
                                               inputs=val_inputs,
