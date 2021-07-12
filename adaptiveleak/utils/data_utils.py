@@ -265,7 +265,7 @@ def round_to_block(length: Union[int, float], block_size: int) -> int:
     the block size.
     """
     if isinstance(length, int) and (length % block_size == 0):
-        return length
+        return length + block_size
 
     return int(math.ceil(length / block_size)) * block_size
 

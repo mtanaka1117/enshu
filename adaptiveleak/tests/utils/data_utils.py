@@ -665,6 +665,7 @@ class TestGroupTargetBytes(unittest.TestCase):
         target_energy = convert_rate_to_energy(collection_rate=rate,
                                                width=width,
                                                encryption_mode=encryption_mode,
+                                               collect_mode=CollectMode.LOW,
                                                seq_length=seq_length,
                                                num_features=num_features)
 
@@ -676,7 +677,7 @@ class TestGroupTargetBytes(unittest.TestCase):
                                               energy_unit=energy_unit,
                                               target_energy=target_energy)
 
-        self.assertEqual(target_bytes, 19)
+        self.assertEqual(target_bytes, 16)
 
     def test_target_stream(self):
         encryption_mode = EncryptionMode.STREAM
@@ -697,6 +698,7 @@ class TestGroupTargetBytes(unittest.TestCase):
         target_energy = convert_rate_to_energy(collection_rate=rate,
                                                width=width,
                                                encryption_mode=encryption_mode,
+                                               collect_mode=CollectMode.LOW,
                                                seq_length=seq_length,
                                                num_features=num_features)
 
@@ -729,6 +731,7 @@ class TestGroupTargetBytes(unittest.TestCase):
         target_energy = convert_rate_to_energy(collection_rate=rate,
                                                width=width,
                                                encryption_mode=encryption_mode,
+                                               collect_mode=CollectMode.LOW,
                                                seq_length=seq_length,
                                                num_features=num_features)
 
@@ -869,14 +872,14 @@ class TestCalculateBytes(unittest.TestCase):
         self.assertEqual(message_bytes, len(encrypted) + LENGTH_SIZE)
 
     def test_group_block(self):
-        # 11 bytes of data, 3 meta-data, 2 for sequence mask = 16 bytes -> 16 bytes + 16 byte IV = 32 bytes
+        # 11 bytes of data, 3 meta-data, 2 for sequence mask = 16 bytes -> 32 bytes + 16 byte IV + 2 byte length = 50 bytes
         data_bytes = data_utils.calculate_grouped_bytes(widths=[6, 7],
                                                         num_features=3,
                                                         num_collected=4,
                                                         seq_length=10,
                                                         group_size=6,
                                                         encryption_mode=EncryptionMode.BLOCK)
-        self.assertEqual(data_bytes, 34)
+        self.assertEqual(data_bytes, 50)
 
     def test_group_stream(self):
         # 11 bytes of data, 3 meta-data, 2 for sequence mask, 12 for nonce = 28 bytes
@@ -923,7 +926,7 @@ class TestGroupWidths(unittest.TestCase):
 
         self.assertEqual(len(widths), 3)
         self.assertEqual(widths[0], 11)
-        self.assertEqual(widths[1], 11)
+        self.assertEqual(widths[1], 10)
         self.assertEqual(widths[2], 10)
 
     def test_widths_block_below(self):
@@ -936,8 +939,8 @@ class TestGroupWidths(unittest.TestCase):
                                              encryption_mode=EncryptionMode.BLOCK)
 
         self.assertEqual(len(widths), 2)
-        self.assertEqual(widths[0], 24)
-        self.assertEqual(widths[1], 24)
+        self.assertEqual(widths[0], 22)
+        self.assertEqual(widths[1], 22)
 
     def test_widths_stream_above(self):
         widths = data_utils.get_group_widths(group_size=6,

@@ -8,7 +8,6 @@ from adaptiveleak.utils.file_utils import iterate_dir, read_json
 from adaptiveleak.utils.data_types import PolicyType, EncodingMode, CollectMode, EncryptionMode
 
 
-BASELINE_PERIOD = 10
 GROUP_FACTOR = 2
 
 
@@ -263,6 +262,11 @@ class EnergyUnit:
         self._comm = BluetoothEnergy()
         self._active = ActiveEnergy()
 
+        # Save the different parameters
+        self._collect_mode = collect_mode
+        self._encoding_mode = encoding_mode
+        self._encryption_mode = encryption_mode
+
         # Save the sequence length, number of features, and period
         self._seq_length = seq_length
         self._num_features = num_features
@@ -309,4 +313,10 @@ class EnergyUnit:
         active_energy = self.get_active_energy(num_bytes=num_bytes,
                                                use_noise=use_noise)
 
+
         return comp_energy + comm_energy + active_energy
+
+    def __str__(self) -> str:
+        return 'Energy Unit -> Collect {0}, Encode: {1}, Encrypt: {2}, Seq Length: {3}, Num Features: {4}, Period: {5}'.format(self._collect_mode, self._encoding_mode, self._encryption_mode, self._seq_length, self._num_features, self._period)
+
+

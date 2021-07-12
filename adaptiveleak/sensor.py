@@ -1,5 +1,4 @@
 import socket
-
 import os.path
 import numpy as np
 import time

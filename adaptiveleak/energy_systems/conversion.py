@@ -1,4 +1,5 @@
 from adaptiveleak.utils.constants import PERIOD, BT_FRAME_SIZE
+from adaptiveleak.utils.encryption import AES_BLOCK_SIZE
 from adaptiveleak.utils.data_utils import calculate_bytes, truncate_to_block
 from adaptiveleak.utils.data_types import PolicyType, EncodingMode, CollectMode, EncryptionMode
 from .energy_systems import EnergyUnit
@@ -72,6 +73,10 @@ def get_group_target_bytes(width: int, collection_rate: float, num_features: int
 
     # Estimate the energy required to send the number of bytes
     rounded_bytes = truncate_to_block(standard_num_bytes, block_size=BT_FRAME_SIZE) - 1
+
+    if encryption_mode == EncryptionMode.BLOCK:
+        rounded_bytes = truncate_to_block(rounded_bytes, block_size=AES_BLOCK_SIZE)
+
     estimated_energy = energy_unit.get_energy(num_collected=num_collected,
                                               num_bytes=rounded_bytes,
                                               use_noise=False)
@@ -79,6 +84,10 @@ def get_group_target_bytes(width: int, collection_rate: float, num_features: int
     # Adjust the number of sent bytes until we reach a lower energy level
     while (estimated_energy > target_energy) and (rounded_bytes >= BT_FRAME_SIZE):
         rounded_bytes -= BT_FRAME_SIZE
+
+        if encryption_mode == EncryptionMode.BLOCK:
+            rounded_bytes = truncate_to_block(rounded_bytes, block_size=AES_BLOCK_SIZE)
+
         estimated_energy = energy_unit.get_energy(num_collected=num_collected,
                                                   num_bytes=rounded_bytes,
                                                   use_noise=False)

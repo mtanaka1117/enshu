@@ -20,8 +20,10 @@ COLORS = {
     'random_standard': '#d73027',
     'uniform_standard': '#fc8d59',
     'adaptive_heuristic_standard': '#9ecae1',
+    'adaptive_heuristic_group_unshifted': '#6baed6',
     'adaptive_heuristic_group': '#08519c',
     'adaptive_deviation_standard': '#c2a5cf',
+    'adaptive_deviation_group_unshifted': '#9e9ac8',
     'adaptive_deviation_group': '#7b3294',
     'skip_rnn_standard': '#dfc27d',
     'skip_rnn_group': '#a6611a'

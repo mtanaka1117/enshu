@@ -16,17 +16,20 @@ from adaptiveleak.utils.file_utils import iterate_dir, read_json, save_json_gz, 
 BatchResult = namedtuple('BatchResult', ['mae', 'did_exhaust'])
 VAL_BATCH_SIZE = 2048
 MAX_ITER = 150  # Prevents any unexpected infinite looping
-MAX_MARGIN = 15
+MAX_MARGIN_FACTOR = 0.5
+MARGIN_FACTOR = 0.025  # Go in increments of 5% of the total budget
 
 THRESHOLD_FACTOR_UPPER = 1.5
 THRESHOLD_FACTOR_LOWER = 0.5
-TOLERANCE = 1e-5
+TOLERANCE = 1e-4
 
 
 def execute_on_batch(policy: BudgetWrappedPolicy, batch: np.ndarray, energy_margin: float) -> BatchResult:
     policy.init_for_experiment(num_sequences=batch.shape[0])
 
-    policy._budget -= energy_margin
+    # Reduce the budget by the given margin factor
+    margin = policy._budget * energy_margin
+    policy._budget -= margin
 
     # Execute the policy on each sequence
     estimated_list: List[np.ndarray] = []
@@ -84,9 +87,6 @@ def fit(policy: BudgetWrappedPolicy,
         # Set the current threshold
         current = (upper + lower) / 2
 
-        if (current > 1):
-            print('Current: {0}, Upper: {1}, Lower: {2}'.format(current, upper, lower))
-        
         # Set the threshold for the policy
         policy.set_threshold(threshold=current)
 
@@ -154,9 +154,8 @@ def validate_thresholds(policy: BudgetWrappedPolicy, inputs: np.ndarray, thresho
 if __name__ == '__main__':
     parser = ArgumentParser()
     parser.add_argument('--dataset', type=str, required=True)
-    parser.add_argument('--policy', type=str, required=True)
+    parser.add_argument('--policy', type=str, required=True, choices=['adaptive_heuristic', 'adaptive_deviation'])
     parser.add_argument('--collection-rates', type=float, nargs='+', required=True)
-    parser.add_argument('--encoding', type=str, required=True, choices=['standard' , 'group'])
     parser.add_argument('--collect', type=str, required=True, choices=['tiny', 'low', 'med', 'high'])
     parser.add_argument('--batch-size', type=int, default=512)
     parser.add_argument('--batches-per-trial', type=int, default=3)
@@ -196,12 +195,8 @@ if __name__ == '__main__':
     for collection_rate in args.collection_rates:
 
         # Set the lower threshold based on the model type
-        if policy_name == 'skip_rnn':
-            lower = 0.0
-            upper = 1.0
-        else:
-            lower = -1 * max_threshold
-            upper = max_threshold
+        lower = -1 * max_threshold
+        upper = max_threshold
 
         # Always log the progress for intermediate tracking
         print('Starting {0}'.format(collection_rate))
@@ -213,15 +208,15 @@ if __name__ == '__main__':
                                      num_features=num_features,
                                      encryption_mode='stream',
                                      collect_mode=collect_mode,
-                                     encoding=args.encoding,
+                                     encoding='standard',
                                      dataset=args.dataset,
                                      should_compress=False)
 
         final_threshold = None
-        energy_margin = 3
+        energy_margin = MARGIN_FACTOR
         did_exhaust = True
 
-        while (did_exhaust) and (energy_margin < MAX_MARGIN):
+        while (did_exhaust) and (energy_margin < MAX_MARGIN_FACTOR):
             # Fit the policy using the given rate and energy margin
             threshold = fit(policy=policy,
                             inputs=inputs,
@@ -238,7 +233,7 @@ if __name__ == '__main__':
             else:
                 val_batch_idx = val_indices
 
-            val_margin = energy_margin * 0.5
+            val_margin = energy_margin * 0.5  # Give more room for the validation set (handles some variance)
             val_batch = val_inputs[val_batch_idx]
             val_result = validate_thresholds(policy=policy,
                                              threshold=threshold,
@@ -249,19 +244,10 @@ if __name__ == '__main__':
             final_threshold = threshold
 
             # Reset the bounds to speed up the next iteration
-            if policy_name == 'skip_rnn':
-                upper = 1.0
-                lower = 0.0
-            else:
-                upper = threshold * THRESHOLD_FACTOR_UPPER
-                lower = threshold * THRESHOLD_FACTOR_LOWER
+            upper = threshold * THRESHOLD_FACTOR_UPPER
+            lower = threshold * THRESHOLD_FACTOR_LOWER
 
-            # Skip RNNs have an upper-bound on the policy, so there is no need to continue
-            # sometimes
-            if abs(threshold - 1.0) < 1e-4:
-                break
-
-            energy_margin += 1
+            energy_margin += MARGIN_FACTOR
 
         threshold_map[policy_name][collect_mode][str(collection_rate)] = final_threshold
 

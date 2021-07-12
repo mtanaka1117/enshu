@@ -10,7 +10,7 @@ from typing import Optional, List
 
 
 DEFAULT_TIMEOUT = 5
-MAX_RETRIES = 10
+MAX_RETRIES = 3
 RETRY_WAIT = 0.1
 BLOCK_SIZE = 12
 
@@ -59,7 +59,7 @@ class BLEManager:
     def is_connected(self) -> bool:
         return self._is_connected
 
-    def start(self, timeout: float = DEFAULT_TIMEOUT) -> bool:
+    def start(self, timeout: float = DEFAULT_TIMEOUT, wait_time: float = RETRY_WAIT) -> bool:
         if self._is_connected:
             return True
 
@@ -86,7 +86,7 @@ class BLEManager:
                 print('Connection timeout after {0:.3f} seconds'.format(timeout))
 
                 retry_count += 1
-                time.sleep(RETRY_WAIT)
+                time.sleep(wait_time)
 
         if not did_connect:
             self._gatt.send('exit')
@@ -185,19 +185,17 @@ class BLEManager:
     def query(self, value: bytes, timeout: float = DEFAULT_TIMEOUT) -> bytes:
         assert self._is_connected and self._gatt is not None, 'Must call start() first'
 
-        for start_idx in range(0, len(value), BLOCK_SIZE):
-            block = value[start_idx:start_idx+BLOCK_SIZE]
-            self.send(value=block)
-            time.sleep(1e-4)
-
-        # Receive the response. This either contains the number of levels OR
-        # contains the prediction for the sequence. This determination is
-        # based on the leading character in the response
         response: Optional[List[int]] = None
         retry_count = 0
 
         while response is None and retry_count < MAX_RETRIES:
             try:
+                # Send the query value on every try (in case it was missed in the first place)
+                for start_idx in range(0, len(value), BLOCK_SIZE):
+                    block = value[start_idx:start_idx+BLOCK_SIZE]
+                    self.send(value=block)
+                    time.sleep(1e-4)
+
                 self._gatt.expect('Notification handle = .*? \r', timeout)
                 response_string = self._gatt.after.decode()
 

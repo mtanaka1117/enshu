@@ -2,7 +2,6 @@ import numpy as np
 import time
 import os
 import sys
-import h5py
 from argparse import ArgumentParser
 from Cryptodome.Cipher import AES
 from collections import namedtuple, Counter
@@ -14,25 +13,40 @@ from ble_manager import BLEManager
 from adaptiveleak.server import reconstruct_sequence
 from adaptiveleak.policies import EncodingMode
 from adaptiveleak.utils.analysis import normalized_rmse, normalized_mae
-from adaptiveleak.utils.constants import PERIOD
+from adaptiveleak.utils.constants import PERIOD, LENGTH_SIZE
+from adaptiveleak.utils.encryption import AES_BLOCK_SIZE
+from adaptiveleak.utils.data_utils import round_to_block
 from adaptiveleak.utils.file_utils import save_json_gz, read_json, make_dir
+from adaptiveleak.utils.loading import load_data
 from adaptiveleak.utils.message import decode_standard_measurements, decode_stable_measurements
 
 
 MAC_ADDRESS = '00:35:FF:13:A3:1E'
 BLE_HANDLE = 18
-HCI_DEVICE = 'hci1'
+HCI_DEVICE = 'hci0'
 
 # Special bytes to handle sensor operation
 RESET_BYTE = b'\xFF'
 SEND_BYTE = b'\xBB'
 START_BYTE = b'\xCC'
+ACK_BYTE = b'\xAA'
 
 RESET_RESPONSE = b'\xCD'
 START_RESPONSE = b'\xAB'
+ACK_RESPONSE = b'\xEF'
 
 
 AES128_KEY = bytes.fromhex('349fdc00b44d1aaacaa3a2670fd44244')
+
+
+def get_random_sequence(mean: List[float], std: List[float], seq_length: int, rand: np.random.RandomState) -> np.ndarray:
+    rand_list: List[np.ndarray] = []
+
+    for m, s in zip(mean, std):
+        val = rand.normal(loc=m, scale=s, size=seq_length)  # [T]
+        rand_list.append(np.expand_dims(val, axis=-1))
+
+    return np.concatenate(rand_list, axis=-1)  # [T, D]
 
 
 def execute_client(inputs: np.ndarray,
@@ -44,6 +58,8 @@ def execute_client(inputs: np.ndarray,
                    num_features: int,
                    width: int,
                    precision: int,
+                   data_mean: np.ndarray,
+                   data_std: np.ndarray,
                    encoding_mode: EncodingMode):
     """
     Starts the device client. This function either sends data and expects the device to respond with predictions
@@ -75,6 +91,9 @@ def execute_client(inputs: np.ndarray,
     label_list: List[int] = []
 
     count = 0
+    recv_counter = 0
+
+    rand = np.random.RandomState(seed=54121)
 
     print('==========')
     print('Starting experiment')
@@ -91,16 +110,11 @@ def execute_client(inputs: np.ndarray,
     finally:
         device_manager.stop()
 
-    start = time.time()
-
     print('Tested Connection. Press any key to start...')
     x = input()
 
     try:
-        end = time.time()
-
         # Send the 'start' sequence
-        start = time.time()
         device_manager.start()
 
         start_response = device_manager.send_and_expect_byte(value=START_BYTE, expected=START_RESPONSE)
@@ -110,7 +124,6 @@ def execute_client(inputs: np.ndarray,
             return
 
         device_manager.stop()
-        end = time.time()
 
         print('Sent Start signal.')
     
@@ -122,47 +135,75 @@ def execute_client(inputs: np.ndarray,
                 break
 
             # Delay to align with sampling period
-            time.sleep(max(PERIOD - (end - start), 0))
+            time.sleep(PERIOD)
 
             # Send the fetch character and wait for the response
-            start = time.time()
+            did_connect = device_manager.start(wait_time=0.1)
 
-            device_manager.start()
-            response = device_manager.query(value=b'\xBB')
-            device_manager.stop()
+            if did_connect:
+                response = device_manager.query(value=b'\xBB')
+                did_ack = device_manager.send_and_expect_byte(value=ACK_BYTE, expected=ACK_RESPONSE)
 
-            message_byte_count = len(response)
+                device_manager.stop()
 
-            # Extract the length and initialization vector
-            length = int.from_bytes(response[0:2], 'big')
-            iv = response[2:18]
+                message_byte_count = len(response)
 
-            # Decrypt the response
-            aes = AES.new(AES128_KEY, AES.MODE_CBC, iv)
-            response = aes.decrypt(response[18:])
-            response = response[0:length]
+                if (message_byte_count > 0) and (did_ack):
 
-            # Decode the response
-            if encoding_mode == EncodingMode.STANDARD:
-                measurements, collected_idx, widths = decode_standard_measurements(byte_str=response,
-                                                                                   seq_length=seq_length,
-                                                                                   num_features=num_features,
-                                                                                   width=width,
-                                                                                   precision=precision,
-                                                                                   should_compress=False)
-                measurements = measurements.T.reshape(-1, num_features)
-            elif encoding_mode == EncodingMode.GROUP:
-                measurements, collected_idx, widths = decode_stable_measurements(encoded=response,
-                                                                                 seq_length=seq_length,
-                                                                                 num_features=num_features,
-                                                                                 non_fractional=non_fractional)
-            else:
-                raise ValueError('Unknown encoding type: {0}'.format(encoding_mode))
+                    # Extract the length and initialization vector
+                    length = int.from_bytes(response[0:LENGTH_SIZE], 'big')
+                    iv = response[LENGTH_SIZE:LENGTH_SIZE + AES_BLOCK_SIZE]
 
-            # Interpolate the measurements
-            recovered = reconstruct_sequence(measurements=measurements,
-                                             collected_indices=collected_idx,
-                                             seq_length=seq_length)
+                    # Decrypt the response (Data already padded)
+                    aes = AES.new(AES128_KEY, AES.MODE_CBC, iv)
+
+                    data = response[LENGTH_SIZE + AES_BLOCK_SIZE:]
+
+                    # Round up the length field
+                    rounded_length = round_to_block(length, block_size=AES_BLOCK_SIZE)
+
+                    data = data[:rounded_length]
+                    response = aes.decrypt(data)
+                    response = response[0:length]
+
+                    # Decode the response
+                    if encoding_mode == EncodingMode.STANDARD:
+                        measurements, collected_idx, widths = decode_standard_measurements(byte_str=response,
+                                                                                           seq_length=seq_length,
+                                                                                           num_features=num_features,
+                                                                                           width=width,
+                                                                                           precision=precision,
+                                                                                           should_compress=False)
+                        measurements = measurements.T.reshape(-1, num_features)
+                    elif encoding_mode == EncodingMode.GROUP:
+                        measurements, collected_idx, widths = decode_stable_measurements(encoded=response,
+                                                                                         seq_length=seq_length,
+                                                                                         num_features=num_features,
+                                                                                         non_fractional=non_fractional)
+                    else:
+                        raise ValueError('Unknown encoding type: {0}'.format(encoding_mode))
+
+                    # Interpolate the measurements
+                    recovered = reconstruct_sequence(measurements=measurements,
+                                                     collected_indices=collected_idx,
+                                                     seq_length=seq_length)
+
+                    # Log the widths
+                    for w in widths:
+                        width_counter[w] += 1
+
+                    # Increment the received counter
+                    recv_counter += 1
+                else:   # Could not read response -> Random Guessing
+                    recovered = get_random_sequence(mean=data_mean,
+                                                    std=data_std,
+                                                    seq_length=seq_length,
+                                                    rand=rand)
+            else: # Could not connect -> Random Guessing
+                recovered = get_random_sequence(mean=data_mean,
+                                                std=data_std,
+                                                seq_length=seq_length,
+                                                rand=rand)
 
             # Compute the error metrics
             mae = mean_absolute_error(y_true=features,
@@ -183,14 +224,23 @@ def execute_client(inputs: np.ndarray,
             reconstructed_list.append(np.expand_dims(recovered, axis=0))
             true_list.append(np.expand_dims(features, axis=0))
 
-            for w in widths:
-                width_counter[w] += 1
+            count += 1
+
+            # Save the results so far
+            results_dict = {
+                'widths': width_counter,
+                'recv_count': recv_counter,
+                'count': count,
+                'start_idx': start_idx,
+                'maes': maes,
+                'rmses': rmses,
+                'num_bytes': num_bytes,
+                'num_measurements': num_measurements,
+                'labels': label_list
+            }
+            save_json_gz(results_dict, output_file)
 
             print('Completed {0} Sequences. Avg MAE: {1:.4f}, Avg RMSE: {2:.4f}'.format(idx + 1, np.average(maes), np.average(rmses)), end='\r')
-
-            end = time.time()
-
-            count += 1
 
         print()
         reconstructed = np.vstack(reconstructed_list)  # [N, T, D]
@@ -221,6 +271,7 @@ def execute_client(inputs: np.ndarray,
         'avg_bytes': float(np.average(num_bytes)),
         'avg_measurements': float(np.average(num_measurements)),
         'widths': width_counter,
+        'recv_count': recv_counter,
         'count': count,
         'start_idx': start_idx,
         'maes': maes,
@@ -236,15 +287,16 @@ if __name__ == '__main__':
     parser = ArgumentParser()
     parser.add_argument('--dataset', type=str, required=True)
     parser.add_argument('--policy', type=str, required=True)
-    parser.add_argument('--target', type=float, required=True)
+    parser.add_argument('--collection-rate', type=float, required=True)
     parser.add_argument('--output-folder', type=str, required=True)
     parser.add_argument('--encoding', type=str, required=True, choices=['standard', 'group'])
+    parser.add_argument('--trial', type=int, required=True)
     parser.add_argument('--start-index', type=int, default=0)
     parser.add_argument('--max-samples', type=int)
     args = parser.parse_args()
 
     make_dir(args.output_folder)
-    output_file = os.path.join(args.output_folder, '{0}_{1}_{2}.json.gz'.format(args.policy, args.encoding, int(round(args.target * 100))))
+    output_file = os.path.join(args.output_folder, '{0}_{1}_{2}_trial{3}.json.gz'.format(args.policy, args.encoding, int(round(args.collection_rate * 100)), args.trial))
 
     if os.path.exists(output_file):
         print('The output file {0} exists. Do you want to overwrite it? [Y/N]'.format(output_file))
@@ -253,13 +305,15 @@ if __name__ == '__main__':
             sys.exit(0)
 
     # Read the data
-    with h5py.File(os.path.join('..', 'datasets', args.dataset, 'mcu', 'data.h5'), 'r') as fin:
-        inputs = fin['inputs'][:]
-        labels = fin['output'][:]
+    inputs, labels = load_data(dataset_name=args.dataset, fold='mcu')
 
     # Get the quantization parameters
     quantize_path = os.path.join('..', 'datasets', args.dataset, 'quantize.json')
     quantize = read_json(quantize_path)
+
+    # Get the data distribution parameters
+    distribution_path = os.path.join('..', 'datasets', args.dataset, 'distribution.json')
+    distribution = read_json(distribution_path)
 
     execute_client(inputs=inputs,
                    labels=labels,
@@ -270,4 +324,6 @@ if __name__ == '__main__':
                    start_idx=args.start_index,
                    width=quantize['width'],
                    precision=quantize['precision'],
+                   data_mean=distribution['mean'],
+                   data_std=distribution['std'],
                    encoding_mode=EncodingMode[args.encoding.upper()])

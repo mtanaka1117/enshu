@@ -79,8 +79,8 @@ struct Vector *vector_gated_add_scalar(struct Vector *result, struct Vector *vec
     for (i = vec1->size; i > 0; i--) {
         j = i - 1;
         
-        temp1 = fp_mul(vec1->data[j], gate, precision);
-        temp2 = fp_mul(vec2->data[j], oneMinusGate, precision);
+        temp1 = fp32_mul(vec1->data[j], gate, precision);
+        temp2 = fp32_mul(vec2->data[j], oneMinusGate, precision);
         result->data[j] = fp_add(temp1, temp2);
     }
 

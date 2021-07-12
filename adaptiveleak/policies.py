@@ -846,10 +846,6 @@ def run_policy(policy: BudgetWrappedPolicy, sequence: np.ndarray, should_enforce
             collected_list.append(measurement.reshape(1, -1))
             collected_indices.append(seq_idx)
 
-    if len(collected_list) == 0:
-        print()
-        print('Threshold: {0}'.format(policy._policy._threshold))
-
     # Stack collected features into a numpy array
     collected = np.vstack(collected_list)  # [K, D]
 
@@ -928,7 +924,7 @@ def make_policy(name: str,
                              encryption_mode=EncryptionMode[encryption_mode.upper()],
                              collect_mode=CollectMode[collect_mode.upper()],
                              should_compress=should_compress)
-    elif name.startswith('adaptive') or name == 'skip_rnn':
+    elif name.startswith('adaptive'):
         # Look up the threshold path
         threshold_path = os.path.join(base, 'saved_models', dataset, 'thresholds.json.gz')
 
@@ -954,19 +950,6 @@ def make_policy(name: str,
             cls = AdaptiveLiteSense
         elif name == 'adaptive_deviation':
             cls = AdaptiveDeviation
-        elif name == 'skip_rnn':
-            threshold = threshold if did_find_threshold else 0.5
-            return SkipRNN(collection_rate=collection_rate,
-                           threshold=threshold,
-                           precision=precision,
-                           width=width,
-                           seq_length=seq_length,
-                           num_features=num_features,
-                           dataset_name=dataset,
-                           encryption_mode=EncryptionMode[encryption_mode.upper()],
-                           collect_mode=CollectMode[collect_mode.upper()],
-                           encoding_mode=EncodingMode[str(kwargs['encoding']).upper()],
-                           should_compress=should_compress)
         else:
             raise ValueError('Unknown adaptive policy with name: {0}'.format(name))
 
@@ -982,5 +965,17 @@ def make_policy(name: str,
                    collect_mode=CollectMode[collect_mode.upper()],
                    encoding_mode=EncodingMode[str(kwargs['encoding']).upper()],
                    should_compress=should_compress)
+    elif (name == 'skip_rnn'):
+        return SkipRNN(collection_rate=collection_rate,
+                       threshold=0.5,
+                       precision=precision,
+                       width=width,
+                       seq_length=seq_length,
+                       num_features=num_features,
+                       dataset_name=dataset,
+                       encryption_mode=EncryptionMode[encryption_mode.upper()],
+                       collect_mode=CollectMode[collect_mode.upper()],
+                       encoding_mode=EncodingMode[str(kwargs['encoding']).upper()],
+                       should_compress=should_compress)
     else:
         raise ValueError('Unknown policy with name: {0}'.format(name))

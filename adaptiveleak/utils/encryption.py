@@ -67,8 +67,8 @@ def encrypt_aes128(message: bytes, key: bytes) -> bytes:
     iv = get_random_bytes(AES_BLOCK_SIZE)
 
     # Pad the message if needed
-    if (len(message) % AES_BLOCK_SIZE) != 0:
-        message = pad(message, block_size=AES_BLOCK_SIZE, style='x923')
+    #if (len(message) % AES_BLOCK_SIZE) != 0:
+    message = pad(message, block_size=AES_BLOCK_SIZE, style='x923')
 
     # Encrypt the message
     cipher = AES.new(key, AES.MODE_CBC, iv)

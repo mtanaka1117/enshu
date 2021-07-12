@@ -29,7 +29,7 @@ FixedPoint fp_abs(FixedPoint x) {
 FixedPoint fp32_mul(FixedPoint x, FixedPoint y, uint16_t precision) {
     int32_t xLarge = (int32_t) x;
     int32_t yLarge = (int32_t) y;
-    int32_t result = (x * y) >> precision;
+    int32_t result = (xLarge * yLarge) >> precision;
     return (FixedPoint) result;
 }
 

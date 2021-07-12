@@ -6,27 +6,26 @@ from argparse import ArgumentParser
 
 from adaptiveleak.utils.file_utils import read_json, make_dir
 from adaptiveleak.utils.data_utils import array_to_fp
-
+from adaptiveleak.utils.loading import load_data
 
 
 if __name__ == '__main__':
     parser = ArgumentParser()
     parser.add_argument('--dataset', type=str, required=True)
     parser.add_argument('--num-seq', type=int, required=True)
+    parser.add_argument('--offset', type=int, default=0, required=True)
     parser.add_argument('--is-msp', action='store_true')
     args = parser.parse_args()
 
     base = os.path.join('..', 'datasets', args.dataset)
-
-    test_path = os.path.join(base, 'test', 'data.h5')
-    with h5py.File(test_path, 'r') as fin:
-        inputs = fin['inputs'][:]
-        outputs = fin['output'][:]
+    inputs, outputs = load_data(dataset_name=args.dataset, fold='test')
 
     # Get a random sample of inputs
     rand = np.random.RandomState(seed=5494)
     sample_idx = np.arange(inputs.shape[0])
-    indices = rand.choice(sample_idx, replace=False, size=args.num_seq)
+    rand.shuffle(sample_idx)
+
+    indices = sample_idx[args.offset:args.offset + args.num_seq]
 
     inputs = inputs[indices]
     outputs = outputs[indices]
@@ -74,6 +73,10 @@ if __name__ == '__main__':
 
         fout.write('#define MAX_NUM_SEQ {0}u\n'.format(args.num_seq))
         fout.write('static const uint32_t DATASET_LENGTH = {0}ul;\n'.format(num_values))
+
+        if args.is_msp:
+            fout.write('#pragma PERSISTENT(DATASET)\n')
+
         fout.write('static FixedPoint DATASET[{0}] = {1};\n'.format(len(fixed_point), data_string))
 
         fout.write('#endif')
