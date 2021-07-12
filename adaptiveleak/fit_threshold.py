@@ -37,6 +37,9 @@ def execute_on_batch(policy: BudgetWrappedPolicy, batch: np.ndarray, energy_marg
     # Execute the policy on each sequence
     estimated_list: List[np.ndarray] = []
 
+    num_collected = 0
+    total = 0
+
     for seq_idx, sequence in enumerate(batch):
         policy.reset()
         policy_result = run_policy(policy=policy, sequence=sequence, should_enforce_budget=True)
@@ -47,6 +50,9 @@ def execute_on_batch(policy: BudgetWrappedPolicy, batch: np.ndarray, energy_marg
                                              seq_length=seq_length)
 
         estimated_list.append(np.expand_dims(reconstructed, axis=0))
+
+        num_collected += policy_result.num_collected
+        total += len(sequence)
 
     estimated = np.vstack(estimated_list)  # [B, T, D]
 
@@ -201,7 +207,7 @@ if __name__ == '__main__':
     num_seq, seq_length, num_features = inputs.shape
 
     # Get the maximum threshold value based on the data
-    max_threshold = np.max(np.abs(inputs)) + 100.0
+    max_threshold = np.max(np.sum(np.abs(inputs), axis=-1)) + 1000.0
 
     # Load the parameter files
     output_file = os.path.join('saved_models', args.dataset, 'thresholds.json.gz')
@@ -226,8 +232,8 @@ if __name__ == '__main__':
         lower = -1 * max_threshold
         upper = max_threshold
 
-        # Always log the progress for intermediate tracking
-        print('Starting {0}'.format(collection_rate))
+        if args.should_print:
+            print('Starting {0}'.format(collection_rate))
 
         # Create the policy for which to fit thresholds
         policy = BudgetWrappedPolicy(name=policy_name,
@@ -271,8 +277,6 @@ if __name__ == '__main__':
             lower = threshold * THRESHOLD_FACTOR_LOWER
 
             energy_margin += MARGIN_FACTOR
-
-            print('Did Exhaust: {0}'.format(did_exhaust))
 
         threshold_map[policy_name][collect_mode][str(round(collection_rate, 2))] = final_threshold
 
