@@ -15,12 +15,12 @@ from adaptiveleak.utils.file_utils import iterate_dir, read_json, save_json_gz, 
 
 
 BatchResult = namedtuple('BatchResult', ['mae', 'did_exhaust'])
-VAL_BATCH_SIZE = 128
+VAL_BATCH_SIZE = 256
 MAX_ITER = 150  # Prevents any unexpected infinite looping
 
-MAX_MARGIN_FACTOR = 0.25
+MAX_MARGIN_FACTOR = 0.01  # Limit the padding to 1% of the overall budget
 VAL_MARGIN_FACTOR = 0.9
-MARGIN_FACTOR = 0.01  # Go in increments of 1% of the total budget
+MARGIN_FACTOR = 0.0001  # Go in increments of 0.01% of the total budget
 
 THRESHOLD_FACTOR_UPPER = 1.5
 THRESHOLD_FACTOR_LOWER = 0.5
@@ -181,7 +181,7 @@ if __name__ == '__main__':
     parser.add_argument('--policy', type=str, required=True, choices=['adaptive_heuristic', 'adaptive_deviation'])
     parser.add_argument('--collection-rates', type=float, nargs='+', required=True)
     parser.add_argument('--collect', type=str, required=True, choices=['tiny', 'low', 'med', 'high'])
-    parser.add_argument('--batch-size', type=int, default=512)
+    parser.add_argument('--batch-size', type=int, default=256)
     parser.add_argument('--batches-per-trial', type=int, default=3)
     parser.add_argument('--should-print', action='store_true')
     args = parser.parse_args()
