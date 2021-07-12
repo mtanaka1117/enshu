@@ -18,9 +18,9 @@ BatchResult = namedtuple('BatchResult', ['mae', 'did_exhaust'])
 VAL_BATCH_SIZE = 512
 MAX_ITER = 100  # Prevents any unexpected infinite looping
 
-MAX_MARGIN_FACTOR = 0.01  # Limit the padding to 1% of the overall budget (~ 100 mJ)
-VAL_MARGIN_FACTOR = 0.75
-MARGIN_FACTOR = 0.0001  # Go in increments of 0.01% of the total budget (~ 1mJ)
+MAX_MARGIN_FACTOR = 0.03  # Limit the padding to 3% of the overall budget (~300 mJ)
+VAL_MARGIN_FACTOR = 0.9
+MARGIN_FACTOR = 0.001  # Go in increments of 0.1% of the total budget (~10mJ)
 
 THRESHOLD_FACTOR_UPPER = 1.75  # Bias toward reducing the energy rate every time we increase the margin
 THRESHOLD_FACTOR_LOWER = 0.5
@@ -113,7 +113,7 @@ def fit(policy: BudgetWrappedPolicy,
         did_exhaust = any(did_exhaust_list)
 
         # Track the best error
-        if error < best_error:
+        if (error < best_error) and (not did_exhaust):
             best_threshold = current
             best_error = error
 
@@ -201,7 +201,7 @@ if __name__ == '__main__':
     num_seq, seq_length, num_features = inputs.shape
 
     # Get the maximum threshold value based on the data
-    max_threshold = np.max(np.abs(inputs)) * 1.01
+    max_threshold = np.max(np.abs(inputs)) + 100.0
 
     # Load the parameter files
     output_file = os.path.join('saved_models', args.dataset, 'thresholds.json.gz')
@@ -271,6 +271,8 @@ if __name__ == '__main__':
             lower = threshold * THRESHOLD_FACTOR_LOWER
 
             energy_margin += MARGIN_FACTOR
+
+            print('Did Exhaust: {0}'.format(did_exhaust))
 
         threshold_map[policy_name][collect_mode][str(round(collection_rate, 2))] = final_threshold
 

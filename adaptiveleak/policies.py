@@ -914,6 +914,7 @@ def make_policy(name: str,
     width = quantize_dict['width']
     max_skip = quantize_dict.get('max_skip', 1)
     min_skip = quantize_dict.get('min_skip', 0)
+    threshold_factor = quantize_dict.get('threshold_factor', 1.0)
 
     if name == 'random':
         return RandomPolicy(collection_rate=collection_rate,
@@ -952,6 +953,9 @@ def make_policy(name: str,
             else:
                 threshold = thresholds[name][collect_mode][rate_str]
                 did_find_threshold = True
+
+        # Apply the optional data-specific threshold factor
+        threshold *= threshold_factor
 
         if name == 'adaptive_heuristic':
             cls = AdaptiveHeuristic
