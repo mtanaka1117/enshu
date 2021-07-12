@@ -2,7 +2,7 @@ import numpy as np
 import math
 import os.path
 import time
-from collections import deque
+from collections import deque, OrderedDict
 from enum import Enum, auto
 from typing import Tuple, List, Dict, Any, Optional
 
@@ -955,7 +955,11 @@ def make_policy(name: str,
                 did_find_threshold = True
 
         # Apply the optional data-specific threshold factor
-        threshold *= threshold_factor
+        if isinstance(threshold_factor, OrderedDict):
+            if str(collection_rate) in threshold_factor:
+                threshold *= threshold_factor[str(collection_rate)]
+        else:
+            threshold *= threshold_factor
 
         if name == 'adaptive_heuristic':
             cls = AdaptiveHeuristic
