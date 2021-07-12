@@ -10,7 +10,7 @@ from typing import Tuple, List, Dict, Any, Optional
 from adaptiveleak.energy_systems import EnergyUnit, convert_rate_to_energy, get_group_target_bytes
 from adaptiveleak.utils.constants import BITS_PER_BYTE, MIN_WIDTH, SMALL_NUMBER, MAX_WIDTH, SHIFT_BITS, MAX_SHIFT_GROUPS
 from adaptiveleak.utils.constants import MIN_SHIFT_GROUPS, PERIOD, LENGTH_SIZE, BT_FRAME_SIZE
-from adaptiveleak.utils.data_utils import get_group_widths, get_num_groups, calculate_bytes, pad_to_length, sigmoid, truncate_to_block
+from adaptiveleak.utils.data_utils import get_group_widths, get_num_groups, calculate_bytes, pad_to_length, sigmoid, truncate_to_block, round_to_block
 from adaptiveleak.utils.data_utils import prune_sequence, calculate_grouped_bytes, set_widths, select_range_shifts_array, num_bits_for_value
 from adaptiveleak.utils.shifting import merge_shift_groups
 from adaptiveleak.utils.message import encode_standard_measurements, decode_standard_measurements
@@ -209,7 +209,7 @@ class AdaptivePolicy(Policy):
                                                       seq_length=seq_length,
                                                       num_features=num_features)
 
-        if self.encoding_mode in (EncodingMode.GROUP, EncodingMode.GROUP_UNSHIFTED):
+        if self.encoding_mode in (EncodingMode.GROUP, EncodingMode.GROUP_UNSHIFTED, EncodingMode.SINGLE_GROUP):
             self._target_bytes = get_group_target_bytes(width=self.width,
                                                         collection_rate=self.collection_rate,
                                                         num_features=self.num_features,
@@ -245,7 +245,7 @@ class AdaptivePolicy(Policy):
     def encode(self, measurements: np.ndarray, collected_indices: List[int]) -> bytes:
         if self.encoding_mode == EncodingMode.STANDARD:
             return super().encode(measurements, collected_indices)
-        elif self.encoding_mode in (EncodingMode.GROUP, EncodingMode.GROUP_UNSHIFTED):
+        elif self.encoding_mode in (EncodingMode.GROUP, EncodingMode.GROUP_UNSHIFTED, EncodingMode.SINGLE_GROUP):
             target_bytes = self._target_bytes
 
             # Conservatively Estimate the meta-data bytes associated with stable encoding
@@ -293,7 +293,7 @@ class AdaptivePolicy(Policy):
                 merged_shifts, group_sizes = merge_shift_groups(values=flattened,
                                                                 shifts=shifts,
                                                                 max_num_groups=MAX_SHIFT_GROUPS)
-            else:
+            elif self.encoding_mode == EncodingMode.GROUP_UNSHIFTED:
                 # Set the group sizes 'evenly'
                 features_per_group = int(round(len(flattened) / MAX_SHIFT_GROUPS))
 
@@ -307,6 +307,11 @@ class AdaptivePolicy(Policy):
 
                 # For the 'un-shifted' variant, we set all the shift values to zero
                 merged_shifts = [0 for _ in group_sizes]
+            elif self.encoding_mode == EncodingMode.SINGLE_GROUP:
+                group_sizes.append(len(flattened))  # Use a single group with no shift
+                merged_shifts.append(0)
+            else:
+                raise ValueError('Unknown encoding mode: {0}'.format(self.encoding_mode))
 
             # Re-calculate the meta-data size based on the given shift groups. Smaller
             # ranges allow for greater savings.
@@ -347,7 +352,7 @@ class AdaptivePolicy(Policy):
     def decode(self, message: bytes) -> Tuple[np.ndarray, List[int]]:
         if self.encoding_mode == EncodingMode.STANDARD:
             return super().decode(message)
-        elif self.encoding_mode in (EncodingMode.GROUP, EncodingMode.GROUP_UNSHIFTED):
+        elif self.encoding_mode in (EncodingMode.GROUP, EncodingMode.GROUP_UNSHIFTED, EncodingMode.SINGLE_GROUP):
             non_fractional = self.width - self.precision
             max_group_size = max(int(BITS_PER_BYTE * AES_BLOCK_SIZE), 1)
 
@@ -853,15 +858,19 @@ def run_policy(policy: BudgetWrappedPolicy, sequence: np.ndarray, should_enforce
     encoded = policy.encode(measurements=collected,
                             collected_indices=collected_indices)
 
-    # Compute the number of bytes accounting for the length and encryption nonces
-    num_bytes = len(encoded) + LENGTH_SIZE
+    # Compute the number of bytes accounting for the length and encryption algorithm
+    num_bytes = len(encoded)
 
     if policy.encryption_mode == EncryptionMode.STREAM:
-        num_bytes += CHACHA_NONCE_LEN
+        num_bytes += CHACHA_NONCE_LEN  # Add the Nonce
     elif policy.encryption_mode == EncryptionMode.BLOCK:
-        num_bytes += AES_BLOCK_SIZE
+        num_bytes = round_to_block(num_bytes, block_size=AES_BLOCK_SIZE)  # Pad for the block cipher
+        num_bytes += AES_BLOCK_SIZE  # Add in the IV
     else:
         raise ValueError('Unknown encryption mode: {0}'.format(policy.encoding_mode.name.lower()))
+
+    # Include the length field
+    num_bytes += LENGTH_SIZE
 
     # Compute the energy required
     energy = policy.consume_energy(num_collected=len(collected_indices),

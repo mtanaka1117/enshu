@@ -5,7 +5,7 @@ from adaptiveleak.utils.data_types import PolicyType, EncodingMode, CollectMode,
 from .energy_systems import EnergyUnit
 
 
-MARGIN = 1e-4
+MARGIN = 1e-2
 
 
 def convert_rate_to_energy(collection_rate: float, width: int, encryption_mode: EncryptionMode, collect_mode: CollectMode, seq_length: int, num_features: int) -> float:

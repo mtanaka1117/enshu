@@ -19,6 +19,7 @@ class EncodingMode(Enum):
     STANDARD = auto()
     GROUP = auto()
     GROUP_UNSHIFTED = auto()
+    SINGLE_GROUP = auto()
 
 
 class CollectMode(Enum):

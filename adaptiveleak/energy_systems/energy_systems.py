@@ -111,9 +111,9 @@ class EncryptionEnergy:
 class EncodingEnergy:
 
     def __init__(self, encoding_mode: EncodingMode):
-        # As a conservative estimate, we set the group un-shifted variant
+        # As a conservative estimate, we set the group variants
         # to the cost of the standard encoding algorithm
-        if encoding_mode == EncodingMode.GROUP_UNSHIFTED:
+        if encoding_mode in (EncodingMode.GROUP_UNSHIFTED, EncodingMode.SINGLE_GROUP):
             encoding_mode = EncodingMode.STANDARD
 
         self._encoding_mode = encoding_mode

@@ -5,6 +5,7 @@ import numpy as np
 import time
 from collections import defaultdict, namedtuple
 from argparse import ArgumentParser
+from typing import List
 
 from adaptiveleak.server import reconstruct_sequence
 from adaptiveleak.policies import run_policy, BudgetWrappedPolicy
@@ -14,14 +15,16 @@ from adaptiveleak.utils.file_utils import iterate_dir, read_json, save_json_gz, 
 
 
 BatchResult = namedtuple('BatchResult', ['mae', 'did_exhaust'])
-VAL_BATCH_SIZE = 2048
+VAL_BATCH_SIZE = 128
 MAX_ITER = 150  # Prevents any unexpected infinite looping
-MAX_MARGIN_FACTOR = 0.5
-MARGIN_FACTOR = 0.025  # Go in increments of 5% of the total budget
+
+MAX_MARGIN_FACTOR = 0.25
+VAL_MARGIN_FACTOR = 0.9
+MARGIN_FACTOR = 0.01  # Go in increments of 1% of the total budget
 
 THRESHOLD_FACTOR_UPPER = 1.5
 THRESHOLD_FACTOR_LOWER = 0.5
-TOLERANCE = 1e-4
+TOLERANCE = 1e-3
 
 
 def execute_on_batch(policy: BudgetWrappedPolicy, batch: np.ndarray, energy_margin: float) -> BatchResult:
@@ -138,17 +141,38 @@ def fit(policy: BudgetWrappedPolicy,
     return best_threshold
 
 
-def validate_thresholds(policy: BudgetWrappedPolicy, inputs: np.ndarray, threshold: float, energy_margin: float) -> BatchResult:
+def validate_thresholds(policy: BudgetWrappedPolicy,
+                        inputs: np.ndarray,
+                        threshold: float,
+                        energy_margin: float,
+                        num_batches: int,
+                        rand: np.random.RandomState) -> List[BatchResult]:
     """
     Validates the policy and thresholds on a set of held-out inputs.
     """
     # Set the threshold
     policy._threshold = threshold
 
-    # Run the policy on the given batch
-    val_result = execute_on_batch(policy=policy, batch=inputs, energy_margin=energy_margin)
+    # Create the sample indices for batch creation
+    sample_idx = np.arange(len(inputs))
 
-    return val_result
+    # Reduce the energy margin to account for some variance
+    energy_margin *= VAL_MARGIN_FACTOR
+
+    results: List[BatchResult] = []
+    for _ in range(num_batches):
+        # Make the validation batch
+        batch_idx = rand.choice(sample_idx, size=VAL_BATCH_SIZE, replace=True)
+        batch = inputs[batch_idx]
+
+        print('Batch Size: {0}'.format(batch.shape))
+
+        # Run the policy on the given batch
+        val_result = execute_on_batch(policy=policy, batch=batch, energy_margin=energy_margin)
+
+        results.append(val_result)
+
+    return results
 
 
 if __name__ == '__main__':
@@ -227,20 +251,22 @@ if __name__ == '__main__':
                             energy_margin=energy_margin,
                             should_print=args.should_print)
 
-            # Make the validation batch
-            if len(val_indices) > VAL_BATCH_SIZE:
-                val_batch_idx = rand.choice(val_indices, size=VAL_BATCH_SIZE, replace=True)
-            else:
-                val_batch_idx = val_indices
+            # Make the validation batches
+            #if len(val_indices) > VAL_BATCH_SIZE:
+            #    val_batch_idx = rand.choice(val_indices, size=VAL_BATCH_SIZE, replace=True)
+            #else:
+            #    val_batch_idx = val_indices
 
-            val_margin = energy_margin * 0.5  # Give more room for the validation set (handles some variance)
-            val_batch = val_inputs[val_batch_idx]
-            val_result = validate_thresholds(policy=policy,
-                                             threshold=threshold,
-                                             inputs=val_batch,
-                                             energy_margin=val_margin)
+            #val_margin = energy_margin * VAL_FACTOR  # Give more room for the validation set (handles some variance)
+            #val_batch = val_inputs[val_batch_idx]
+            val_results = validate_thresholds(policy=policy,
+                                              threshold=threshold,
+                                              inputs=val_inputs,
+                                              energy_margin=energy_margin,
+                                              num_batches=args.batches_per_trial,
+                                              rand=rand)
 
-            did_exhaust = val_result.did_exhaust
+            did_exhaust = any(r.did_exhaust for r in val_results)
             final_threshold = threshold
 
             # Reset the bounds to speed up the next iteration
@@ -249,7 +275,7 @@ if __name__ == '__main__':
 
             energy_margin += MARGIN_FACTOR
 
-        threshold_map[policy_name][collect_mode][str(collection_rate)] = final_threshold
+        threshold_map[policy_name][collect_mode][str(round(collection_rate, 2))] = final_threshold
 
         if args.should_print:
             print('==========')
