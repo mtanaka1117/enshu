@@ -4,14 +4,14 @@ from argparse import ArgumentParser
 from collections import defaultdict, namedtuple
 from sklearn.ensemble import AdaBoostClassifier
 from sklearn.model_selection import KFold
-from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score
+from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score, ndcg_score, top_k_accuracy_score, dcg_score
 from typing import Any, Dict, Tuple, List, DefaultDict
 
 from adaptiveleak.utils.analysis import geometric_mean
 from adaptiveleak.utils.file_utils import read_json_gz, save_json_gz, iterate_dir, make_dir
 
 
-AttackResult = namedtuple('AttackResult', ['accuracy', 'precision', 'recall', 'f1'])
+AttackResult = namedtuple('AttackResult', ['accuracy', 'precision', 'recall', 'f1', 'ndcg', 'dcg', 'top2'])
 
 
 class AttackResultList:
@@ -21,33 +21,62 @@ class AttackResultList:
         self.precision: List[float] = []
         self.recall: List[float] = []
         self.f1: List[float] = []
+        self.ndcg: List[float] = []
+        self.dcg: List[float] = []
+        self.top2: List[float] = []
 
     def append(self, result: AttackResult):
         self.accuracy.append(result.accuracy)
         self.precision.append(result.precision)
         self.recall.append(result.recall)
         self.f1.append(result.f1)
+        self.ndcg.append(result.ndcg)
+        self.dcg.append(result.dcg)
+        self.top2.append(result.top2)
 
     def as_dict(self) -> Dict[str, List[float]]:
         return {
             'accuracy': self.accuracy,
             'precision': self.precision,
             'recall': self.recall,
-            'f1': self.f1
+            'f1': self.f1,
+            'ndcg': self.ndcg,
+            'dcg': self.dcg,
+            'top2': self.top2
         }
 
 
-def get_stats(true: np.ndarray, pred: np.ndarray) -> AttackResult:
+def get_stats(true: np.ndarray, pred_probs: np.ndarray) -> AttackResult:
     """
     Returns the statistics comparing the true and predicted values.
     """
     assert len(true.shape) == 1, 'Must provide a 1d array of true labels'
-    assert len(pred.shape) == 1, 'Must provide a 1d array of predicted labels'
+    assert len(pred_probs.shape) == 2, 'Must provide a 2d array of predicted probabilities'
 
+    # Compute the NDCG using a one-hot relevance encoding
+    true_relevance = np.zeros_like(pred_probs)
+
+    for sample_idx, label in enumerate(true):
+        true_relevance[sample_idx, label] = 1
+
+    ndcg = ndcg_score(y_true=true_relevance,
+                      y_score=pred_probs)
+
+    dcg = dcg_score(y_true=true_relevance,
+                    y_score=pred_probs)
+
+    top2 = top_k_accuracy_score(y_true=true,
+                                y_score=pred_probs,
+                                k=2)
+
+    pred = np.argmax(pred_probs, axis=-1)
     return AttackResult(accuracy=accuracy_score(y_true=true, y_pred=pred),
-                        precision=precision_score(y_true=true, y_pred=pred, average='macro', zero_division=0),
-                        recall=recall_score(y_true=true, y_pred=pred, average='macro'),
-                        f1=f1_score(y_true=true, y_pred=pred, average='macro'))
+                        precision=precision_score(y_true=true, y_pred=pred, average='micro', zero_division=0),
+                        recall=recall_score(y_true=true, y_pred=pred, average='micro'),
+                        f1=f1_score(y_true=true, y_pred=pred, average='macro'),
+                        ndcg=ndcg,
+                        dcg=dcg,
+                        top2=top2)
 
 
 def create_dataset(message_sizes: List[int], labels: List[int], window_size: int, num_samples: int, rand: np.random.RandomState) -> Tuple[np.ndarray, np.ndarray]:
@@ -107,6 +136,7 @@ def fit_attack_model(message_sizes: np.array, labels: np.array, window_size: int
                                      window_size=window_size,
                                      num_samples=num_samples,
                                      rand=rand)
+    num_labels = np.amax(outputs)
 
     train_results = AttackResultList()
     test_results = AttackResultList()
@@ -124,19 +154,23 @@ def fit_attack_model(message_sizes: np.array, labels: np.array, window_size: int
         clf.fit(train_inputs, train_labels)
 
         # Get the training and testing predictions
-        train_pred = clf.predict(train_inputs)
-        test_pred = clf.predict(test_inputs)
+        train_probs = clf.predict_proba(train_inputs)
+        test_probs = clf.predict_proba(test_inputs)
 
-        train_stats = get_stats(true=train_labels, pred=train_pred)
-        test_stats = get_stats(true=test_labels, pred=test_pred)
+        train_stats = get_stats(true=train_labels, pred_probs=train_probs)
+        test_stats = get_stats(true=test_labels, pred_probs=test_probs)
 
         train_results.append(train_stats)
         test_results.append(test_stats)
 
         # Get the most frequent accuracy based on the training set
-        most_freq_label = np.bincount(train_labels, minlength=np.amax(train_labels)).argmax()
-        most_freq_labels = np.array([most_freq_label for _ in test_labels])
-        most_freq_stats = get_stats(true=test_labels, pred=most_freq_labels)
+        most_freq_label_counts = np.bincount(train_labels, minlength=num_labels)
+        most_freq_label = np.argmax(most_freq_label_counts)
+
+        most_freq_probs = np.zeros_like(test_probs)
+        most_freq_probs[:, most_freq_label] = 1
+
+        most_freq_stats = get_stats(true=test_labels, pred_probs=most_freq_probs)
 
         train_results.append(train_stats)
         test_results.append(test_stats)
