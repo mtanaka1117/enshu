@@ -956,8 +956,10 @@ def make_policy(name: str,
 
         # Apply the optional data-specific threshold factor
         if isinstance(threshold_factor, OrderedDict):
-            if str(collection_rate) in threshold_factor:
-                threshold *= threshold_factor[str(collection_rate)]
+            rate_str = str(round(collection_rate, 2))
+
+            if rate_str in threshold_factor:
+                threshold *= threshold_factor[rate_str]
         else:
             threshold *= threshold_factor
 
