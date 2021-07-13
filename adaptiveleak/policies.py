@@ -277,6 +277,7 @@ class AdaptivePolicy(Policy):
 
             flattened = measurements.T.reshape(-1)
             min_width = int(target_data_bits / (self.num_features * len(collected_indices)))
+            min_width = min(min_width, max(MAX_WIDTH, self.width))
 
             group_sizes: List[int] = []
             merged_shifts: List[int] = []
