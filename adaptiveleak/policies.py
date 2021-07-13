@@ -174,7 +174,7 @@ class AdaptivePolicy(Policy):
                  width: int,
                  seq_length: int,
                  num_features: int,
-                 min_skip: int,
+                 use_min_skip: bool,
                  max_skip: int,
                  encryption_mode: EncryptionMode,
                  encoding_mode: EncodingMode,
@@ -189,11 +189,22 @@ class AdaptivePolicy(Policy):
                          encoding_mode=encoding_mode,
                          collect_mode=collect_mode,
                          should_compress=should_compress)
-        assert min_skip >= 0, 'Must provide a non-negative minimum skip value'
+        #assert min_skip >= 0, 'Must provide a non-negative minimum skip value'
 
         # Variables used to track the adaptive sampling policy
         self._max_skip = int(1.0 / collection_rate) + max_skip
-        self._min_skip = min_skip if collection_rate < (1.0 / (min_skip + 1)) else 0
+
+        self._min_skip = 0
+
+        if use_min_skip:
+            if collection_rate < 0.31:
+                self._min_skip = 2
+            elif collection_rate < 0.51:
+                self._min_skip = 1
+            else:
+                self._min_skip = 0
+
+        #self._min_skip = min_skip if collection_rate < (1.0 / (min_skip + 1)) else 0
 
         assert self._max_skip > self._min_skip, 'Must have a max skip > min_skip'
 
@@ -505,7 +516,7 @@ class SkipRNN(AdaptivePolicy):
                          seq_length=seq_length,
                          num_features=num_features,
                          max_skip=0,
-                         min_skip=0,
+                         use_min_skip=False,
                          encryption_mode=encryption_mode,
                          encoding_mode=encoding_mode,
                          collect_mode=collect_mode,
@@ -914,7 +925,7 @@ def make_policy(name: str,
     precision = quantize_dict['precision']
     width = quantize_dict['width']
     max_skip = quantize_dict.get('max_skip', 1)
-    min_skip = quantize_dict.get('min_skip', 0)
+    use_min_skip = quantize_dict.get('use_min_skip', False)
     threshold_factor = quantize_dict.get('threshold_factor', 1.0)
 
     if name == 'random':
@@ -980,7 +991,7 @@ def make_policy(name: str,
                    seq_length=seq_length,
                    num_features=num_features,
                    max_skip=max_skip,
-                   min_skip=min_skip,
+                   use_min_skip=use_min_skip,
                    encryption_mode=EncryptionMode[encryption_mode.upper()],
                    collect_mode=CollectMode[collect_mode.upper()],
                    encoding_mode=EncodingMode[str(kwargs['encoding']).upper()],
