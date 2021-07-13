@@ -1,4 +1,5 @@
 import numpy as np
+
 import math
 import os.path
 import time
@@ -414,7 +415,7 @@ class AdaptiveLiteSense(AdaptivePolicy):
                  seq_length: int,
                  num_features: int,
                  max_skip: int,
-                 min_skip: int,
+                 use_min_skip: bool,
                  encryption_mode: EncryptionMode,
                  encoding_mode: EncodingMode,
                  collect_mode: CollectMode,
@@ -426,7 +427,7 @@ class AdaptiveLiteSense(AdaptivePolicy):
                          seq_length=seq_length,
                          num_features=num_features,
                          max_skip=max_skip,
-                         min_skip=min_skip,
+                         use_min_skip=use_min_skip,
                          encryption_mode=encryption_mode,
                          encoding_mode=encoding_mode,
                          collect_mode=collect_mode,
@@ -975,6 +976,13 @@ def make_policy(name: str,
         else:
             threshold *= threshold_factor
 
+        # Get the optional max skip value
+        if isinstance(max_skip, OrderedDict):
+            rate_str = str(round(collection_rate, 2))
+            max_skip_value = max_skip.get(rate_str, max_skip['default'])
+        else:
+            max_skip_value = max_skip
+
         if name == 'adaptive_heuristic':
             cls = AdaptiveHeuristic
         elif name == 'adaptive_litesense':
@@ -990,7 +998,7 @@ def make_policy(name: str,
                    width=width,
                    seq_length=seq_length,
                    num_features=num_features,
-                   max_skip=max_skip,
+                   max_skip=max_skip_value,
                    use_min_skip=use_min_skip,
                    encryption_mode=EncryptionMode[encryption_mode.upper()],
                    collect_mode=CollectMode[collect_mode.upper()],
