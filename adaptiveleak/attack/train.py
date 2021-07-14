@@ -99,6 +99,8 @@ def create_dataset(message_sizes: List[int], labels: List[int], window_size: int
             (1) A [N, D] array of input features composed of message sizes
             (2) A [N] array of labels for each input
     """
+    assert len(message_sizes) == len(labels), 'Must provide the same number of message sizes and labels'
+
     num_messages = len(message_sizes)
 
     # Group the message sizes by label

@@ -615,25 +615,39 @@ class RandomPolicy(Policy):
                  should_compress: bool):
         super().__init__(precision=precision,
                          width=width,
-                         collection_rate=collection_rate - 0.01,  # Give margin for (random) larger messages
+                         collection_rate=collection_rate,
                          num_features=num_features,
                          seq_length=seq_length,
                          encryption_mode=encryption_mode,
                          collect_mode=collect_mode,
                          encoding_mode=EncodingMode.STANDARD,
                          should_compress=should_compress)
+        self._rand_indices = list(range(1, self.seq_length))
+        self._indices = [0]
+
+        self._collect_idx = 0
+        self._num_to_collect = int(self.collection_rate * self.seq_length) - 1  # Always collect index 0
+
+        self.reset()
 
     @property
     def policy_type(self) -> PolicyType:
         return PolicyType.RANDOM
 
     def should_collect(self, seq_idx: int) -> bool:
-        r = self._rand.uniform()
-
-        if r < self.collection_rate or seq_idx == 0:
+        if (self._collect_idx < len(self._indices)) and (self._indices[self._collect_idx] == seq_idx):
+            self._collect_idx += 1
             return True
 
         return False
+
+    def reset(self):
+        self._indices = [0]
+        
+        idx_to_collect = np.sort(self._rand.choice(self._rand_indices, size=self._num_to_collect, replace=False)).tolist()
+        self._indices.extend(idx_to_collect)
+
+        self._collect_idx = 0
 
 
 class UniformPolicy(Policy):
@@ -684,7 +698,7 @@ class UniformPolicy(Policy):
         return PolicyType.UNIFORM
 
     def should_collect(self, seq_idx: int) -> bool:
-        if (seq_idx == 0) or (self._skip_idx < len(self._skip_indices) and seq_idx == self._skip_indices[self._skip_idx]):
+        if (self._skip_idx < len(self._skip_indices) and seq_idx == self._skip_indices[self._skip_idx]):
             self._skip_idx += 1
             return True
 

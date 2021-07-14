@@ -7,7 +7,7 @@ from scipy import stats
 from collections import namedtuple, OrderedDict
 from typing import Any, Dict, List, Optional
 
-from adaptiveleak.utils.constants import POLICIES
+from adaptiveleak.utils.constants import POLICIES, ENCODING
 from adaptiveleak.utils.file_utils import read_json_gz
 from adaptiveleak.analysis.plot_utils import COLORS, to_label, geometric_mean, MARKER, MARKER_SIZE, LINE_WIDTH, PLOT_STYLE
 from adaptiveleak.analysis.plot_utils import PLOT_SIZE, AXIS_FONT, LEGEND_FONT, TITLE_FONT
@@ -18,25 +18,54 @@ from adaptiveleak.analysis.plot_utils import extract_results, iterate_policy_fol
 def plot(sim_results: Dict[str, Dict[float, float]], dataset_name: str, output_file: Optional[str]):
 
     with plt.style.context(PLOT_STYLE):
-        fig, ax = plt.subplots(figsize=PLOT_SIZE)
+        fig, (ax1, ax2) = plt.subplots(figsize=(2 * PLOT_SIZE[0], PLOT_SIZE[1]), nrows=1, ncols=2)
 
         for name in POLICIES:
-            if name not in sim_results:
-                continue
+            for encoding in ['standard', 'group']:
+                policy_name = '{0}_{1}'.format(name, encoding)
 
-            model_results = sim_results[name]
-            targets = list(sorted(model_results.keys()))
-            accuracy = [model_results[t]['test_accuracy'] * 100.0 for t in targets]
+                if policy_name not in sim_results:
+                    continue
 
-            ax.plot(targets, accuracy, marker=MARKER, linewidth=LINE_WIDTH, markersize=MARKER_SIZE, label=to_label(name), color=COLORS[name])
+                model_results = sim_results[policy_name]
 
-            print('{0} & {1:.2f}\\% ({2:.2f}\\%)'.format(name, geometric_mean(accuracy), np.max(accuracy)))
+                energy_budgets = list(sorted(model_results.keys()))
 
-        ax.set_xlabel('Fraction of Measurements', fontsize=AXIS_FONT)
-        ax.set_ylabel('Accuracy', fontsize=AXIS_FONT)
-        ax.set_title('Attacker Accuracy on the {0} Dataset'.format(dataset_name.capitalize()), fontsize=TITLE_FONT)
+                # Get the accuracy and F1 scores for each target
+                accuracy: List[float] = []
+                f1: List[float] = []
 
-        ax.legend(fontsize=LEGEND_FONT)
+                all_accuracy: List[float] = []
+                all_f1: List[float] = []
+
+                for budget in energy_budgets:
+                    if 'test' not in model_results[budget]:
+                        accuracy.append(0.0)
+                        f1.append(0.0)
+                    else:
+                        budget_accuracy = model_results[budget]['test']['accuracy']
+                        accuracy.append(geometric_mean(budget_accuracy))
+                        all_accuracy.extend(budget_accuracy)
+
+                        budget_f1 = model_results[budget]['test']['f1']
+                        f1.append(geometric_mean(budget_f1))
+                        all_f1.extend(budget_f1)
+
+                ax1.plot(energy_budgets, accuracy, marker=MARKER, linewidth=LINE_WIDTH, markersize=MARKER_SIZE, label=to_label(policy_name), color=COLORS[policy_name])
+                ax2.plot(energy_budgets, f1, marker=MARKER, linewidth=LINE_WIDTH, markersize=MARKER_SIZE, label=to_label(policy_name), color=COLORS[policy_name])
+
+                if len(all_accuracy) > 0:
+                    print('{0} & {1:.2f}\\% & {2:.2f} \\\\'.format(to_label(policy_name), geometric_mean(all_accuracy), geometric_mean(all_f1)))
+
+        ax1.set_xlabel('Energy Budget (mJ)', fontsize=AXIS_FONT)
+        ax1.set_ylabel('Mean Accuracy', fontsize=AXIS_FONT)
+        ax1.set_title('Attacker Accuracy on the {0} Dataset'.format(dataset_name.capitalize()), fontsize=TITLE_FONT)
+
+        ax2.set_xlabel('Energy Budget (mJ)', fontsize=AXIS_FONT)
+        ax2.set_ylabel('Mean Macro F1 Score', fontsize=AXIS_FONT)
+        ax2.set_title('Attacker F1 Score on the {0} Dataset'.format(dataset_name.capitalize()), fontsize=TITLE_FONT)
+
+        ax1.legend(fontsize=LEGEND_FONT)
 
         if output_file is None:
             plt.show()
