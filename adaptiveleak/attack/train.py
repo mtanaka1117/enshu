@@ -65,9 +65,12 @@ def get_stats(true: np.ndarray, pred_probs: np.ndarray) -> AttackResult:
     dcg = dcg_score(y_true=true_relevance,
                     y_score=pred_probs)
 
+    num_classes = np.amax(true) + 1
+    k = 2 if num_classes > 2 else 1
+
     top2 = top_k_accuracy_score(y_true=true,
                                 y_score=pred_probs,
-                                k=2)
+                                k=1)
 
     pred = np.argmax(pred_probs, axis=-1)
     return AttackResult(accuracy=accuracy_score(y_true=true, y_pred=pred),
