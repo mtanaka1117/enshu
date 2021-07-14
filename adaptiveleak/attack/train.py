@@ -66,13 +66,15 @@ def get_stats(true: np.ndarray, pred_probs: np.ndarray) -> AttackResult:
                     y_score=pred_probs)
 
     num_classes = np.amax(true) + 1
-    k = 2 if num_classes > 2 else 1
-
-    top2 = top_k_accuracy_score(y_true=true,
-                                y_score=pred_probs,
-                                k=1)
-
     pred = np.argmax(pred_probs, axis=-1)
+
+    if num_classes > 2:
+        top2 = top_k_accuracy_score(y_true=true,
+                                    y_score=pred_probs,
+                                    k=2)
+    else:
+        top2 = 1.0
+
     return AttackResult(accuracy=accuracy_score(y_true=true, y_pred=pred),
                         precision=precision_score(y_true=true, y_pred=pred, average='micro', zero_division=0),
                         recall=recall_score(y_true=true, y_pred=pred, average='micro'),
