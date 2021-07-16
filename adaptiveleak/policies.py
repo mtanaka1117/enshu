@@ -190,8 +190,6 @@ class AdaptivePolicy(Policy):
                          encoding_mode=encoding_mode,
                          collect_mode=collect_mode,
                          should_compress=should_compress)
-        #assert min_skip >= 0, 'Must provide a non-negative minimum skip value'
-
         # Variables used to track the adaptive sampling policy
         self._max_skip = int(1.0 / collection_rate) + max_skip
 
@@ -204,8 +202,6 @@ class AdaptivePolicy(Policy):
                 self._min_skip = 1
             else:
                 self._min_skip = 0
-
-        #self._min_skip = min_skip if collection_rate < (1.0 / (min_skip + 1)) else 0
 
         assert self._max_skip > self._min_skip, 'Must have a max skip > min_skip'
 
@@ -221,7 +217,13 @@ class AdaptivePolicy(Policy):
                                                       seq_length=seq_length,
                                                       num_features=num_features)
 
-        if self.encoding_mode in (EncodingMode.GROUP, EncodingMode.GROUP_UNSHIFTED, EncodingMode.SINGLE_GROUP):
+        if self.encoding_mode == EncodingMode.PADDED:
+            self._target_bytes = calculate_bytes(width=self.width,
+                                                 num_collected=self.seq_length,
+                                                 num_features=self.num_features,
+                                                 encryption_mode=self.encryption_mode,
+                                                 seq_length=self.seq_length)
+        elif self.encoding_mode != EncodingMode.STANDARD:
             self._target_bytes = get_group_target_bytes(width=self.width,
                                                         collection_rate=self.collection_rate,
                                                         num_features=self.num_features,
@@ -257,6 +259,49 @@ class AdaptivePolicy(Policy):
     def encode(self, measurements: np.ndarray, collected_indices: List[int]) -> bytes:
         if self.encoding_mode == EncodingMode.STANDARD:
             return super().encode(measurements, collected_indices)
+        elif self.encoding_mode == EncodingMode.PADDED:
+            encoded = super().encode(measurements, collected_indices)
+
+            if self.encryption_mode == EncryptionMode.STREAM:
+                return pad_to_length(encoded, length=self.target_bytes - CHACHA_NONCE_LEN - LENGTH_SIZE)
+            elif self.encryption_mode == EncryptionMode.BLOCK:
+                return pad_to_length(encoded, length=self.target_bytes - AES_BLOCK_SIZE - LENGTH_SIZE)
+            else:
+                raise ValueError('Unknown encryption mode {0}'.format(self.encryption_mode.name))
+
+        elif self.encoding_mode == EncodingMode.PRUNED:
+            metadata_bytes = int(math.ceil(self.seq_length / BITS_PER_BYTE)) + LENGTH_SIZE
+
+            if self.encryption_mode == EncryptionMode.STREAM:
+                metadata_bytes += CHACHA_NONCE_LEN
+            else:
+                metadata_bytes += AES_BLOCK_SIZE
+
+            # Compute the target number of data bytes
+            target_data_bytes = self.target_bytes - metadata_bytes
+            target_data_bits = target_data_bytes * BITS_PER_BYTE
+
+            # Estimate the maximum number of measurements we can collect
+            max_features = int(target_data_bits / self.width)
+            max_collected = int(max_features / self.num_features)
+
+            # Prune measurements if needed
+            measurements, collected_indices = prune_sequence(measurements=measurements,
+                                                             collected_indices=collected_indices,
+                                                             max_collected=max_collected,
+                                                             seq_length=self.seq_length)
+
+            # Encode the pruned sequence
+            encoded = super().encode(measurements, collected_indices)
+
+            # Pad the sequence if needed
+            if self.encryption_mode == EncryptionMode.STREAM:
+                return pad_to_length(encoded, length=self.target_bytes - CHACHA_NONCE_LEN - LENGTH_SIZE)
+            elif self.encryption_mode == EncryptionMode.BLOCK:
+                return pad_to_length(encoded, length=self.target_bytes - AES_BLOCK_SIZE - LENGTH_SIZE)
+            else:
+                raise ValueError('Unknown encryption mode {0}'.format(self.encryption_mode.name))
+
         elif self.encoding_mode in (EncodingMode.GROUP, EncodingMode.GROUP_UNSHIFTED, EncodingMode.SINGLE_GROUP):
             target_bytes = self._target_bytes
 
@@ -358,12 +403,11 @@ class AdaptivePolicy(Policy):
                 return pad_to_length(encoded, length=target_bytes - AES_BLOCK_SIZE - LENGTH_SIZE)
             else:
                 raise ValueError('Unknown encryption mode {0}'.format(self.encryption_mode.name))
-
         else:
             raise ValueError('Unknown encoding type {0}'.format(self.encoding_mode.name))
 
     def decode(self, message: bytes) -> Tuple[np.ndarray, List[int]]:
-        if self.encoding_mode == EncodingMode.STANDARD:
+        if self.encoding_mode in (EncodingMode.STANDARD, EncodingMode.PRUNED, EncodingMode.PADDED):
             return super().decode(message)
         elif self.encoding_mode in (EncodingMode.GROUP, EncodingMode.GROUP_UNSHIFTED, EncodingMode.SINGLE_GROUP):
             non_fractional = self.width - self.precision

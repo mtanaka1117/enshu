@@ -113,7 +113,7 @@ class EncodingEnergy:
     def __init__(self, encoding_mode: EncodingMode):
         # As a conservative estimate, we set the group variants
         # to the cost of the standard encoding algorithm
-        if encoding_mode in (EncodingMode.GROUP_UNSHIFTED, EncodingMode.SINGLE_GROUP):
+        if encoding_mode in (EncodingMode.GROUP_UNSHIFTED, EncodingMode.SINGLE_GROUP, EncodingMode.PRUNED, EncodingMode.PADDED):
             encoding_mode = EncodingMode.STANDARD
 
         self._encoding_mode = encoding_mode

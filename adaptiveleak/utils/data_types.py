@@ -20,6 +20,8 @@ class EncodingMode(Enum):
     GROUP = auto()
     GROUP_UNSHIFTED = auto()
     SINGLE_GROUP = auto()
+    PADDED = auto()
+    PRUNED = auto()
 
 
 class CollectMode(Enum):

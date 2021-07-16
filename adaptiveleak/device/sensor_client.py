@@ -29,12 +29,9 @@ HCI_DEVICE = 'hci0'
 RESET_BYTE = b'\xFF'
 SEND_BYTE = b'\xBB'
 START_BYTE = b'\xCC'
-ACK_BYTE = b'\xAA'
 
 RESET_RESPONSE = b'\xCD'
 START_RESPONSE = b'\xAB'
-ACK_RESPONSE = b'\xEF'
-
 
 AES128_KEY = bytes.fromhex('349fdc00b44d1aaacaa3a2670fd44244')
 
@@ -52,7 +49,6 @@ def get_random_sequence(mean: List[float], std: List[float], seq_length: int, ra
 def execute_client(inputs: np.ndarray,
                    labels: np.ndarray,
                    output_file: str,
-                   start_idx: int,
                    max_samples: Optional[int],
                    seq_length: int,
                    num_features: int,
@@ -128,9 +124,6 @@ def execute_client(inputs: np.ndarray,
         print('Sent Start signal.')
     
         for idx, (features, label) in enumerate(zip(inputs, labels)):
-            if idx < start_idx:
-                continue
-
             if (max_samples is not None) and (idx >= max_samples):
                 break
 
@@ -142,13 +135,11 @@ def execute_client(inputs: np.ndarray,
 
             if did_connect:
                 response = device_manager.query(value=b'\xBB')
-                did_ack = device_manager.send_and_expect_byte(value=ACK_BYTE, expected=ACK_RESPONSE)
-
                 device_manager.stop()
 
                 message_byte_count = len(response)
 
-                if (message_byte_count > 0) and (did_ack):
+                if (message_byte_count > 0):
 
                     # Extract the length and initialization vector
                     length = int.from_bytes(response[0:LENGTH_SIZE], 'big')
@@ -163,37 +154,44 @@ def execute_client(inputs: np.ndarray,
                     rounded_length = round_to_block(length, block_size=AES_BLOCK_SIZE)
 
                     data = data[:rounded_length]
-                    response = aes.decrypt(data)
-                    response = response[0:length]
 
-                    # Decode the response
-                    if encoding_mode == EncodingMode.STANDARD:
-                        measurements, collected_idx, widths = decode_standard_measurements(byte_str=response,
-                                                                                           seq_length=seq_length,
-                                                                                           num_features=num_features,
-                                                                                           width=width,
-                                                                                           precision=precision,
-                                                                                           should_compress=False)
-                        measurements = measurements.T.reshape(-1, num_features)
-                    elif encoding_mode == EncodingMode.GROUP:
-                        measurements, collected_idx, widths = decode_stable_measurements(encoded=response,
-                                                                                         seq_length=seq_length,
-                                                                                         num_features=num_features,
-                                                                                         non_fractional=non_fractional)
-                    else:
-                        raise ValueError('Unknown encoding type: {0}'.format(encoding_mode))
+                    if len(data) == rounded_length:
+                        response = aes.decrypt(data)
+                        response = response[0:length]
 
-                    # Interpolate the measurements
-                    recovered = reconstruct_sequence(measurements=measurements,
-                                                     collected_indices=collected_idx,
-                                                     seq_length=seq_length)
+                        # Decode the response
+                        if encoding_mode == EncodingMode.STANDARD:
+                            measurements, collected_idx, widths = decode_standard_measurements(byte_str=response,
+                                                                                               seq_length=seq_length,
+                                                                                               num_features=num_features,
+                                                                                               width=width,
+                                                                                               precision=precision,
+                                                                                               should_compress=False)
+                            measurements = measurements.T.reshape(-1, num_features)
+                        elif encoding_mode == EncodingMode.GROUP:
+                            measurements, collected_idx, widths = decode_stable_measurements(encoded=response,
+                                                                                             seq_length=seq_length,
+                                                                                             num_features=num_features,
+                                                                                             non_fractional=non_fractional)
+                        else:
+                            raise ValueError('Unknown encoding type: {0}'.format(encoding_mode))
 
-                    # Log the widths
-                    for w in widths:
-                        width_counter[w] += 1
+                        # Interpolate the measurements
+                        recovered = reconstruct_sequence(measurements=measurements,
+                                                         collected_indices=collected_idx,
+                                                         seq_length=seq_length)
 
-                    # Increment the received counter
-                    recv_counter += 1
+                        # Log the widths
+                        for w in widths:
+                            width_counter[w] += 1
+
+                        # Increment the received counter
+                        recv_counter += 1
+                    else:  # Count not decrypt the response -> Random Guessing
+                        recovered = get_random_sequence(mean=data_mean,
+                                                        std=data_std,
+                                                        seq_length=seq_length,
+                                                        rand=rand)
                 else:   # Could not read response -> Random Guessing
                     recovered = get_random_sequence(mean=data_mean,
                                                     std=data_std,
@@ -231,7 +229,6 @@ def execute_client(inputs: np.ndarray,
                 'widths': width_counter,
                 'recv_count': recv_counter,
                 'count': count,
-                'start_idx': start_idx,
                 'maes': maes,
                 'rmses': rmses,
                 'num_bytes': num_bytes,
@@ -273,7 +270,6 @@ def execute_client(inputs: np.ndarray,
         'widths': width_counter,
         'recv_count': recv_counter,
         'count': count,
-        'start_idx': start_idx,
         'maes': maes,
         'rmses': rmses,
         'num_bytes': num_bytes,
@@ -291,7 +287,6 @@ if __name__ == '__main__':
     parser.add_argument('--output-folder', type=str, required=True)
     parser.add_argument('--encoding', type=str, required=True, choices=['standard', 'group'])
     parser.add_argument('--trial', type=int, required=True)
-    parser.add_argument('--start-index', type=int, default=0)
     parser.add_argument('--max-samples', type=int)
     args = parser.parse_args()
 
@@ -321,7 +316,6 @@ if __name__ == '__main__':
                    seq_length=inputs.shape[1],
                    max_samples=args.max_samples,
                    output_file=output_file,
-                   start_idx=args.start_index,
                    width=quantize['width'],
                    precision=quantize['precision'],
                    data_mean=distribution['mean'],
