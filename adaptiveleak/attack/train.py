@@ -4,14 +4,14 @@ from argparse import ArgumentParser
 from collections import defaultdict, namedtuple
 from sklearn.ensemble import AdaBoostClassifier
 from sklearn.model_selection import KFold
-from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score, ndcg_score, top_k_accuracy_score, dcg_score
+from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score, ndcg_score, top_k_accuracy_score, dcg_score, confusion_matrix
 from typing import Any, Dict, Tuple, List, DefaultDict
 
 from adaptiveleak.utils.analysis import geometric_mean
 from adaptiveleak.utils.file_utils import read_json_gz, save_json_gz, iterate_dir, make_dir
 
 
-AttackResult = namedtuple('AttackResult', ['accuracy', 'precision', 'recall', 'f1', 'ndcg', 'dcg', 'top2'])
+AttackResult = namedtuple('AttackResult', ['accuracy', 'precision', 'recall', 'f1', 'ndcg', 'dcg', 'top2', 'confusion_mat'])
 
 
 class AttackResultList:
@@ -24,6 +24,7 @@ class AttackResultList:
         self.ndcg: List[float] = []
         self.dcg: List[float] = []
         self.top2: List[float] = []
+        self.confusion_mat: List[np.ndarray] = []
 
     def append(self, result: AttackResult):
         self.accuracy.append(result.accuracy)
@@ -33,6 +34,7 @@ class AttackResultList:
         self.ndcg.append(result.ndcg)
         self.dcg.append(result.dcg)
         self.top2.append(result.top2)
+        self.confusion_mat.append(result.confusion_mat.astype(int))
 
     def as_dict(self) -> Dict[str, List[float]]:
         return {
@@ -42,11 +44,12 @@ class AttackResultList:
             'f1': self.f1,
             'ndcg': self.ndcg,
             'dcg': self.dcg,
-            'top2': self.top2
+            'top2': self.top2,
+            'confusion_mat': [mat.tolist() for mat in self.confusion_mat]
         }
 
 
-def get_stats(true: np.ndarray, pred_probs: np.ndarray) -> AttackResult:
+def get_stats(true: np.ndarray, pred_probs: np.ndarray, num_labels: int) -> AttackResult:
     """
     Returns the statistics comparing the true and predicted values.
     """
@@ -75,13 +78,16 @@ def get_stats(true: np.ndarray, pred_probs: np.ndarray) -> AttackResult:
     else:
         top2 = 1.0
 
+    labels = list(range(num_labels))
+
     return AttackResult(accuracy=accuracy_score(y_true=true, y_pred=pred),
                         precision=precision_score(y_true=true, y_pred=pred, average='micro', zero_division=0),
                         recall=recall_score(y_true=true, y_pred=pred, average='micro'),
                         f1=f1_score(y_true=true, y_pred=pred, average='macro'),
                         ndcg=ndcg,
                         dcg=dcg,
-                        top2=top2)
+                        top2=top2,
+                        confusion_mat=confusion_matrix(y_true=true, y_pred=pred, labels=labels))
 
 
 def create_dataset(message_sizes: List[int], labels: List[int], window_size: int, num_samples: int, rand: np.random.RandomState) -> Tuple[np.ndarray, np.ndarray]:
@@ -138,23 +144,32 @@ def fit_attack_model(message_sizes: np.array, labels: np.array, window_size: int
     rand = np.random.RandomState(582)
 
     # Create the data-set
-    inputs, outputs = create_dataset(message_sizes=message_sizes,
-                                     labels=labels,
-                                     window_size=window_size,
-                                     num_samples=num_samples,
-                                     rand=rand)
-    num_labels = np.amax(outputs)
+    num_labels = np.amax(labels) + 1
 
     train_results = AttackResultList()
     test_results = AttackResultList()
     most_freq_results = AttackResultList()
 
     kf = KFold(n_splits=5, random_state=rand, shuffle=True)
+    num_train_samples = int(0.8 * num_samples)
+    num_test_samples = num_samples - num_train_samples
 
-    for train_idx, test_idx in kf.split(inputs):
-        # Split the data
-        train_inputs, test_inputs = inputs[train_idx], inputs[test_idx]
-        train_labels, test_labels = outputs[train_idx], outputs[test_idx]
+
+    for train_idx, test_idx in kf.split(message_sizes):
+        # Create the input features based on the given train-test splits. This methodology
+        # avoids a case where the training and testing sets have information from the same
+        # (size, label) pair.
+        train_inputs, train_labels = create_dataset(message_sizes=message_sizes[train_idx],
+                                                    labels=labels[train_idx],
+                                                    window_size=window_size,
+                                                    num_samples=num_train_samples,
+                                                    rand=rand)
+
+        test_inputs, test_labels = create_dataset(message_sizes=message_sizes[test_idx],
+                                                  labels=labels[test_idx],
+                                                  window_size=window_size,
+                                                  num_samples=num_train_samples,
+                                                  rand=rand)
 
         # Create the fit the model
         clf = AdaBoostClassifier(n_estimators=50)
@@ -164,11 +179,8 @@ def fit_attack_model(message_sizes: np.array, labels: np.array, window_size: int
         train_probs = clf.predict_proba(train_inputs)
         test_probs = clf.predict_proba(test_inputs)
 
-        train_stats = get_stats(true=train_labels, pred_probs=train_probs)
-        test_stats = get_stats(true=test_labels, pred_probs=test_probs)
-
-        train_results.append(train_stats)
-        test_results.append(test_stats)
+        train_stats = get_stats(true=train_labels, pred_probs=train_probs, num_labels=num_labels)
+        test_stats = get_stats(true=test_labels, pred_probs=test_probs, num_labels=num_labels)
 
         # Get the most frequent accuracy based on the training set
         most_freq_label_counts = np.bincount(train_labels, minlength=num_labels)
@@ -177,20 +189,20 @@ def fit_attack_model(message_sizes: np.array, labels: np.array, window_size: int
         most_freq_probs = np.zeros_like(test_probs)
         most_freq_probs[:, most_freq_label] = 1
 
-        most_freq_stats = get_stats(true=test_labels, pred_probs=most_freq_probs)
+        most_freq_stats = get_stats(true=test_labels, pred_probs=most_freq_probs, num_labels=num_labels)
 
         train_results.append(train_stats)
         test_results.append(test_stats)
         most_freq_results.append(most_freq_stats)
 
-    print('Train Accuracy: {0:.5f}'.format(np.average(train_results.accuracy)))
-    print('Test Accuracy: {0:.5f}'.format(np.average(test_results.accuracy)))
-    print('Most Freq Accuracy: {0:.5f}'.format(np.average(most_freq_results.accuracy)))
+    print('Train Accuracy: {0:.5f} ({1:.5f})'.format(np.average(train_results.accuracy), np.std(train_results.accuracy)))
+    print('Test Accuracy: {0:.5f} ({1:.5f})'.format(np.average(test_results.accuracy), np.std(test_results.accuracy)))
+    print('Most Freq Accuracy: {0:.5f} ({1:.5f})'.format(np.average(most_freq_results.accuracy), np.std(test_results.accuracy)))
 
     return dict(train=train_results.as_dict(),
                 test=test_results.as_dict(),
                 most_freq=most_freq_results.as_dict(),
-                count=len(inputs))
+                count=num_samples)
 
 
 if __name__ == '__main__':
