@@ -14,7 +14,7 @@ from adaptiveleak.analysis.plot_utils import PLOT_SIZE, AXIS_FONT, LEGEND_FONT, 
 from adaptiveleak.analysis.plot_utils import extract_results, iterate_policy_folders, dataset_label
 
 
-def plot(sim_results: Dict[str, Dict[float, float]], dataset_name: str, output_file: Optional[str], metric: str):
+def plot(sim_results: Dict[str, Dict[float, float]], dataset_name: str, output_file: Optional[str], is_group_comp: bool, metric: str):
 
     with plt.style.context(PLOT_STYLE):
         fig, ax = plt.subplots(figsize=PLOT_SIZE)
@@ -22,8 +22,11 @@ def plot(sim_results: Dict[str, Dict[float, float]], dataset_name: str, output_f
         labels: List[str] = []
         agg_errors: List[float] = []
 
-        for name in POLICIES:
-            encodings = ['standard', 'group'] if name not in ('uniform', 'random') else ['standard']
+        policy_names = ['adaptive_heuristic', 'adaptive_deviation'] if is_group_comp else POLICIES
+        encoding_names = ['single_group', 'group_unshifted', 'padded', 'pruned', 'group'] if is_group_comp else ['standard', 'group']
+
+        for name in policy_names:
+            encodings = encoding_names if name not in ('uniform', 'random') else ['standard']
 
             for encoding in encodings:
 
@@ -57,7 +60,7 @@ def plot(sim_results: Dict[str, Dict[float, float]], dataset_name: str, output_f
         print(' & '.join(labels))
         print(' & '.join((('{0:.5f}'.format(x) if i != min_error else '\\textbf{{{0:.5f}}}'.format(x)) for i, x in enumerate(agg_errors))))
 
-        ax.set_xlabel('Average Energy per Seq (mJ)', fontsize=AXIS_FONT)
+        ax.set_xlabel('Energy Budget (Average mJ / Seq)', fontsize=AXIS_FONT)
         ax.set_ylabel(metric.upper(), fontsize=AXIS_FONT)
         ax.set_title('Average Reconstruction Error on the {0} Dataset'.format(dataset_label(dataset_name)), fontsize=TITLE_FONT)
 
@@ -66,7 +69,7 @@ def plot(sim_results: Dict[str, Dict[float, float]], dataset_name: str, output_f
         if output_file is None:
             plt.show()
         else:
-            plt.savefig(output_file, bbox_inches='tight')
+            plt.savefig(output_file, bbox_inches='tight', transparent=True)
         
 
 if __name__ == '__main__':
@@ -75,11 +78,11 @@ if __name__ == '__main__':
     parser.add_argument('--dataset', type=str, required=True)
     parser.add_argument('--metric', type=str, required=True)
     parser.add_argument('--output-file', type=str)
+    parser.add_argument('--is-group-comp', action='store_true')
     args = parser.parse_args()
 
     extract_fn = partial(extract_results, field=args.metric, aggregate_mode=None)
     policy_folders = list(iterate_policy_folders(args.dates, dataset=args.dataset))
 
     sim_results = {name: res for name, res in map(extract_fn, policy_folders)}
-    plot(sim_results, output_file=args.output_file, dataset_name=args.dataset, metric=args.metric)
-
+    plot(sim_results, output_file=args.output_file, dataset_name=args.dataset, metric=args.metric, is_group_comp=args.is_group_comp)

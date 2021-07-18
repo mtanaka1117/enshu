@@ -40,7 +40,7 @@ def plot(information_results: DefaultDict[str, Dict[float, float]], dataset: str
                 ax.plot(energy, values, label=to_label(policy_name), color=COLORS[policy_name], linewidth=LINE_WIDTH, marker=MARKER, markersize=MARKER_SIZE)
 
                 names.append(policy_name)
-                policy_values.append((np.average(values), np.max(values)))
+                policy_values.append((np.median(values), np.max(values)))
 
         ax.legend(fontsize=LEGEND_FONT, loc='center')
 
@@ -70,12 +70,15 @@ if __name__ == '__main__':
         for sim_file in iterate_dir(folder, pattern='.*json.gz'):
             model = read_json_gz(sim_file)
 
-            if model['policy']['encoding_mode'].lower() in ('single_group', 'group_unshifted'):
+            if model['policy']['encoding_mode'].lower() in ('single_group', 'group_unshifted', 'padded', 'pruned'):
                 continue
 
             name = '{0}_{1}'.format(model['policy']['policy_name'].lower(), model['policy']['encoding_mode'].lower())
             energy_per_seq = model['policy']['energy_per_seq']
+
             mutual_information = model['mutual_information']['norm_mutual_information']
+
+            print(model['mutual_information'])
 
             information_results[name][energy_per_seq] = mutual_information
 

@@ -80,7 +80,7 @@ int main(void) {
     uint8_t shouldCollect = 0;
     uint8_t didCollect = 1;
 
-    for (seqIdx = 0; seqIdx < 2; seqIdx++) {
+    for (seqIdx = 0; seqIdx < 50; seqIdx++) {
         // Clear the collected bit map
         clear_bitmap(&collectedIndices);
 
@@ -116,11 +116,6 @@ int main(void) {
                 // Collect the data
                 didCollect = get_measurement((featureVectors + elemIdx)->data, seqIdx, elemIdx, NUM_FEATURES, SEQ_LENGTH);
 
-                for (i = 0; i < NUM_FEATURES; i++) {
-                    printf("%d ", featureVectors[elemIdx].data[i]);
-                }
-                printf(",");
-
                 if (!didCollect) {
                     printf("ERROR. Could not collect data at Seq %d, Element %d\n", seqIdx, elemIdx);
                     break;
@@ -153,7 +148,6 @@ int main(void) {
         numEncodedBytes = encode_standard(outputBuffer, featureVectors, &collectedIndices, NUM_FEATURES, SEQ_LENGTH);
         #elif defined(IS_GROUP_ENCODED)
         numEncodedBytes = encode_group(outputBuffer, featureVectors, &collectedIndices, count, NUM_FEATURES, SEQ_LENGTH, SIZE_BYTES, TARGET_BYTES, DEFAULT_PRECISION, MAX_COLLECTED, FEATURE_BUFFER, SHIFT_BUFFER, COUNT_BUFFER, 1);
-        printf("HERE\n");
         #endif
 
         print_message(outputBuffer, numEncodedBytes);

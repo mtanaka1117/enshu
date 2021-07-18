@@ -104,7 +104,7 @@ class Server:
     def port(self) -> int:
         return self._port
 
-    def run(self, inputs: np.ndarray, labels: np.ndarray, policy: BudgetWrappedPolicy, num_sequences: int, should_print: bool, output_folder: str):
+    def run(self, inputs: np.ndarray, labels: np.ndarray, policy: BudgetWrappedPolicy, num_sequences: int, should_print: bool, should_ignore_budget: bool, output_folder: str):
         """
         Opens the server for connections.
         """
@@ -180,7 +180,7 @@ class Server:
                     num_collected = len(measurements)
 
                     # Check whether we have exhausted the budget
-                    if policy.has_exhausted_budget():
+                    if (policy.has_exhausted_budget()) and (not should_ignore_budget):
                         reconstructed = policy.get_random_sequence()
                         policy._consumed_energy = policy._budget + SMALL_NUMBER
                         num_bytes = 0
@@ -188,11 +188,11 @@ class Server:
                         # Record the energy consumption (use the true number of 
                         # collected measurements for proper recording in the case of pruning)
                         energy = policy.consume_energy(num_collected=parsed.true_num_collected,
-                                                   num_bytes=num_bytes)
+                                                       num_bytes=num_bytes)
 
                         # Re-check the budget exhaustion (if the most-recent sample goes over
                         # the budget.
-                        if policy.has_exhausted_budget():
+                        if (policy.has_exhausted_budget()) and (not should_ignore_budget):
                             reconstructed = policy.get_random_sequence()
                             policy._consumed_energy = policy._budget + SMALL_NUMBER
                             num_bytes = 0
@@ -281,6 +281,7 @@ if __name__ == '__main__':
     parser.add_argument('--port', type=int, default=50000)
     parser.add_argument('--max-num-seq', type=int)
     parser.add_argument('--should-compress', action='store_true')
+    parser.add_argument('--should-ignore-budget', action='store_true')
     args = parser.parse_args()
 
     # Load the test data
@@ -312,4 +313,5 @@ if __name__ == '__main__':
                num_sequences=num_seq,
                should_print=True,
                policy=policy,
-               output_folder=args.output_folder)
+               output_folder=args.output_folder,
+               should_ignore_budget=args.should_ignore_budget)

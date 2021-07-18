@@ -50,6 +50,7 @@ if __name__ == '__main__':
     parser.add_argument('--should-compress', action='store_true')
     parser.add_argument('--max-num-samples', type=int)
     parser.add_argument('--should-print', action='store_true')
+    parser.add_argument('--should-ignore-budget', action='store_true')
     args = parser.parse_args()
 
     # Unpack the target collection rates
@@ -91,6 +92,9 @@ if __name__ == '__main__':
         if args.should_compress:
             server_cmd += ' --should-compress'
             sensor_cmd += ' --should-compress'
+
+        if args.should_ignore_budget:
+            server_cmd += ' --should-ignore-budget'
 
         server, sensor = None, None
 

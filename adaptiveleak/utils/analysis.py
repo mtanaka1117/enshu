@@ -64,6 +64,9 @@ def normalized_mae(y_true: np.ndarray, y_pred: np.ndarray) -> float:
 
 
 def geometric_mean(array: np.ndarray) -> float:
+    """
+    Computes the geometric mean of the (positive) 1d array.
+    """
     assert len(array.shape) == 1, 'Must provide a 1d array'
     prod = np.prod(array)
 

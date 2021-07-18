@@ -21,9 +21,15 @@ COLORS = {
     'uniform_standard': '#fc8d59',
     'adaptive_heuristic_standard': '#9ecae1',
     'adaptive_heuristic_group_unshifted': '#6baed6',
+    'adaptive_heuristic_single_group': '#6baed6',
+    'adaptive_heuristic_padded': '#6baed6',
+    'adaptive_heuristic_pruned': '#6baed6',
     'adaptive_heuristic_group': '#08519c',
     'adaptive_deviation_standard': '#c2a5cf',
     'adaptive_deviation_group_unshifted': '#9e9ac8',
+    'adaptive_deviation_single_group': '#9e9ac8',
+    'adaptive_deviation_padded': '#9e9ac8',
+    'adaptive_deviation_pruned': '#9e9ac8',
     'adaptive_deviation_group': '#7b3294',
     'skip_rnn_standard': '#dfc27d',
     'skip_rnn_group': '#a6611a'
@@ -43,7 +49,7 @@ DATASET_NAMES = {
 
 
 def to_label(label: str) -> str:
-    return ' '.join(t.capitalize() for t in label.split('_'))
+    return ' '.join((t.capitalize() if t != 'group' else 'AGE') for t in label.split('_') if t.lower() != 'adaptive')
 
 
 def dataset_label(dataset: str) -> str:

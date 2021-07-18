@@ -20,6 +20,10 @@ def plot(sim_results: Dict[str, Dict[float, float]], dataset_name: str, output_f
     with plt.style.context(PLOT_STYLE):
         fig, (ax1, ax2) = plt.subplots(figsize=(2 * PLOT_SIZE[0], PLOT_SIZE[1]), nrows=1, ncols=2)
 
+        policy_names: List[str] = []
+        accuracy_values: List[Tuple[float, float]] = []
+        f1_values: List[Tuple[float, float]] = []
+
         for name in POLICIES:
             for encoding in ['standard', 'group']:
                 policy_name = '{0}_{1}'.format(name, encoding)
@@ -43,7 +47,7 @@ def plot(sim_results: Dict[str, Dict[float, float]], dataset_name: str, output_f
                         accuracy.append(0.0)
                         f1.append(0.0)
                     else:
-                        budget_accuracy = model_results[budget]['test']['accuracy']
+                        budget_accuracy = [x * 100 for x in model_results[budget]['test']['accuracy']]
                         accuracy.append(geometric_mean(budget_accuracy))
                         all_accuracy.extend(budget_accuracy)
 
@@ -55,7 +59,14 @@ def plot(sim_results: Dict[str, Dict[float, float]], dataset_name: str, output_f
                 ax2.plot(energy_budgets, f1, marker=MARKER, linewidth=LINE_WIDTH, markersize=MARKER_SIZE, label=to_label(policy_name), color=COLORS[policy_name])
 
                 if len(all_accuracy) > 0:
-                    print('{0} & {1:.2f}\\% & {2:.2f} \\\\'.format(to_label(policy_name), geometric_mean(all_accuracy), geometric_mean(all_f1)))
+                    policy_names.append(to_label(policy_name))
+                    accuracy_values.append((geometric_mean(all_accuracy), np.max(all_accuracy)))
+                    f1_values.append((geometric_mean(all_f1), np.max(all_f1)))
+
+        # Print our the results in a table format
+        print(' & '.join(policy_names))
+        print(' & '.join(['{0:.2f} ({1:.2f})'.format(x, m) for x, m in accuracy_values]))
+        print(' & '.join(['{0:.2f} ({1:.2f})'.format(x, m) for x, m in f1_values]))
 
         ax1.set_xlabel('Energy Budget (mJ)', fontsize=AXIS_FONT)
         ax1.set_ylabel('Mean Accuracy', fontsize=AXIS_FONT)
