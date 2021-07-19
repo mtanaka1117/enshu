@@ -322,6 +322,8 @@ class AdaptivePolicy(Policy):
             target_data_bytes = target_bytes - metadata_bytes
             target_data_bits = (target_data_bytes - MAX_SHIFT_GROUPS) * BITS_PER_BYTE
 
+            assert target_data_bits > 0, 'Must have a positive number of target data bits'
+
             # Estimate the maximum number of measurements we can collect
             max_features = int(target_data_bits / MIN_WIDTH)
             max_collected = int(max_features / self.num_features)
@@ -566,6 +568,37 @@ class SkipRNN(AdaptivePolicy):
                          encoding_mode=encoding_mode,
                          collect_mode=collect_mode,
                          should_compress=should_compress)
+
+        # Set the target energy level to that of the Standard Skip RNN. We do not
+        # enforce the same energy budgets on Skip RNNs due to their high energy cost.
+        # In this manner, they cannot be directly compared to other policies.
+        target_collected = int(collection_rate * seq_length)
+
+        sent_bytes = calculate_bytes(width=self.width,
+                                     num_collected=target_collected,
+                                     num_features=num_features,
+                                     seq_length=seq_length,
+                                     encryption_mode=self.encryption_mode)
+
+        self._energy_per_seq = self.energy_unit.get_energy(num_collected=target_collected,
+                                                           num_bytes=sent_bytes,
+                                                           use_noise=False)
+
+        # Re-calculate the target bytes based on the updated energy per sequence
+        if self.encoding_mode == EncodingMode.PADDED:
+            self._target_bytes = calculate_bytes(width=self.width,
+                                                 num_collected=self.seq_length,
+                                                 num_features=self.num_features,
+                                                 encryption_mode=self.encryption_mode,
+                                                 seq_length=self.seq_length)
+        elif self.encoding_mode != EncodingMode.STANDARD:
+            self._target_bytes = get_group_target_bytes(width=self.width,
+                                                        collection_rate=self.collection_rate,
+                                                        num_features=self.num_features,
+                                                        seq_length=self.seq_length,
+                                                        encryption_mode=self.encryption_mode,
+                                                        energy_unit=self.energy_unit,
+                                                        target_energy=self._energy_per_seq)
 
         # Fetch the parameters
         dir_name = os.path.dirname(__file__)

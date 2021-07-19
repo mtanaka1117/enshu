@@ -11,7 +11,7 @@ from adaptiveleak.utils.constants import POLICIES, SMALL_NUMBER
 from adaptiveleak.utils.file_utils import read_json_gz, iterate_dir
 
 
-THRESHOLD = 0.01
+THRESHOLD = 0.05
 
 
 def print_results(information_results: DefaultDict[str, Dict[float, Tuple[float, int]]]):
@@ -78,7 +78,7 @@ if __name__ == '__main__':
                 p_value = model['mutual_information']['p_value']
                 num_trials = model['mutual_information']['num_trials']
 
-                upper_bound = p_value + (1.0 / (2 * np.sqrt(num_trials)))
+                upper_bound = p_value + 1.96 * (1.0 / (2 * np.sqrt(num_trials)))
 
                 test_results[name] += int(upper_bound < THRESHOLD)
                 budget_counts[name] += 1
