@@ -25,7 +25,7 @@ if __name__ == '__main__':
     args = parser.parse_args()
 
     # Load the data
-    fold = 'test'
+    fold = 'mcu'
     inputs, labels = load_data(dataset_name=args.dataset, fold=fold)
 
     labels = labels.reshape(-1)

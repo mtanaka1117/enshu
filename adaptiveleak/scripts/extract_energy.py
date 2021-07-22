@@ -10,7 +10,6 @@ from adaptiveleak.utils.file_utils import save_json, iterate_dir, read_json
 
 # Records the current (mA), voltage (V), and energy (mJ)
 TraceRecord = namedtuple('TraceRecord', ['current', 'voltage', 'energy'])
-THRESHOLD_PERCENTILE = 20
 
 
 def read_trace_file(path: str) -> OrderedDict:
@@ -31,15 +30,17 @@ def read_trace_file(path: str) -> OrderedDict:
     return result
 
 
+def get_baseline(energy_readings: OrderedDict):
+    power = [(r.current * r.voltage) for r in energy_readings.values()]
+    return min(filter(lambda p: p > 0, power))
+
+
 def get_threshold(energy_readings: OrderedDict):
-    # Get the unique energy values
-    unique_values = list((r.current for r in energy_readings.values()))
-
-    # Return the corresponding percentile
-    return np.percentile(list(unique_values), q=THRESHOLD_PERCENTILE) * 3.3
+    power = [(r.current * r.voltage) for r in energy_readings.values()]
+    return np.percentile(power, 50)
 
 
-def get_operation_energy(energy_readings: OrderedDict, threshold: float, num_trials: int) -> Tuple[List[float], List[Tuple[str, str]]]:
+def get_operation_energy(energy_readings: OrderedDict, threshold: float, num_trials: int, baseline_power: float) -> Tuple[List[float], List[Tuple[str, str]]]:
     """
     Returns the start and end time of the N longest contiguous ranges of higher power.
 
@@ -68,7 +69,7 @@ def get_operation_energy(energy_readings: OrderedDict, threshold: float, num_tri
             end_energy = energy_readings[end_time].energy
 
             time_diff = (float(end_time) - float(start_time)) / 1e9  # Time in seconds
-            baseline_energy = threshold * time_diff  # Energy required by baseline device operation
+            baseline_energy = baseline_power * time_diff  # Energy required by baseline device operation
 
             total_energy = end_energy - start_energy
             op_energy = total_energy - baseline_energy
@@ -94,14 +95,14 @@ def get_operation_energy(energy_readings: OrderedDict, threshold: float, num_tri
     return top_energy, top_ranges
 
 
-def get_energy_per_operation(energy_readings: OrderedDict, op_range: Tuple[str, str], ops_per_trial: int, threshold: float) -> float:
+def get_energy_per_operation(energy_readings: OrderedDict, op_range: Tuple[str, str], ops_per_trial: int, baseline_power: float) -> float:
     start, end = op_range
 
     start_energy = energy_readings[start].energy  # Starting energy (mJ)
     end_energy = energy_readings[end].energy  # Ending energy (mJ)
 
     time_range = (float(end) - float(start)) / 1e9  # Time in seconds
-    baseline_energy = threshold * time_range  # Energy from baseline device operation
+    baseline_energy = baseline_power * time_range  # Energy from baseline device operation
 
     total_energy = (end_energy - start_energy)
     total_energy -= baseline_energy
@@ -109,7 +110,7 @@ def get_energy_per_operation(energy_readings: OrderedDict, op_range: Tuple[str, 
     return total_energy / float(ops_per_trial)
 
 
-def plot(energy_readings: OrderedDict, threshold: float, ranges: List[Tuple[str, str]], output_path: str):
+def plot(energy_readings: OrderedDict, threshold: float, baseline_power: float, ranges: List[Tuple[str, str]], output_path: str):
     with plt.style.context('seaborn-ticks'):
         fig, ax = plt.subplots()
 
@@ -121,6 +122,7 @@ def plot(energy_readings: OrderedDict, threshold: float, ranges: List[Tuple[str,
         ax.plot(xs, power, linewidth=3)
 
         ax.axhline(threshold, color='tab:orange', linewidth=1)
+        ax.axhline(baseline_power, color='tab:purple', linewidth=1)
 
         for op_range in ranges:
             start = int(op_range[0]) / 1e6
@@ -146,16 +148,19 @@ if __name__ == '__main__':
     num_trials_list: List[int] = metadata['num_trials']
     ops_per_trial: int = int(metadata['ops_per_trial'])
 
-
     energy_list: List[float] = []
 
     for idx, num_trials in enumerate(num_trials_list):
         path = os.path.join(args.folder, 'trial_{0}.csv'.format(idx))
         energy_readings = read_trace_file(path)
-        power_threshold = get_threshold(energy_readings)
+
+        #power_threshold = get_threshold(energy_readings)
+        baseline_power = get_baseline(energy_readings)
+        power_threshold = baseline_power * 1.05
 
         op_energy, ranges = get_operation_energy(energy_readings=energy_readings,
                                                  threshold=power_threshold,
+                                                 baseline_power=baseline_power,
                                                  num_trials=num_trials)
 
         # Divide the energy values by the number of operations in each iteration
@@ -164,6 +169,7 @@ if __name__ == '__main__':
         # Plot the energy values
         plot(energy_readings=energy_readings,
              threshold=power_threshold,
+             baseline_power=baseline_power,
              ranges=ranges,
              output_path=os.path.join(args.folder, 'trial_{0}.pdf'.format(idx)))
 

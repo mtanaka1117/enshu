@@ -6,6 +6,7 @@ from .energy_systems import EnergyUnit
 
 
 MARGIN = 1e-2
+NUM_PADDING_FRAMES = 3
 
 
 def convert_rate_to_energy(collection_rate: float, width: int, encryption_mode: EncryptionMode, collect_mode: CollectMode, seq_length: int, num_features: int) -> float:
@@ -71,9 +72,15 @@ def get_group_target_bytes(width: int, collection_rate: float, num_features: int
                                          seq_length=seq_length,
                                          encryption_mode=encryption_mode)
 
-    # Estimate the energy required to send the number of bytes
-    rounded_bytes = truncate_to_block(standard_num_bytes, block_size=BT_FRAME_SIZE) - 1
+    # Estimate the energy required to send the number of bytes. We start by (conservatively)
+    # going 2 blocks under the given limit.
+    rounded_bytes = standard_num_bytes
 
+    for _ in range(NUM_PADDING_FRAMES):
+        rounded_bytes = truncate_to_block(rounded_bytes, block_size=BT_FRAME_SIZE) - 1
+
+    # Align with block encryption padding, as the block padding may put us into
+    # the next communication frame.
     if encryption_mode == EncryptionMode.BLOCK:
         rounded_bytes = truncate_to_block(rounded_bytes, block_size=AES_BLOCK_SIZE)
 

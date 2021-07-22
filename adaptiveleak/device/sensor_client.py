@@ -185,6 +185,10 @@ def execute_client(inputs: np.ndarray,
                         for w in widths:
                             width_counter[w] += 1
 
+                        # Log the results of this sequence
+                        num_bytes.append(message_byte_count)
+                        num_measurements.append(len(measurements))
+
                         # Increment the received counter
                         recv_counter += 1
                     else:  # Count not decrypt the response -> Random Guessing
@@ -212,9 +216,6 @@ def execute_client(inputs: np.ndarray,
                                      squared=False)
 
             # Log the results of this sequence
-            num_bytes.append(message_byte_count)
-            num_measurements.append(len(measurements))
-            
             maes.append(float(mae))
             rmses.append(float(rmse))
 

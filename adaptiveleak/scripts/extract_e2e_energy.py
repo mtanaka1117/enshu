@@ -12,9 +12,7 @@ from adaptiveleak.utils.file_utils import save_json, iterate_dir, read_json
 TraceRecord = namedtuple('TraceRecord', ['current', 'voltage', 'energy'])
 EnergyRange = namedtuple('EnergyRange', ['start', 'end', 'energy'])
 
-POWER_THRESHOLD = 2  # in mW
-PERCENTILE = 20
-
+THRESHOLD_FACTOR = 1.1
 
 def read_trace_file(path: str) -> OrderedDict:
     result: OrderedDict = OrderedDict()
@@ -36,7 +34,7 @@ def read_trace_file(path: str) -> OrderedDict:
 
 def get_operation_energy(energy_readings: OrderedDict, baseline_power: float, num_seq: int) -> Tuple[List[float], List[EnergyRange]]:
     """
-    Returns the start and end time of the N longest contiguous ranges of higher power.
+    Returns the start and end time of the N longest contiguous ranges of high power.
 
     Args:
         energy_readings: A dictionary mapping time -> trace record
@@ -50,12 +48,14 @@ def get_operation_energy(energy_readings: OrderedDict, baseline_power: float, nu
     energy_list: List[float] = []
     ranges: List[Tuple[str, str]] = []
 
+    power_threshold = THRESHOLD_FACTOR * baseline_power
+
     for time, record in energy_readings.items():
         power = record.current * record.voltage  # The current power (mW)
 
-        if (start_time is None) and (power >= POWER_THRESHOLD):
+        if (start_time is None) and (power >= power_threshold):
             start_time = time
-        elif (start_time is not None) and (power <= POWER_THRESHOLD):
+        elif (start_time is not None) and (power <= power_threshold):
             end_time = time
 
             start_energy = energy_readings[start_time].energy
@@ -83,86 +83,100 @@ def get_operation_energy(energy_readings: OrderedDict, baseline_power: float, nu
     return top_ranges
 
 
-def should_ignore_ad(start_time: str, end_time: str, to_ignore: List[Tuple[int, int]]):
-    start_int = int(start_time)
-    end_int = int(end_time)
-
-    for r in to_ignore:
-        if ((r[0] <= start_int) and (start_int <= r[1])) or ((r[0] <= end_int) and (end_int <= r[1])):
-            return True
-
-    return False
-
-
-def get_advertisement_ranges(energy_readings: OrderedDict, comm_ranges: List[EnergyRange], baseline_power: float) -> List[EnergyRange]:
-    start_time = min(int(r.end) for r in comm_ranges)
-    end_time = max(int(r.start) for r in comm_ranges)
-
-    ranges_to_ignore = [(int(r.start), int(r.end)) for r in comm_ranges]
-
-    prev_times: deque = deque()
-    ad_start: Optional[str] = None
-    result: List[EnergyRange] = []
-
-    for time, record in energy_readings.items():
-        time_num = int(time)
-
-        if (time_num > start_time) and (time_num < end_time):
-            power = record.current * record.voltage  # The power in mW
-
-            if (ad_start is None) and (power >= POWER_THRESHOLD):
-                ad_start = prev_times[0]
-            elif (ad_start is not None) and (power < POWER_THRESHOLD):
-                ad_end = str(time_num)
-                time_diff = (int(ad_end) - int(ad_start)) / 1e9
-
-                #start_record = energy_readings[ad_start]
-                #start_power = start_record.current * start_record.voltage
-                #baseline_energy = time_diff * start_power  # Energy in mJ
-                baseline_energy = time_diff * baseline_power
-
-                energy_diff = energy_readings[ad_end].energy - energy_readings[ad_start].energy
-                ad_energy = energy_diff - baseline_energy
-
-                if not should_ignore_ad(start_time=ad_start, end_time=ad_end, to_ignore=ranges_to_ignore):
-                    record = EnergyRange(start=ad_start,
-                                         end=ad_end,
-                                         energy=ad_energy)
-
-                    result.append(record)
-
-                ad_start = None
-
-        prev_times.append(time)
-        while len(prev_times) > 5:
-            prev_times.popleft()
-
-    return result
+#def should_ignore_ad(start_time: str, end_time: str, to_ignore: List[Tuple[int, int]]):
+#    start_int = int(start_time)
+#    end_int = int(end_time)
+#
+#    for r in to_ignore:
+#        if ((r[0] <= start_int) and (start_int <= r[1])) or ((r[0] <= end_int) and (end_int <= r[1])):
+#            return True
+#
+#    return False
+#
+#
+#def get_advertisement_ranges(energy_readings: OrderedDict, comm_ranges: List[EnergyRange], baseline_power: float) -> List[EnergyRange]:
+#    start_time = min(int(r.end) for r in comm_ranges)
+#    end_time = max(int(r.start) for r in comm_ranges)
+#
+#    ranges_to_ignore = [(int(r.start), int(r.end)) for r in comm_ranges]
+#
+#    prev_times: deque = deque()
+#    ad_start: Optional[str] = None
+#    result: List[EnergyRange] = []
+#
+#    power_threshold = baseline_power * THRESHOLD_FACTOR
+#
+#    for time, record in energy_readings.items():
+#        time_num = int(time)
+#
+#        if (time_num > start_time) and (time_num < end_time):
+#            power = record.current * record.voltage  # The power in mW
+#
+#            if (ad_start is None) and (power >= power_threshold):
+#                ad_start = prev_times[0]
+#            elif (ad_start is not None) and (power < power_threshold):
+#                ad_end = str(time_num)
+#                time_diff = (int(ad_end) - int(ad_start)) / 1e9
+#                baseline_energy = time_diff * baseline_power
+#
+#                energy_diff = energy_readings[ad_end].energy - energy_readings[ad_start].energy
+#                ad_energy = energy_diff - baseline_energy
+#
+#                if not should_ignore_ad(start_time=ad_start, end_time=ad_end, to_ignore=ranges_to_ignore):
+#                    record = EnergyRange(start=ad_start,
+#                                         end=ad_end,
+#                                         energy=ad_energy)
+#
+#                    result.append(record)
+#
+#                ad_start = None
+#
+#        prev_times.append(time)
+#        while len(prev_times) > 5:
+#            prev_times.popleft()
+#
+#    return result
 
 
-def breakdown_energy(energy_readings: OrderedDict, comm_ranges: List[EnergyRange], ad_ranges: List[EnergyRange], baseline_power: float) -> Tuple[float, float, float]:
-    start_time = min(int(r.end) for r in comm_ranges)
-    end_time = max(int(r.end) for r in comm_ranges)
-    time_diff = (end_time - start_time) / 1e9
+def breakdown_energy(energy_readings: OrderedDict, comm_ranges: List[EnergyRange]) -> Tuple[List[float], List[float]]:
 
-    ad_energy = sum((r.energy for r in ad_ranges))
+    op_energy: List[float] = []
+    comm_energy: List[float] = []
 
-    op_energy = energy_readings[str(end_time)].energy - energy_readings[str(start_time)].energy
-    comm_energy = sum((r.energy for i, r in enumerate(comm_ranges) if i > 0))
+    for op_idx in range(1, len(comm_ranges)):
+        prev_range = comm_ranges[op_idx - 1]
+        curr_range = comm_ranges[op_idx]
 
-    baseline_energy = time_diff * baseline_power
-    comp_energy = op_energy - comm_energy - ad_energy - baseline_energy
+        start_record = energy_readings[prev_range.end]
+        end_record = energy_readings[curr_range.end]
 
-    return op_energy, comm_energy, comp_energy
+        op_energy.append(end_record.energy - start_record.energy)
+        comm_energy.append(curr_range.energy)
+
+    return op_energy, comm_energy        
+
+
+    #start_time = min(int(r.end) for r in comm_ranges)
+    #end_time = max(int(r.end) for r in comm_ranges)
+    #time_diff = (end_time - start_time) / 1e9
+
+    #ad_energy = sum((r.energy for r in ad_ranges))
+
+    #op_energy = energy_readings[str(end_time)].energy - energy_readings[str(start_time)].energy
+    #comm_energy = sum((r.energy for i, r in enumerate(comm_ranges) if i > 0))
+
+    #baseline_energy = time_diff * baseline_power
+    #comp_energy = op_energy - comm_energy - ad_energy - baseline_energy
+
+    #return op_energy, comm_energy, comp_energy
 
 
 def get_baseline_power(energy_readings: OrderedDict) -> float:
     power = [r.current * r.voltage for r in energy_readings.values()]
-    baseline = np.percentile(power, PERCENTILE)
-    return baseline
+    return min(filter(lambda p: p > 0, power))
 
 
-def plot(energy_readings: OrderedDict, comm_ranges: List[EnergyRange], ad_ranges: List[EnergyRange], output_path: str):
+def plot(energy_readings: OrderedDict, comm_ranges: List[EnergyRange], output_path: str):
     with plt.style.context('seaborn-ticks'):
         fig, ax = plt.subplots()
 
@@ -182,13 +196,6 @@ def plot(energy_readings: OrderedDict, comm_ranges: List[EnergyRange], ad_ranges
 
             ax.axvline(x=start, color='k', linewidth=1)
             ax.axvline(x=end, color='tab:red', linewidth=1)
-
-        for op_range in ad_ranges:
-            start = int(op_range.start) / 1e6
-            end = int(op_range.end) / 1e6
-
-            ax.axvline(x=start, color='k', linewidth=1)
-            ax.axvline(x=end, color='tab:green', linewidth=1)
 
         ax.set_xlabel('Time (ms)')
         ax.set_ylabel('Power (mW)')
@@ -220,19 +227,17 @@ if __name__ == '__main__':
                                            num_seq=args.num_seq,
                                            baseline_power=baseline)
 
-        ad_ranges = get_advertisement_ranges(energy_readings=energy_readings,
-                                             comm_ranges=comm_ranges,
-                                             baseline_power=baseline)
+        #ad_ranges = get_advertisement_ranges(energy_readings=energy_readings,
+        #                                     comm_ranges=comm_ranges,
+        #                                     baseline_power=baseline)
 
-        op_energy, comm_energy, comp_energy = breakdown_energy(energy_readings=energy_readings,
-                                                               comm_ranges=comm_ranges,
-                                                               ad_ranges=ad_ranges,
-                                                               baseline_power=baseline)
+        op_energy, comm_energy = breakdown_energy(energy_readings=energy_readings,
+                                                  comm_ranges=comm_ranges)
 
         # Log the energy values for operations and communication
-        op_energy_list.append(op_energy)
-        comm_energy_list.append(comm_energy)
-        comp_energy_list.append(comp_energy)
+        op_energy_list.extend(op_energy)
+        comm_energy_list.extend(comm_energy)
+        #comp_energy_list.append(comp_energy)
         baseline_power_list.append(baseline)
 
         # Plot the energy values
@@ -241,7 +246,6 @@ if __name__ == '__main__':
 
         plot(energy_readings=energy_readings,
              comm_ranges=comm_ranges,
-             ad_ranges=ad_ranges,
              output_path=os.path.join(args.folder, '{0}.pdf'.format(file_name)))
 
     # Save the energy readings
@@ -250,7 +254,6 @@ if __name__ == '__main__':
     result_dict = {
         'op_energy': op_energy_list,
         'comm_energy': comm_energy_list,
-        'comp_energy': comp_energy_list,
         'baseline_power': baseline_power_list,
         'num_seq': args.num_seq
     }

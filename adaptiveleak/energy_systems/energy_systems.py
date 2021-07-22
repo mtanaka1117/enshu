@@ -8,7 +8,9 @@ from adaptiveleak.utils.file_utils import iterate_dir, read_json
 from adaptiveleak.utils.data_types import PolicyType, EncodingMode, CollectMode, EncryptionMode
 
 
-GROUP_FACTOR = 2
+GROUP_FACTOR = 2.5
+UNIFORM_FACTOR = 0.5
+BASELINE_FACTOR = 0.55
 
 
 class BluetoothEnergy:
@@ -66,6 +68,7 @@ class ActiveEnergy:
         """
         # Estimate the baseline power
         baseline_power = self._base_w * num_bytes + self._base_b
+        baseline_power += BASELINE_FACTOR  # Fudge factor to account for timer interrupts
 
         # Compute the baseline energy using the given period
         energy = baseline_power * period
@@ -266,6 +269,7 @@ class EnergyUnit:
         self._collect_mode = collect_mode
         self._encoding_mode = encoding_mode
         self._encryption_mode = encryption_mode
+        self._policy_type = policy_type
 
         # Save the sequence length, number of features, and period
         self._seq_length = seq_length
@@ -289,7 +293,12 @@ class EnergyUnit:
         encrypt_energy = self._encrypt.get_energy(num_bytes=num_bytes,
                                                   use_noise=use_noise)
 
-        return collect_energy + should_collect_energy + update_energy + encode_energy + encrypt_energy
+        comp_energy = collect_energy + should_collect_energy + update_energy + encode_energy + encrypt_energy
+
+        if self._policy_type in (PolicyType.UNIFORM, PolicyType.RANDOM):
+            return UNIFORM_FACTOR * comp_energy
+
+        return comp_energy
 
     def get_communication_energy(self, num_bytes: int, use_noise: bool) -> float:
         return self._comm.get_energy(num_bytes=num_bytes,

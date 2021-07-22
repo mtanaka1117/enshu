@@ -12,7 +12,7 @@ from adaptiveleak.utils.file_utils import save_json, iterate_dir, read_json
 TraceRecord = namedtuple('TraceRecord', ['current', 'voltage', 'energy'])
 EnergyRange = namedtuple('EnergyRange', ['start', 'end', 'energy'])
 
-POWER_THRESHOLD = 2  # in mW
+POWER_THRESHOLD = 1  # in mW
 PERCENTILE = 15
 
 
@@ -47,15 +47,17 @@ def get_operation_energy(energy_readings: OrderedDict, active_power: float, num_
     start_time: Optional[str] = None
     end_time: Optional[str] = None
 
+    power_threshold = 1.05 * active_power
+
     energy_list: List[float] = []
     ranges: List[Tuple[str, str]] = []
 
     for time, record in energy_readings.items():
         power = record.current * record.voltage  # The current power (mW)
 
-        if (start_time is None) and (power >= POWER_THRESHOLD):
+        if (start_time is None) and (power >= power_threshold):
             start_time = time
-        elif (start_time is not None) and (power <= POWER_THRESHOLD):
+        elif (start_time is not None) and (power <= power_threshold):
             end_time = time
 
             start_energy = energy_readings[start_time].energy
@@ -108,8 +110,10 @@ def get_comm_energy(energy_readings: OrderedDict, comm_ranges: List[EnergyRange]
 
 def get_active_power(energy_readings: OrderedDict) -> float:
     power = [r.current * r.voltage for r in energy_readings.values()]
-    baseline = np.percentile(power, PERCENTILE)
-    return baseline
+    return min(filter(lambda p: p > 0, power))
+
+    #baseline = np.percentile(power, PERCENTILE)
+    #return baseline
 
 
 def plot(energy_readings: OrderedDict, comm_ranges: List[EnergyRange], output_path: str):
@@ -138,6 +142,7 @@ def plot(energy_readings: OrderedDict, comm_ranges: List[EnergyRange], output_pa
         ax.set_title('Device Power over Time')
 
         plt.savefig(output_path)
+        #plt.show()
 
 
 if __name__ == '__main__':
@@ -149,6 +154,7 @@ if __name__ == '__main__':
     comm_energy_list: List[float] = []
     #comm_time_list: List[float] = []
     baseline_power_list: List[float] = []
+    active_power_list: List[float] = []
 
     for path in iterate_dir(args.folder, '.*csv'):
         energy_readings = read_trace_file(path)
@@ -157,7 +163,7 @@ if __name__ == '__main__':
         active_power = get_active_power(energy_readings=energy_readings)
 
         comm_ranges = get_operation_energy(energy_readings=energy_readings,
-                                           num_trials=1,
+                                           num_trials=5,
                                            active_power=active_power)
 
         comm_energy, baseline_power = get_comm_energy(energy_readings=energy_readings,
@@ -167,6 +173,7 @@ if __name__ == '__main__':
         comm_energy_list.extend(comm_energy)
         #comm_time_list.extend(comm_time)
         baseline_power_list.append(baseline_power)
+        active_power_list.append(active_power)
 
         # Plot the energy values
         file_name = os.path.basename(path)
@@ -180,8 +187,10 @@ if __name__ == '__main__':
     output_path = os.path.join(args.folder, 'energy.json')
 
     result_dict = {
+        'median': np.median(comm_energy_list),
         'comm_energy': comm_energy_list,
-        'baseline_power': baseline_power_list
+        'baseline_power': baseline_power_list,
+        'active_power': active_power_list
     }
 
     save_json(result_dict, output_path)
