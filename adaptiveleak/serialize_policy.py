@@ -76,6 +76,9 @@ def write_policy(policy: Policy, is_msp: bool):
         fout.write('#ifndef POLICY_PARAMETERS_H_\n')
         fout.write('#define POLICY_PARAMETERS_H_\n')
 
+        if is_msp:
+            fout.write('#define IS_MSP\n')
+
         # Add information about the data
         fout.write('#define BITMASK_BYTES {0}\n'.format(int(math.ceil(policy.seq_length / 8))))
         fout.write('#define SEQ_LENGTH {0}\n'.format(policy.seq_length))

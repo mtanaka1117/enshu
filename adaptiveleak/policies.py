@@ -10,7 +10,7 @@ from typing import Tuple, List, Dict, Any, Optional
 
 from adaptiveleak.energy_systems import EnergyUnit, convert_rate_to_energy, get_group_target_bytes
 from adaptiveleak.utils.constants import BITS_PER_BYTE, MIN_WIDTH, SMALL_NUMBER, MAX_WIDTH, SHIFT_BITS, MAX_SHIFT_GROUPS
-from adaptiveleak.utils.constants import MIN_SHIFT_GROUPS, PERIOD, LENGTH_SIZE, BT_FRAME_SIZE
+from adaptiveleak.utils.constants import MIN_SHIFT_GROUPS, PERIOD, LENGTH_SIZE, BT_FRAME_SIZE, MAX_SHIFT_GROUPS_FACTOR
 from adaptiveleak.utils.data_utils import get_group_widths, get_num_groups, calculate_bytes, pad_to_length, sigmoid, truncate_to_block, round_to_block
 from adaptiveleak.utils.data_utils import prune_sequence, calculate_grouped_bytes, set_widths, select_range_shifts_array, num_bits_for_value
 from adaptiveleak.utils.shifting import merge_shift_groups
@@ -217,6 +217,13 @@ class AdaptivePolicy(Policy):
                                                       seq_length=seq_length,
                                                       num_features=num_features)
 
+        # Set the maximum number of shift groups
+        target_features = int(self.collection_rate * seq_length) * num_features
+        num_groups = int(round(MAX_SHIFT_GROUPS_FACTOR * target_features))
+        self._max_num_groups = max(min(MAX_SHIFT_GROUPS, num_groups), MIN_SHIFT_GROUPS)
+
+        print(self._max_num_groups)
+
         if self.encoding_mode == EncodingMode.PADDED:
             self._target_bytes = calculate_bytes(width=self.width,
                                                  num_collected=self.seq_length,
@@ -239,6 +246,10 @@ class AdaptivePolicy(Policy):
     @property
     def min_skip(self) -> int:
         return self._min_skip
+
+    @property
+    def max_num_groups(self) -> int:
+        return self._max_num_groups
 
     @property
     def threshold(self) -> float:
@@ -307,10 +318,10 @@ class AdaptivePolicy(Policy):
 
             # Conservatively Estimate the meta-data bytes associated with stable encoding
             size_width = num_bits_for_value(len(collected_indices))
-            size_bytes = int(math.ceil((size_width * MAX_SHIFT_GROUPS) / BITS_PER_BYTE))
+            size_bytes = int(math.ceil((size_width * self.max_num_groups) / BITS_PER_BYTE))
             mask_bytes = int(math.ceil(self.seq_length / BITS_PER_BYTE))
 
-            shift_bytes = 1 + MAX_SHIFT_GROUPS + size_bytes
+            shift_bytes = 1 + self.max_num_groups + size_bytes
             metadata_bytes = shift_bytes + mask_bytes + LENGTH_SIZE
 
             if self.encryption_mode == EncryptionMode.STREAM:
@@ -320,7 +331,7 @@ class AdaptivePolicy(Policy):
 
             # Compute the target number of data bytes
             target_data_bytes = target_bytes - metadata_bytes
-            target_data_bits = (target_data_bytes - MAX_SHIFT_GROUPS) * BITS_PER_BYTE
+            target_data_bits = (target_data_bytes - self.max_num_groups) * BITS_PER_BYTE
 
             assert target_data_bits > 0, 'Must have a positive number of target data bits'
 
@@ -352,13 +363,13 @@ class AdaptivePolicy(Policy):
                 # Merge the shift groups
                 merged_shifts, group_sizes = merge_shift_groups(values=flattened,
                                                                 shifts=shifts,
-                                                                max_num_groups=MAX_SHIFT_GROUPS)
+                                                                max_num_groups=self.max_num_groups)
             elif self.encoding_mode == EncodingMode.GROUP_UNSHIFTED:
                 # Set the group sizes 'evenly'
-                features_per_group = int(round(len(flattened) / MAX_SHIFT_GROUPS))
+                features_per_group = int(round(len(flattened) / self.max_num_groups))
 
                 feature_count = 0
-                for group_idx in range(MAX_SHIFT_GROUPS - 1):
+                for group_idx in range(self.max_num_groups - 1):
                     group_sizes.append(features_per_group)
                     feature_count += features_per_group
 
@@ -376,9 +387,9 @@ class AdaptivePolicy(Policy):
             # Re-calculate the meta-data size based on the given shift groups. Smaller
             # ranges allow for greater savings.
             size_width = num_bits_for_value(max(group_sizes))
-            size_bytes = int(math.ceil((size_width * MAX_SHIFT_GROUPS) / BITS_PER_BYTE))
+            size_bytes = int(math.ceil((size_width * self.max_num_groups) / BITS_PER_BYTE))
 
-            shift_bytes = 1 + MAX_SHIFT_GROUPS + size_bytes
+            shift_bytes = 1 + self.max_num_groups + size_bytes
             metadata_bytes = shift_bytes + mask_bytes + LENGTH_SIZE
 
             if self.encryption_mode == EncryptionMode.STREAM:
