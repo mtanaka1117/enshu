@@ -1,7 +1,7 @@
 #include "matrix.h"
 
 
-#ifdef USE_LEA
+#ifdef IS_MSP
 #include "DSPLib.h"
 
 // For MSP implementations, we allocate memory in the LEA RAM.
@@ -79,8 +79,8 @@ struct Vector *vector_gated_add_scalar(struct Vector *result, struct Vector *vec
     for (i = vec1->size; i > 0; i--) {
         j = i - 1;
         
-        temp1 = fp_mul(vec1->data[j], gate, precision);
-        temp2 = fp_mul(vec2->data[j], oneMinusGate, precision);
+        temp1 = fp32_mul(vec1->data[j], gate, precision);
+        temp2 = fp32_mul(vec2->data[j], oneMinusGate, precision);
         result->data[j] = fp_add(temp1, temp2);
     }
 
@@ -212,7 +212,7 @@ struct Vector *matrix_vector_prod(struct Vector *result, struct Matrix *mat, str
     uint16_t numRows = mat->numRows;
     uint16_t numCols = mat->numCols;
 
-    #ifdef USE_LEA
+    #ifdef IS_MSP
     // First transfer the input matrices to the LEA RAM segment using DMA
     uint16_t offset = 0;
     FixedPoint *vecData = dma_load(MULTIPLY_BUFFER, vec->data, numRows);

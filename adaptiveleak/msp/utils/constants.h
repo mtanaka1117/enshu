@@ -9,10 +9,10 @@
 #define MIN_WIDTH 5
 #define MAX_NUM_GROUPS 6
 
-#define NUM_SHIFT_BITS 3
-#define SHIFT_OFFSET 4
-#define SHIFT_MASK 0x7
-#define WIDTH_MASK 0x1F
+#define NUM_SHIFT_BITS 4
+#define SHIFT_OFFSET 8
+#define SHIFT_MASK 0xF
+#define WIDTH_MASK 0xF
 
 #define LENGTH_SIZE 2
 

@@ -5,7 +5,6 @@
 #define MATRIX_H_
 
 #define MATRIX_INDEX(X,Y,C) ((X) * (C) + (Y))
-#define USE_LEA
 
 struct Vector {
     FixedPoint *data;

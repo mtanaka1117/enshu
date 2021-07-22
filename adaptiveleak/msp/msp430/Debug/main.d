@@ -18,11 +18,15 @@ main.obj: /home/tejask/ti/ccs1010/ccs/tools/compiler/ti-cgt-msp430_20.2.1.LTS/in
 main.obj: /home/tejask/ti/ccs1010/ccs/tools/compiler/ti-cgt-msp430_20.2.1.LTS/include/machine/_stdint.h
 main.obj: /home/tejask/ti/ccs1010/ccs/tools/compiler/ti-cgt-msp430_20.2.1.LTS/include/sys/_stdint.h
 main.obj: ../bit_ops.h
+main.obj: ../bt_functions.h
 main.obj: ../data.h
+main.obj: ../utils/fixed_point.h
 main.obj: ../init.h
 main.obj: ../sampler.h
 main.obj: ../utils/fixed_point.h
+main.obj: ../utils/constants.h
 main.obj: ../data.h
+main.obj: ../utils/fixed_point.h
 main.obj: ../policy_parameters.h
 main.obj: ../utils/matrix.h
 main.obj: ../utils/fixed_point.h
@@ -33,16 +37,31 @@ main.obj: ../policy.h
 main.obj: ../utils/fixed_point.h
 main.obj: ../utils/matrix.h
 main.obj: ../utils/fixed_point.h
+main.obj: ../utils/aes256.h
+main.obj: /home/tejask/ti/ccs1010/ccs/tools/compiler/ti-cgt-msp430_20.2.1.LTS/include/stdbool.h
+main.obj: ../utils/bitmap.h
 main.obj: ../utils/encoding.h
-main.obj: ../utils/constants.h
 main.obj: ../utils/bitmap.h
 main.obj: ../utils/fixed_point.h
 main.obj: ../utils/matrix.h
 main.obj: ../utils/fixed_point.h
+main.obj: ../utils/encryption.h
+main.obj: ../utils/aes256.h
+main.obj: ../utils/packing.h
+main.obj: ../utils/pruning.h
+main.obj: ../utils/fixed_point.h
 main.obj: ../utils/bitmap.h
 main.obj: ../utils/matrix.h
 main.obj: ../utils/fixed_point.h
-main.obj: ../bt_functions.h
+main.obj: ../utils/range_shifting.h
+main.obj: ../utils/fixed_point.h
+main.obj: ../utils/math.h
+main.obj: ../utils/math.h
+main.obj: ../utils/encryption.h
+main.obj: ../utils/aes256.h
+main.obj: ../utils/matrix.h
+main.obj: ../utils/fixed_point.h
+main.obj: ../utils/lfsr.h
 
 ../main.c: 
 /home/tejask/ti/ccs1010/ccs/ccs_base/msp430/include/msp430.h: 
@@ -62,11 +81,15 @@ main.obj: ../bt_functions.h
 /home/tejask/ti/ccs1010/ccs/tools/compiler/ti-cgt-msp430_20.2.1.LTS/include/machine/_stdint.h: 
 /home/tejask/ti/ccs1010/ccs/tools/compiler/ti-cgt-msp430_20.2.1.LTS/include/sys/_stdint.h: 
 ../bit_ops.h: 
+../bt_functions.h: 
 ../data.h: 
+../utils/fixed_point.h: 
 ../init.h: 
 ../sampler.h: 
 ../utils/fixed_point.h: 
+../utils/constants.h: 
 ../data.h: 
+../utils/fixed_point.h: 
 ../policy_parameters.h: 
 ../utils/matrix.h: 
 ../utils/fixed_point.h: 
@@ -77,13 +100,28 @@ main.obj: ../bt_functions.h
 ../utils/fixed_point.h: 
 ../utils/matrix.h: 
 ../utils/fixed_point.h: 
+../utils/aes256.h: 
+/home/tejask/ti/ccs1010/ccs/tools/compiler/ti-cgt-msp430_20.2.1.LTS/include/stdbool.h: 
+../utils/bitmap.h: 
 ../utils/encoding.h: 
-../utils/constants.h: 
 ../utils/bitmap.h: 
 ../utils/fixed_point.h: 
 ../utils/matrix.h: 
 ../utils/fixed_point.h: 
+../utils/encryption.h: 
+../utils/aes256.h: 
+../utils/packing.h: 
+../utils/pruning.h: 
+../utils/fixed_point.h: 
 ../utils/bitmap.h: 
 ../utils/matrix.h: 
 ../utils/fixed_point.h: 
-../bt_functions.h: 
+../utils/range_shifting.h: 
+../utils/fixed_point.h: 
+../utils/math.h: 
+../utils/math.h: 
+../utils/encryption.h: 
+../utils/aes256.h: 
+../utils/matrix.h: 
+../utils/fixed_point.h: 
+../utils/lfsr.h: 

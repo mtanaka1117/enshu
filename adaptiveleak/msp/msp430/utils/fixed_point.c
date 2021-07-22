@@ -34,6 +34,62 @@ FixedPoint fp32_mul(FixedPoint x, FixedPoint y, uint16_t precision) {
 }
 
 
+FixedPoint fp_convert(FixedPoint x, uint16_t oldPrecision, uint16_t newPrecision, uint16_t newWidth) {
+    int16_t diff = oldPrecision - newPrecision;
+
+    FixedPoint result;
+    if (diff >= 0) {
+        result = x >> diff;    
+    } else {
+        diff *= -1;
+        result = x << diff;
+    }
+
+    uint16_t mask = (1 << newWidth) - 1;
+    return result & mask;
+}
+
+
+void fp_convert_array(FixedPoint *array, uint16_t oldPrecision, uint16_t newPrecision, uint16_t newWidth, uint16_t startIdx, uint16_t length) {
+    uint16_t i;
+    for (i = startIdx; i < startIdx + length; i++) {
+        array[i] = fp_convert(array[i], oldPrecision, newPrecision, newWidth);
+    }
+}
+
+
+
+//FixedPoint fp_sigmoid(FixedPoint x, uint16_t precision) {
+//    /**
+//     * Approximates a sigmoid function using linear components.
+//     */
+//    FixedPoint one = 1 << precision;
+//    FixedPoint two = 1 << (precision + 1);
+//    FixedPoint three = one + two;
+//    
+//    FixedPoint result = one;
+//    if (x < (-1 * three)) {
+//        result = 0;
+//    } else if (x < (-1 * one)) {
+//        result = (x >> 3) + (5 * (1 << (precision - 4)));
+//    } else if (x < one) {
+//        result = (x >> 2) + (1 << (precision - 1));
+//    } else if (x < three) {
+//        result = (x >> 3) + (5 * (1 << (precision - 3)));
+//    }
+//
+//    return result;
+//}
+//
+//
+//FixedPoint fp_tanh(FixedPoint x, uint16_t precision) {
+//    /**
+//     * Approximates a tanh function using a sigmoid.
+//     */
+//    FixedPoint sigmoidX = fp_sigmoid(x << 1, precision);
+//    return (sigmoidX << 1) - (1 << precision);
+//}
+
 int16_t fp_tanh(int16_t x, uint16_t precision) {
     /**
      * Approximates tanh using a polynomial.

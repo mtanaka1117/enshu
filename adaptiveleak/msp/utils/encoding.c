@@ -25,7 +25,7 @@ uint16_t encode_shifts(uint8_t *output, int8_t *shifts, uint8_t *widths, uint16_
 
     uint8_t i;
     for (i = 0; i < numGroups; i++) {
-        output[outputIdx] = ((widths[i] & WIDTH_MASK) << NUM_SHIFT_BITS) | ((shifts[i] + SHIFT_OFFSET) & SHIFT_MASK);
+        output[outputIdx] = (((widths[i] - 1) & WIDTH_MASK) << NUM_SHIFT_BITS) | ((shifts[i] + SHIFT_OFFSET) & SHIFT_MASK);
         outputIdx++;
     }
 

@@ -1,5 +1,6 @@
 #include <stdint.h>
 #include "utils/fixed_point.h"
+#include "utils/constants.h"
 #include "data.h"
 #include "policy_parameters.h"
 

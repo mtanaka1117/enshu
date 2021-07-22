@@ -2,32 +2,48 @@
 #include <stdint.h>
 
 #include "bit_ops.h"
+#include "bt_functions.h"
 #include "data.h"
 #include "init.h"
 #include "sampler.h"
 #include "policy_parameters.h"
 #include "policy.h"
-#include "utils/encoding.h"
+#include "utils/aes256.h"
 #include "utils/bitmap.h"
+#include "utils/encoding.h"
+#include "utils/encryption.h"
 #include "utils/matrix.h"
-#include "bt_functions.h"
+#include "utils/lfsr.h"
 
 
-#define START_BYTE 0xFE
-#define SEND_BYTE  0xEE
+#define START_BYTE 0xCC
+#define SEND_BYTE  0xBB
 #define RESET_BYTE 0xFF
 
-volatile uint8_t shouldSend = 0; // Denotes when the system should send data.
-volatile uint8_t shouldSample = 0;
-volatile uint8_t shouldReset = 0;
-volatile uint8_t isStarted = 0;
+#define START_RESPONSE 0xAB
+#define RESET_RESPONSE 0xCD
+
+#define HEADER_SIZE 18
+#define OUTPUT_OFFSET 34
+#define LENGTH_SIZE 2
+
+// Encryption Key (hard-coded and known to the server)
+static const uint8_t AES_KEY[16] = { 52,159,220,0,180,77,26,170,202,163,162,103,15,212,66,68 };
+static uint8_t aesIV[16] = { 0x66, 0xa1, 0xfc, 0xdc, 0x34, 0x79, 0x66, 0xee, 0xe4, 0x26, 0xc1, 0x5a, 0x17, 0x9e, 0x78, 0x31 };
+
+// Variable to track the operation mode
+enum OpMode { COLLECT, ENCODE, RESET, SEND, START, NOT_STARTED, IDLE };
+volatile enum OpMode opMode;
+
+// Counters to track progress
 volatile uint16_t seqIdx = 0;
 volatile uint16_t elemIdx = 0;
-volatile uint16_t numCollected = 0;
 
 // Buffer for messages to send
-static uint8_t outputBuffer[800];
+static uint8_t outputBuffer[802];
 volatile uint16_t numOutputBytes = 0;
+volatile uint16_t numDataBytes = 0;
+volatile uint16_t numBytesToSend = 0;
 
 // Buffer of data for feature vectors
 static FixedPoint FEATURE_BUFFER[SEQ_LENGTH * NUM_FEATURES];
@@ -47,6 +63,19 @@ static FixedPoint stateData[STATE_SIZE];
 #endif
 
 
+// Create buffers for group encoding policy
+#ifdef IS_GROUP_ENCODED
+#pragma DATA_SECTION(TEMP_DATA_BUFFER, ".matrix")
+static FixedPoint TEMP_DATA_BUFFER[SEQ_LENGTH * NUM_FEATURES];
+
+#pragma DATA_SECTION(SHIFT_BUFFER, ".matrix")
+static int8_t SHIFT_BUFFER[SEQ_LENGTH * NUM_FEATURES];
+
+#pragma DATA_SECTION(COUNT_BUFFER, ".matrix")
+static uint16_t COUNT_BUFFER[SEQ_LENGTH * NUM_FEATURES];
+
+#endif
+
 /**
  * main.c
  */
@@ -59,18 +88,23 @@ int main(void)
 	init_uart_system();
 	init_timer();
 
-	CLEAR_BIT(P1OUT, BIT0);
-
     // Disable the GPIO power-on default high-impedance mode to activate
     // previously configured port settings
     PM5CTL0 &= ~LOCKLPM5;
 
-    seqIdx = 0;
-    elemIdx = 0;
-    numOutputBytes = 0;
+    // Set the Encryption Key
+    uint8_t status = AES256_setCipherKey(AES256_BASE, AES_KEY, AES256_KEYLENGTH_128BIT);
+    if (status == STATUS_FAIL) {
+        P1OUT |= BIT0;
+        return 1;
+    }
 
-    uint8_t shouldCollect = 0;
-    uint8_t didCollect = 0;
+    // Initialize the operation mode
+    opMode = NOT_STARTED;
+
+    volatile uint8_t shouldCollect = 0;
+    volatile uint8_t didCollect = 0;
+    volatile uint16_t numCollected = 0;
 
     // Initialize the feature vector array
     struct Vector featureVectors[SEQ_LENGTH];
@@ -114,11 +148,42 @@ int main(void)
     #endif
 
     // Put into Low Power Mode
-    __bis_SR_register(LPM0_bits | GIE);
+    __bis_SR_register(LPM3_bits | GIE);
 
     while (1) {
-        if (shouldSample) {
 
+        if (opMode == START) {
+            // Send response to the server
+            send_byte(START_RESPONSE);
+
+            // Reset the operation mode
+            opMode = IDLE;
+        } else if (opMode == RESET) {
+            // Reset the policy and collected bitmap
+            clear_bitmap(&collectedIndices);
+
+            #ifdef IS_UNIFORM
+            uniform_reset(&policy);
+            #elif defined(IS_ADAPTIVE_HEURISTIC)
+            heuristic_reset(&policy);
+            prevFeatures = &zeroFeatures;
+            #elif defined(IS_ADAPTIVE_DEVIATION)
+            deviation_reset(&policy);
+            #elif defined(IS_SKIP_RNN)
+            skip_rnn_reset(&policy, &INITIAL_STATE);
+            #endif
+
+            // Reset the indices
+            seqIdx = 0;
+            elemIdx = 0;
+            numCollected = 0;
+
+            // Send the response to the server
+            send_byte(RESET_RESPONSE);
+
+            // Clear the flags and operation mode
+            opMode = NOT_STARTED;
+        } else if (opMode == COLLECT) {
             #ifdef IS_UNIFORM
             shouldCollect = uniform_should_collect(&policy, elemIdx);
             #elif defined(IS_ADAPTIVE_HEURISTIC)
@@ -150,15 +215,52 @@ int main(void)
                 }
             }
 
-            elemIdx++;  // Increment the element index
+            // Increment the element index
+            elemIdx++;
 
-            shouldSample = 0;
-        } else if (shouldSend) {
+            // Reset the operation mode
+            opMode = IDLE;
+        } else if (opMode == ENCODE) {
             // Encode the message
-            numOutputBytes = encode_standard(outputBuffer, featureVectors, &collectedIndices, NUM_FEATURES, SEQ_LENGTH);
+            #ifdef IS_STANDARD_ENCODED
+            numDataBytes = encode_standard(outputBuffer + OUTPUT_OFFSET, featureVectors, &collectedIndices, NUM_FEATURES, SEQ_LENGTH);
+            #elif defined(IS_GROUP_ENCODED)
+            numDataBytes = encode_group(outputBuffer + OUTPUT_OFFSET, featureVectors, &collectedIndices, numCollected, NUM_FEATURES, SEQ_LENGTH, SIZE_BYTES, TARGET_BYTES, DEFAULT_PRECISION, MAX_COLLECTED, TEMP_DATA_BUFFER, SHIFT_BUFFER, COUNT_BUFFER, 1);
+            #endif
 
+            // Set the length (before padding)
+            outputBuffer[0] = (numDataBytes >> 8) & 0xFF;
+            outputBuffer[1] = (numDataBytes) & 0xFF;
+
+            // Generate the initialization vector via an LFSR step
+            lfsr_array(aesIV, AES_BLOCK_SIZE);
+
+            // Encrypt the message
+            numOutputBytes = round_to_aes_block(numDataBytes);
+            encrypt_aes128(outputBuffer + OUTPUT_OFFSET, aesIV, outputBuffer + HEADER_SIZE, numOutputBytes);
+
+            // Set the IV
+            for (i = LENGTH_SIZE; i < HEADER_SIZE; i++) {
+                outputBuffer[i] = aesIV[i - LENGTH_SIZE];
+            }
+
+            // Set the number of bytes to send
+            numBytesToSend = numOutputBytes + HEADER_SIZE;
+
+            // Extend Group Encoded Messages if needed
+            #ifdef IS_GROUP_ENCODED
+            if (numBytesToSend < (TARGET_BYTES + LENGTH_SIZE)) {
+                numBytesToSend = TARGET_BYTES + LENGTH_SIZE;
+            }
+            #endif
+
+            // Clear the encryption flag and increment the element index to avoid
+            // encrypting again
+            elemIdx++;
+            opMode = IDLE;
+        } else if (opMode == SEND) {
             // Send the message to the server
-            send_message(outputBuffer, numOutputBytes);
+            send_message(outputBuffer, numBytesToSend);
 
             // Reset the policy and collected bitmap
             clear_bitmap(&collectedIndices);
@@ -174,45 +276,25 @@ int main(void)
             skip_rnn_reset(&policy, &INITIAL_STATE);
             #endif
 
-            // Reset the indices
+            // Reset the indices and move to the next
+            // sequence
             seqIdx++;
             elemIdx = 0;
             numCollected = 0;
+            numBytesToSend = 0;
+            numOutputBytes = 0;
 
+            // Set the operation mode based on whether there
+            // are more sequences to capture
             if (seqIdx >= MAX_NUM_SEQ) {
                 seqIdx = 0;
             }
 
-            // Clear the sending flag
-            shouldSend = 0;
-        } else if (shouldReset) {
-            // Clear the flags
-            shouldSend = 0;
-            shouldSample = 0;
-            shouldReset = 0;
-            isStarted = 0;
-
-            // Reset the policy and collected bitmap
-            clear_bitmap(&collectedIndices);
-
-            #ifdef IS_UNIFORM
-            uniform_reset(&policy);
-            #elif defined(IS_ADAPTIVE_HEURISTIC)
-            heuristic_reset(&policy);
-            prevFeatures = &zeroFeatures;
-            #elif defined(IS_ADAPTIVE_DEVIATION)
-            deviation_reset(&policy);
-            #elif defined(IS_SKIP_RNN)
-            skip_rnn_reset(&policy, &INITIAL_STATE);
-            #endif
-
-            // Reset the indices
-            seqIdx = 0;
-            elemIdx = 0;
-            numCollected = 0;
+            // Reset the operation mode
+            opMode = IDLE;
         }
 
-        __bis_SR_register(LPM0_bits | GIE);
+        __bis_SR_register(LPM3_bits | GIE);
 
     }
 
@@ -238,9 +320,14 @@ __interrupt void Timer0_A1_ISR (void) {
         case TAIV__TACCR5: break;           // reserved
         case TAIV__TACCR6: break;           // reserved
         case TAIV__TAIFG:                   // overflow
-            if (isStarted && (elemIdx < SEQ_LENGTH)) {
-                shouldSample = 1;
-                __bic_SR_register_on_exit(LPM0_bits | GIE);
+            if ((opMode != NOT_STARTED) && (elemIdx <= SEQ_LENGTH)) {
+                if (elemIdx < SEQ_LENGTH) {
+                    opMode = COLLECT;
+                } else {
+                    opMode = ENCODE;
+                }
+
+                __bic_SR_register_on_exit(LPM3_bits | GIE);
             }
 
             break;
@@ -264,13 +351,14 @@ __interrupt void USCI_A3_ISR(void) {
             c = (char) UCA3RXBUF;
 
             if (c == START_BYTE) {
-                isStarted = 1;
+                opMode = START;
+                __bic_SR_register_on_exit(LPM3_bits | GIE);
             } else if (c == SEND_BYTE) {
-                shouldSend = 1;
-                __bic_SR_register_on_exit(LPM0_bits | GIE);
+                opMode = SEND;
+                __bic_SR_register_on_exit(LPM3_bits | GIE);
             } else if (c == RESET_BYTE) {
-                shouldReset = 1;
-                __bic_SR_register_on_exit(LPM0_bits | GIE);
+                opMode = RESET;
+                __bic_SR_register_on_exit(LPM3_bits | GIE);
             }
 
             break;

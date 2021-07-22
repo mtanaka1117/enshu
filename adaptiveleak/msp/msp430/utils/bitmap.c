@@ -2,9 +2,16 @@
 
 
 void set_bit(uint16_t index, struct BitMap *bitmap) {    
-    uint16_t byteIndex = index / BITS_PER_BYTE;
-    uint16_t bitOffset = index - (byteIndex * BITS_PER_BYTE);
+    uint16_t byteIndex = index >> 3;
+    uint8_t bitOffset = index & 0x7;
     bitmap->bytes[byteIndex] |= (1 << bitOffset);
+}
+
+
+void unset_bit(uint16_t index, struct BitMap *bitmap) {
+    uint16_t byteIndex = index >> 3;
+    uint8_t bitOffset = index & 0x7;
+    bitmap->bytes[byteIndex] &= ~(1 << bitOffset);
 }
 
 
