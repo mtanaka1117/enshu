@@ -8,7 +8,7 @@ from adaptiveleak.utils.file_utils import iterate_dir, read_json
 from adaptiveleak.utils.data_types import PolicyType, EncodingMode, CollectMode, EncryptionMode
 
 
-GROUP_FACTOR = 2.5
+GROUP_FACTOR = 4
 UNIFORM_FACTOR = 0.5
 BASELINE_FACTOR = 0.55
 

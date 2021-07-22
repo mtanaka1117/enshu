@@ -252,6 +252,8 @@ if __name__ == '__main__':
     output_path = os.path.join(args.folder, 'energy.json')
 
     result_dict = {
+        'median_energy': np.median(op_energy_list),
+        'avg_energy': np.average(op_energy_list),
         'op_energy': op_energy_list,
         'comm_energy': comm_energy_list,
         'baseline_power': baseline_power_list,

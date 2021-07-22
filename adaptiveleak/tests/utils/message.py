@@ -164,24 +164,16 @@ class TestByte(unittest.TestCase):
 class TestGroupWidths(unittest.TestCase):
 
     def test_encode_decode_widths(self):
-        widths = [31, 1, 9, 12]
-        shifts = [3, -4, 0, 2] 
+        widths = [16, 1, 9, 12]
+        shifts = [7, 0, 4, 6]
+        reps = [10, 4, 3, 6]
 
-        encoded = message.encode_group_widths(widths=widths, shifts=shifts)
-        rec_widths, rec_shifts = message.decode_group_widths(encoded=encoded)
+        encoded = message.encode_shifts(widths=widths, shifts=shifts, reps=reps, num_shift_bits=4)
+        rec_shifts, rec_widths, rec_reps, num_bytes = message.decode_shifts(encoded=encoded, num_shift_bits=4)
 
         self.assertEqual(rec_widths, widths)
         self.assertEqual(rec_shifts, shifts)
-
-    def test_encode_decode_overflow(self):
-        widths = [32, 4, 6]
-        shifts = [1, 4, -5]
-
-        encoded = message.encode_group_widths(widths=widths, shifts=shifts)
-        rec_widths, rec_shifts = message.decode_group_widths(encoded=encoded)
-
-        self.assertEqual(rec_widths, [31, 4, 6])
-        self.assertEqual(rec_shifts, [1, 3, -4])
+        self.assertEqual(rec_reps, reps)
 
 
 class TestStable(unittest.TestCase):

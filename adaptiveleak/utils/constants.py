@@ -6,7 +6,7 @@ MIN_PRECISION = 1
 MAX_PRECISION = 16
 MIN_WIDTH = 5
 MAX_WIDTH = 16
-SHIFT_BITS = 3
+SHIFT_BITS = 4
 
 MAX_SHIFT_GROUPS = 6
 MIN_SHIFT_GROUPS = 2
@@ -14,7 +14,7 @@ MIN_SHIFT_GROUPS = 2
 LENGTH_SIZE = 2
 LENGTH_ORDER = 'little'
 
-PERIOD = 7
+PERIOD = 4
 BT_FRAME_SIZE = 20
 
 POLICIES = ['random', 'uniform', 'adaptive_heuristic', 'adaptive_deviation', 'skip_rnn']

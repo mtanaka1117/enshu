@@ -6,6 +6,8 @@ from sklearn.metrics import r2_score, mean_absolute_error
 from typing import List, Tuple
 
 from adaptiveleak.utils.file_utils import save_json, iterate_dir, read_json
+from adaptiveleak.utils.constants import BT_FRAME_SIZE
+from adaptiveleak.utils.data_utils import round_to_block
 
 
 def get_result_field(folder: str, field: str) -> float:
@@ -39,6 +41,36 @@ def fit(X: np.ndarray, y: np.ndarray) -> Tuple[float, float]:
     return w, b
 
 
+def evaluate_model(weights: np.ndarray, field: str, folder: str) -> float:
+    bytes_list: List[List[int]] = []
+    y_list: List[float] = []
+
+    for trace_folder in iterate_dir(folder, pattern='.*'):
+        name = os.path.split(trace_folder)[-1]
+        
+        try:
+            num_bytes = int(name)
+
+            if num_bytes % BT_FRAME_SIZE != 0:
+                num_bytes = round_to_block(num_bytes, BT_FRAME_SIZE)
+
+        except ValueError:
+            continue
+
+        y = get_result_field(folder=trace_folder, field=field)
+        
+        bytes_list.append([[num_bytes, 1]])
+        y_list.append(y)
+
+    num_bytes = np.vstack(bytes_list)
+    ys = np.vstack(y_list)
+
+    pred = num_bytes.dot(weights)
+    error = np.average(np.abs(pred - ys))
+
+    return float(error)
+
+
 if __name__ == '__main__':
     parser = ArgumentParser()
     parser.add_argument('--folder', type=str, required=True)
@@ -55,31 +87,29 @@ if __name__ == '__main__':
     for trace_folder in iterate_dir(base, pattern='.*'):
         name = os.path.split(trace_folder)[-1]
 
+        if name == 'validation':
+            continue
+
         try:
             num_bytes = int(name)
             comm_energy = get_result_field(folder=trace_folder, field='comm_energy')
-            #comm_time = get_result_field(folder=trace_folder, field='comm_time')
             baseline_power = get_result_field(folder=trace_folder, field='baseline_power')
 
             bytes_list.append([[num_bytes, 1]])
             comm_energy_list.append(comm_energy)
             baseline_list.append(baseline_power)
-            #time_list.append(comm_time)
         except ValueError:
             continue
 
     comm_energy = np.vstack(comm_energy_list)
     baseline_power = np.vstack(baseline_list)
-    #comm_time = np.vstack(time_list)
     num_bytes = np.vstack(bytes_list)
 
     comm_weights = fit(X=num_bytes, y=comm_energy)
     base_weights = fit(X=num_bytes, y=baseline_power)
-    #time_weights = fit(X=num_bytes, y=comm_time)
 
     pred_comm_energy = num_bytes.dot(comm_weights)
     pred_base_power = num_bytes.dot(base_weights)
-    #pred_comm_time = num_bytes.dot(time_weights)
 
     plot(num_bytes=num_bytes[:, 0],
          true=comm_energy,
@@ -91,16 +121,23 @@ if __name__ == '__main__':
          pred=pred_base_power,
          output_path=os.path.join(base, 'base_energy.pdf'))
 
-    #plot(num_bytes=num_bytes[:, 0],
-    #     true=comm_time,
-    #     pred=pred_comm_time,
-    #     output_path=os.path.join(base, 'comm_time.pdf'))
+    # Validate the model
+    train_comm_error = evaluate_model(weights=comm_weights, field='comm_energy', folder=base)
+    train_base_error = evaluate_model(weights=base_weights, field='baseline_power', folder=base)
+
+    validation_comm_error = evaluate_model(weights=comm_weights, field='comm_energy', folder=os.path.join(base, 'validation'))
+    validation_base_error = evaluate_model(weights=base_weights, field='baseline_power', folder=os.path.join(base, 'validation'))
+    
 
     result = {
         'comm_w': float(comm_weights[0]),
         'comm_b': float(comm_weights[1]),
         'base_w': float(base_weights[0]),
         'base_b': float(base_weights[1]),
+        'train_comm_error': train_comm_error,
+        'train_base_error': train_base_error,
+        'val_comm_error': validation_comm_error,
+        'val_base_error': validation_base_error
     }
 
     save_json(result, os.path.join(base, 'model.json'))

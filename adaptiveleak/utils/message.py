@@ -319,90 +319,6 @@ def decode_stable_measurements(encoded: bytes, seq_length: int, num_features: in
     return recovered_features, collected_indices, widths
 
 
-def encode_group_widths(widths: List[int], shifts: List[int]) -> bytes:
-    """
-    Encodes the group widths and shifts into a single binary string.
-
-    Args:
-        widths: A list of 5-bit width values
-        shifts: A list of 3-bit range shifts
-    Returns:
-        A bit string containing the encoded information.
-    """
-    assert len(widths) == len(shifts), 'Must provide the same number of widths ({0}) and shifts ({1})'.format(len(widths), len(shifts))
-
-    # Fixed offset and range values
-    max_shift = (1 << (SHIFT_BITS - 1)) - 1
-    min_shift = -1 * (1 << (SHIFT_BITS - 1))  # This could overflow, but SHIFT_BITS is generally small (3)
-    
-    width_bits = BITS_PER_BYTE - SHIFT_BITS
-    max_width = (1 << width_bits) - 1
-    min_width = 0
-
-    width_mask = (1 << width_bits) - 1
-    shift_mask = (1 << SHIFT_BITS) - 1
-
-    encoded: List[int] = []
-    for w, s in zip(widths, shifts):
-        # Handle overflow and ensure the encoded
-        # shift value is positive
-        if (s > max_shift):
-            s = max_shift
-        elif (s < min_shift):
-            s = min_shift
-
-        s = (s - min_shift) & shift_mask
-
-        # Handle overflow in the width value
-        if (w > max_width):
-            w = max_width
-        elif (w < min_width):
-            w = min_width
-
-        w &= width_mask
-
-        # Pack both values into a single byte
-        merged = w | (s << width_bits)
-        merged &= 0xFF
-
-        encoded.append(merged)
-
-    return bytes(encoded)
-
-
-def decode_group_widths(encoded: bytes) -> Tuple[List[int], List[int]]:
-    """
-    Encodes the group widths and shifts into a single binary string.
-
-    Args:
-        encoded: The encoded group widths (output of encode_group_widths())
-    Returns:
-        A tuple with two elements:
-            (1) A list of width values
-            (2) A list of range shifts
-    """
-    widths: List[int] = []
-    shifts: List[int] = []
-
-    # Fixed offset and masks
-    min_shift = -1 * (1 << (SHIFT_BITS - 1))
-
-    width_bits = BITS_PER_BYTE - SHIFT_BITS
-    width_mask = (1 << width_bits) - 1
-    shift_mask = (1 << SHIFT_BITS) - 1
-
-    for byte in encoded:
-        # Unpack the width
-        w = byte & width_mask
-        widths.append(w)
-
-        # Unpack the shift
-        s = ((byte >> width_bits) & shift_mask) + min_shift
-        shifts.append(s)
-
-    return widths, shifts
-
-
 def encode_shifts(shifts: List[int], reps: List[int], widths: List[int], num_shift_bits: int) -> bytes:
     """
     Encodes the given run-length encoded shifts into a bit string.
@@ -428,7 +344,7 @@ def encode_shifts(shifts: List[int], reps: List[int], widths: List[int], num_shi
     # Encode the shift values
     group_data: List[int] = []
     for width, shift in zip(widths, shifts):
-        packed_data = (width & width_mask) << num_shift_bits
+        packed_data = ((width - 1) & width_mask) << num_shift_bits
         packed_data |= (shift & shift_mask)
 
         group_data.append(packed_data)
@@ -456,10 +372,11 @@ def decode_shifts(encoded: bytes, num_shift_bits: int) -> Tuple[List[int], List[
     Args:
         encoded: The encoded shifts byte string (output of encode_shifts())
     Returns:
-        A tuple with three elements.
+        A tuple with four elements.
             (1) The shift values
-            (2) The repetitions
-            (3) The number of consumed bytes
+            (2) The width values
+            (3) The repetitions
+            (4) The number of consumed bytes
     """
     # Extract the header elements
     encoded_header = int(encoded[0])
@@ -488,7 +405,7 @@ def decode_shifts(encoded: bytes, num_shift_bits: int) -> Tuple[List[int], List[
         width = (packed_data >> num_shift_bits) & width_mask
     
         shifts.append(shift)
-        widths.append(width)
+        widths.append(width + 1)
 
     total_bytes = 1 + num_reps_bytes + num_shifts
 

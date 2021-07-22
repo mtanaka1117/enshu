@@ -206,6 +206,31 @@ class TestRangeShift(unittest.TestCase):
 
         self.assertEqual(recovered, float_value)
 
+    def test_range_single_int_2(self):
+        old_width = 16
+        old_precision = 0
+        non_fractional = old_width - old_precision
+
+        new_width = 6
+        num_range_bits = 4
+
+        value = data_utils.to_fixed_point(93, width=old_width, precision=old_precision)
+        shift = data_utils.select_range_shift(measurement=value,
+                                              old_width=old_width,
+                                              old_precision=old_precision,
+                                              new_width=new_width,
+                                              num_range_bits=num_range_bits,
+                                              prev_shift=1)
+        self.assertEqual(shift, -4)
+
+        float_value = 93.0
+
+        new_precision = (new_width - non_fractional) - shift
+        quantized = data_utils.to_fixed_point(float_value, width=new_width, precision=new_precision)
+        recovered = data_utils.to_float(quantized, precision=new_precision)
+
+        self.assertEqual(recovered, float_value)
+
     def test_range_single_float(self):
         old_width = 16
         old_precision = 13
