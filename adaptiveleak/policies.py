@@ -180,7 +180,8 @@ class AdaptivePolicy(Policy):
                  encryption_mode: EncryptionMode,
                  encoding_mode: EncodingMode,
                  collect_mode: CollectMode,
-                 should_compress: bool):
+                 should_compress: bool,
+                 max_collected: Optional[int] = None):
         super().__init__(precision=precision,
                          width=width,
                          collection_rate=collection_rate,
@@ -222,11 +223,11 @@ class AdaptivePolicy(Policy):
         num_groups = int(round(MAX_SHIFT_GROUPS_FACTOR * target_features))
         self._max_num_groups = max(min(MAX_SHIFT_GROUPS, num_groups), MIN_SHIFT_GROUPS)
 
-        print(self._max_num_groups)
-
         if self.encoding_mode == EncodingMode.PADDED:
+            num_collected = max_collected if max_collected is not None else self.seq_length
+
             self._target_bytes = calculate_bytes(width=self.width,
-                                                 num_collected=self.seq_length,
+                                                 num_collected=num_collected,
                                                  num_features=self.num_features,
                                                  encryption_mode=self.encryption_mode,
                                                  seq_length=self.seq_length)
@@ -1085,6 +1086,22 @@ def make_policy(name: str,
         else:
             max_skip_value = max_skip
 
+        encoding_mode = str(kwargs['encoding']).lower()
+
+        # For 'padded' policies, read the standard test log (if exists) to get the maximum number of collected values.
+        # This is an impractical policy to use, as it requires prior knowledge of what the policy will do on the test
+        # set. Nevertheless, we use this strategy to provide an 'ideal' baseline.
+        max_collected = None
+
+        if encoding_mode == 'padded':
+            rate_str = str(int(round(collection_rate, 2) * 100))
+            policy_name = '{0}_{1}'.format(name, encoding_mode)
+            file_name = '{0}-{1}-{2}-{3}_{4}.json.gz'.format(name, encoding_mode, encryption_mode.lower(), collect_mode.lower(), rate_str)
+            standard_path = os.path.join(base, 'saved_models', dataset, collect_mode.lower(), policy_name, file_name)
+
+            sim_log = read_json_gz(standard_path)
+            max_collected = max(sim_log['num_measurements'])
+
         if name == 'adaptive_heuristic':
             cls = AdaptiveHeuristic
         elif name == 'adaptive_litesense':
@@ -1104,8 +1121,9 @@ def make_policy(name: str,
                    use_min_skip=use_min_skip,
                    encryption_mode=EncryptionMode[encryption_mode.upper()],
                    collect_mode=CollectMode[collect_mode.upper()],
-                   encoding_mode=EncodingMode[str(kwargs['encoding']).upper()],
-                   should_compress=should_compress)
+                   encoding_mode=EncodingMode[encoding_mode.upper()],
+                   should_compress=should_compress,
+                   max_collected=max_collected)
     elif (name == 'skip_rnn'):
         return SkipRNN(collection_rate=collection_rate,
                        threshold=0.5,

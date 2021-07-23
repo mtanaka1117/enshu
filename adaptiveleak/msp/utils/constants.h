@@ -11,6 +11,8 @@
 
 #define NUM_SHIFT_BITS 4
 #define SHIFT_OFFSET 8
+#define MAX_SHIFT 7
+#define MIN_SHIFT -8
 #define SHIFT_MASK 0xF
 #define WIDTH_MASK 0xF
 

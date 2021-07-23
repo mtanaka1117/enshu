@@ -7,6 +7,7 @@ uint16_t round_to_aes_block(uint16_t numBytes) {
 }
 
 
+#ifdef IS_MSP
 void encrypt_aes128(uint8_t *data, const uint8_t *prev, uint8_t *outputBuffer, uint16_t numBytes) {
     uint16_t i;
     for (i = 0; i < numBytes; i += AES_BLOCK_SIZE) {
@@ -14,3 +15,4 @@ void encrypt_aes128(uint8_t *data, const uint8_t *prev, uint8_t *outputBuffer, u
         prev = outputBuffer + i;
     }
 }
+#endif

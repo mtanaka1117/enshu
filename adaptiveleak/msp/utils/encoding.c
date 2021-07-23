@@ -166,7 +166,7 @@ uint16_t encode_group(uint8_t *output,
     uint16_t minWidth = targetDataBits / (numFeatures * numCollected);
     minWidth = min16u(minWidth, MAX_WIDTH);
 
-    get_range_shifts_array(shiftBuffer, tempBuffer, precision, minWidth, NUM_SHIFT_BITS, count);
+    get_range_shifts_array(shiftBuffer, tempBuffer, precision, minWidth, count);
 
     // Run-Length Encode the range shifts
     uint16_t numGroups = create_shift_groups(shiftBuffer, countBuffer, shiftBuffer, count, MAX_NUM_GROUPS); 
