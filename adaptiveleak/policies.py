@@ -477,7 +477,8 @@ class AdaptiveLiteSense(AdaptivePolicy):
                  encryption_mode: EncryptionMode,
                  encoding_mode: EncodingMode,
                  collect_mode: CollectMode,
-                 should_compress: bool):
+                 should_compress: bool,
+                 max_collected: Optional[int] = None):
         super().__init__(collection_rate=collection_rate,
                          threshold=threshold,
                          precision=precision,
@@ -489,7 +490,8 @@ class AdaptiveLiteSense(AdaptivePolicy):
                          encryption_mode=encryption_mode,
                          encoding_mode=encoding_mode,
                          collect_mode=collect_mode,
-                         should_compress=should_compress)
+                         should_compress=should_compress,
+                         max_collected=max_collected)
         self._alpha = 0.7
         self._beta = 0.7
 
@@ -1095,9 +1097,9 @@ def make_policy(name: str,
 
         if encoding_mode == 'padded':
             rate_str = str(int(round(collection_rate, 2) * 100))
-            policy_name = '{0}_{1}'.format(name, encoding_mode)
-            file_name = '{0}-{1}-{2}-{3}_{4}.json.gz'.format(name, encoding_mode, encryption_mode.lower(), collect_mode.lower(), rate_str)
-            standard_path = os.path.join(base, 'saved_models', dataset, collect_mode.lower(), policy_name, file_name)
+            standard_name = '{0}_standard'.format(name)
+            file_name = '{0}-standard-stream-{1}_{2}.json.gz'.format(name, collect_mode.lower(), rate_str)
+            standard_path = os.path.join(base, 'saved_models', dataset, collect_mode.lower(), standard_name, file_name)
 
             sim_log = read_json_gz(standard_path)
             max_collected = max(sim_log['num_measurements'])
