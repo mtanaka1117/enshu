@@ -8,7 +8,7 @@ from enum import Enum, auto
 from typing import Tuple, List, Dict, Any, Optional
 
 
-from adaptiveleak.energy_systems import EnergyUnit, convert_rate_to_energy, get_group_target_bytes
+from adaptiveleak.energy_systems import EnergyUnit, convert_rate_to_energy, get_group_target_bytes, get_padded_collection_rate
 from adaptiveleak.utils.constants import BITS_PER_BYTE, MIN_WIDTH, SMALL_NUMBER, MAX_WIDTH, SHIFT_BITS, MAX_SHIFT_GROUPS
 from adaptiveleak.utils.constants import MIN_SHIFT_GROUPS, PERIOD, LENGTH_SIZE, BT_FRAME_SIZE, MAX_SHIFT_GROUPS_FACTOR
 from adaptiveleak.utils.data_utils import get_group_widths, get_num_groups, calculate_bytes, pad_to_length, sigmoid, truncate_to_block, round_to_block
@@ -1057,13 +1057,32 @@ def make_policy(name: str,
         threshold_path = os.path.join(base, 'saved_models', dataset, 'thresholds.json.gz')
 
         did_find_threshold = False
+        threshold_rate = collection_rate
+        encoding_mode = str(kwargs['encoding']).lower()
+
+        # For 'padded' policies, read the standard test log (if exists) to get the maximum number of collected values.
+        # This is an impractical policy to use, as it requires prior knowledge of what the policy will do on the test
+        # set. Nevertheless, we use this strategy to provide an 'ideal' baseline.
+        max_collected = None
+        if encoding_mode == 'padded':
+            threshold_rate, max_collected = get_padded_collection_rate(dataset=dataset,
+                                                                       current_rate=collection_rate,
+                                                                       encryption_mode=encryption_mode,
+                                                                       policy_type=name,
+                                                                       collect_mode=collect_mode,
+                                                                       width=width,
+                                                                       num_features=num_features,
+                                                                       seq_length=seq_length)
+
+            print('Max Collected: {0}, Threshold Rate: {1}'.format(max_collected, threshold_rate))
+
+        rate_str = str(round(threshold_rate, 2))
 
         if not os.path.exists(threshold_path):
             print('WARNING: No threshold path exists.')
             threshold = 0.0
         else:
             thresholds = read_json_gz(threshold_path)
-            rate_str = str(round(collection_rate, 2))
 
             if (name not in thresholds) or (collect_mode not in thresholds[name]) or (rate_str not in thresholds[name][collect_mode]):
                 print('WARNING: No threshold path exists.')
@@ -1074,8 +1093,6 @@ def make_policy(name: str,
 
         # Apply the optional data-specific threshold factor
         if isinstance(threshold_factor, OrderedDict):
-            rate_str = str(round(collection_rate, 2))
-
             if rate_str in threshold_factor:
                 threshold *= threshold_factor[rate_str]
         else:
@@ -1083,26 +1100,52 @@ def make_policy(name: str,
 
         # Get the optional max skip value
         if isinstance(max_skip, OrderedDict):
-            rate_str = str(round(collection_rate, 2))
             max_skip_value = max_skip.get(rate_str, max_skip['default'])
         else:
             max_skip_value = max_skip
 
-        encoding_mode = str(kwargs['encoding']).lower()
-
-        # For 'padded' policies, read the standard test log (if exists) to get the maximum number of collected values.
-        # This is an impractical policy to use, as it requires prior knowledge of what the policy will do on the test
-        # set. Nevertheless, we use this strategy to provide an 'ideal' baseline.
-        max_collected = None
-
-        if encoding_mode == 'padded':
-            rate_str = str(int(round(collection_rate, 2) * 100))
-            standard_name = '{0}_standard'.format(name)
-            file_name = '{0}-standard-stream-{1}_{2}.json.gz'.format(name, collect_mode.lower(), rate_str)
-            standard_path = os.path.join(base, 'saved_models', dataset, collect_mode.lower(), standard_name, file_name)
-
-            sim_log = read_json_gz(standard_path)
-            max_collected = max(sim_log['num_measurements'])
+#        encoding_mode = str(kwargs['encoding']).lower()
+#
+#        # For 'padded' policies, read the standard test log (if exists) to get the maximum number of collected values.
+#        # This is an impractical policy to use, as it requires prior knowledge of what the policy will do on the test
+#        # set. Nevertheless, we use this strategy to provide an 'ideal' baseline.
+#        max_collected = None
+#
+#        if encoding_mode == 'padded':
+#            # Get the largest collection rate less than the current rate to account
+#            # for the overhead of sending larger packets
+#            #rate_to_use = collection_rate
+#
+#            #if did_find_threshold:
+#            #    for rate in sorted(map(float, thresholds[name][collect_mode].keys())):
+#            #        if rate < collection_rate:
+#            #            rate_to_use = rate
+#
+#            #rate_str = str(round(rate_to_use, 2))
+#            #threshold = thresholds[name][collect_mode][rate_str]
+#
+#            #if isinstance(threshold_factor, OrderedDict) and (rate_str in threshold_factor):
+#            #    threshold *= threshold_factor[rate_str]
+#            #else:
+#            #    threshold *= threshold_factor
+#
+#            rate_str = str(int(round(collection_rate, 2) * 100))
+#            standard_name = '{0}_standard'.format(name)
+#            file_name = '{0}-standard-stream-{1}_{2}.json.gz'.format(name, collect_mode.lower(), rate_str)
+#            standard_path = os.path.join(base, 'saved_models', dataset, collect_mode.lower(), standard_name, file_name)
+#
+#            sim_log = read_json_gz(standard_path)
+#            max_collected = max(sim_log['num_measurements'])
+#
+#            adjusted_rate = get_padded_collection_rate(dataset=dataset,
+#                                                       current_rate=collection_rate,
+#                                                       encryption_mode=encryption_mode,
+#                                                       policy_type=name,
+#                                                       collect_mode=collect_mode,
+#                                                       width=width,
+#                                                       num_features=num_features,
+#                                                       seq_length=seq_length)
+#
 
         if name == 'adaptive_heuristic':
             cls = AdaptiveHeuristic

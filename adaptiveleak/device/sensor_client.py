@@ -151,7 +151,10 @@ def execute_client(inputs: np.ndarray,
                     data = response[LENGTH_SIZE + AES_BLOCK_SIZE:]
 
                     # Round up the length field
-                    rounded_length = round_to_block(length, block_size=AES_BLOCK_SIZE)
+                    if length % AES_BLOCK_SIZE != 0:
+                        rounded_length = round_to_block(length, block_size=AES_BLOCK_SIZE)
+                    else:
+                        rounded_length = length
 
                     data = data[:rounded_length]
 
