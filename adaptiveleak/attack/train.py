@@ -8,6 +8,7 @@ from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_sc
 from typing import Any, Dict, Tuple, List, DefaultDict
 
 from adaptiveleak.utils.analysis import geometric_mean
+from adaptiveleak.utils.constants import ENCODING, POLICIES
 from adaptiveleak.utils.file_utils import read_json_gz, save_json_gz, iterate_dir, make_dir
 
 
@@ -207,8 +208,8 @@ def fit_attack_model(message_sizes: np.array, labels: np.array, window_size: int
 
 if __name__ == '__main__':
     parser = ArgumentParser()
-    parser.add_argument('--policy', type=str, required=True)
-    parser.add_argument('--encoding', type=str, required=True, choices=['standard', 'group'])
+    parser.add_argument('--policy', type=str, required=True, choices=POLICIES)
+    parser.add_argument('--encoding', type=str, required=True, choices=ENCODING)
     parser.add_argument('--dataset', type=str, required=True)
     parser.add_argument('--date', type=str, required=True)
     parser.add_argument('--window-size', type=int, required=True)
