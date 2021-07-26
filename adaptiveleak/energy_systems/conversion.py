@@ -122,7 +122,7 @@ def get_padded_collection_rate(dataset: str,
                                collect_mode: str,
                                width: int,
                                num_features: int,
-                               seq_length: int) -> float:
+                               seq_length: int) -> Tuple[float, int]:
     """
     Adjusts the collection rate for padded policies.
 
