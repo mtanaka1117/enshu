@@ -175,7 +175,7 @@ class AdaptivePolicy(Policy):
                  width: int,
                  seq_length: int,
                  num_features: int,
-                 use_min_skip: bool,
+                 min_skip: int,
                  max_skip: int,
                  encryption_mode: EncryptionMode,
                  encoding_mode: EncodingMode,
@@ -192,17 +192,8 @@ class AdaptivePolicy(Policy):
                          collect_mode=collect_mode,
                          should_compress=should_compress)
         # Variables used to track the adaptive sampling policy
-        self._max_skip = int(1.0 / collection_rate) + max_skip
-
-        self._min_skip = 0
-
-        if use_min_skip:
-            if collection_rate < 0.31:
-                self._min_skip = 2
-            elif collection_rate < 0.51:
-                self._min_skip = 1
-            else:
-                self._min_skip = 0
+        self._max_skip = max_skip
+        self._min_skip = min_skip
 
         assert self._max_skip > self._min_skip, 'Must have a max skip > min_skip'
 
@@ -475,7 +466,7 @@ class AdaptiveLiteSense(AdaptivePolicy):
                  seq_length: int,
                  num_features: int,
                  max_skip: int,
-                 use_min_skip: bool,
+                 min_skip: int,
                  encryption_mode: EncryptionMode,
                  encoding_mode: EncodingMode,
                  collect_mode: CollectMode,
@@ -488,7 +479,7 @@ class AdaptiveLiteSense(AdaptivePolicy):
                          seq_length=seq_length,
                          num_features=num_features,
                          max_skip=max_skip,
-                         use_min_skip=use_min_skip,
+                         min_skip=min_skip,
                          encryption_mode=encryption_mode,
                          encoding_mode=encoding_mode,
                          collect_mode=collect_mode,
@@ -579,7 +570,7 @@ class SkipRNN(AdaptivePolicy):
                          seq_length=seq_length,
                          num_features=num_features,
                          max_skip=0,
-                         use_min_skip=False,
+                         min_skip=0,
                          encryption_mode=encryption_mode,
                          encoding_mode=encoding_mode,
                          collect_mode=collect_mode,
@@ -921,7 +912,7 @@ class BudgetWrappedPolicy(Policy):
         result = super().as_dict()
         result['budget'] = self._budget
         result['energy_per_seq'] = self.energy_per_seq
-        result['max_collected'] = self._max_collected
+        result['max_collected'] = self._policy._max_collected
         return result
 
 
@@ -1107,6 +1098,19 @@ def make_policy(name: str,
         else:
             max_skip_value = max_skip
 
+        max_skip_value += int(1.0 / threshold_rate)
+
+        # Set the min skip
+        if use_min_skip:
+            if threshold_rate < 0.31:
+                min_skip = 2
+            elif threshold_rate < 0.51:
+                min_skip = 1
+            else:
+                min_skip = 0
+        else:
+            min_skip = 0
+
 #        encoding_mode = str(kwargs['encoding']).lower()
 #
 #        # For 'padded' policies, read the standard test log (if exists) to get the maximum number of collected values.
@@ -1166,7 +1170,7 @@ def make_policy(name: str,
                    seq_length=seq_length,
                    num_features=num_features,
                    max_skip=max_skip_value,
-                   use_min_skip=use_min_skip,
+                   min_skip=min_skip,
                    encryption_mode=EncryptionMode[encryption_mode.upper()],
                    collect_mode=CollectMode[collect_mode.upper()],
                    encoding_mode=EncodingMode[encoding_mode.upper()],
