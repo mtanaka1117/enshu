@@ -223,6 +223,8 @@ class AdaptivePolicy(Policy):
         num_groups = int(round(MAX_SHIFT_GROUPS_FACTOR * target_features))
         self._max_num_groups = max(min(MAX_SHIFT_GROUPS, num_groups), MIN_SHIFT_GROUPS)
 
+        self._max_collected = max_collected
+
         if self.encoding_mode == EncodingMode.PADDED:
             num_collected = max_collected if max_collected is not None else self.seq_length
 
@@ -919,6 +921,7 @@ class BudgetWrappedPolicy(Policy):
         result = super().as_dict()
         result['budget'] = self._budget
         result['energy_per_seq'] = self.energy_per_seq
+        result['max_collected'] = self._max_collected
         return result
 
 
