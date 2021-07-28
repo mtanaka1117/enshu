@@ -212,7 +212,7 @@ def select_range_shifts_array(measurements: np.ndarray, old_width: int, old_prec
 
     num_values = measurements.shape[0]
     best_shifts = np.empty(num_values)
-    prev_shift = 0
+    prev_shift = -1 * (1 << (num_range_bits - 1))
 
     elapsed = []
 
