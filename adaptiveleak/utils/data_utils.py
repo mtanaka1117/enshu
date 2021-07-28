@@ -17,6 +17,7 @@ ERROR_TOL = 0
 def sigmoid(x: np.ndarray) -> np.ndarray:
     return 1.0 / (1.0 + np.exp(-1 * x))
 
+
 def to_fixed_point(x: float, precision: int, width: int) -> int:
     assert width >= 1, 'Must have a non-negative width'
 
@@ -119,7 +120,6 @@ def select_range_shift(measurement: int, old_width: int, old_precision: int, new
     non_fractional = old_width - old_precision
     width_mask = (1 << (new_width - 1)) - 1  # Masks out all non-data bits (including the sign bit)
     recovered_mask = (1 << (old_width - 1)) - 1  # Mask out all non-data bits in the old size (including sign bit)
-    #recovered_mask = 0x7FFF
 
     # Get the new precision based on the (fixed) number of non-fractional bits 
     #new_precision = new_width - non_fractional
@@ -413,6 +413,34 @@ def unpack(encoded: bytes, width: int,  num_values: int) -> List[int]:
         result.append(current)
 
     return result
+
+
+def get_max_num_groups(target_bytes: int, num_collected: int, num_features: int, width: int) -> int:
+    """
+    Computes the maximum number of groups possible to meet the target bytes
+    when all features are quantized to the given width.
+
+    Args:
+        target_bytes: The target number of bytes (no metadata except for shift portion)
+        num_collected: The number of collected measurements
+        num_features: The number of features per measurement
+        width: The maximum bit-width of each measurement
+    Returns:
+        The maximum number of groups we can use without any quantization loss.
+    """
+    total_count = num_collected * num_features
+    count_bits = num_bits_for_value(total_count)
+    data_bytes = int(math.ceil((total_count * width) / BITS_PER_BYTE))
+
+    for num_groups in range(16):
+        grouped_data_bytes = data_bytes - num_groups
+        shift_bytes = int(math.ceil((count_bits * num_groups) / BITS_PER_BYTE))
+        total_bytes = grouped_data_bytes + shift_bytes + num_groups + 1
+
+        if (total_bytes > target_bytes):
+            return num_groups - 1
+
+    return min(num_groups, 15)
 
 
 def set_widths(group_sizes: List[int], target_bytes: int, start_width: int) -> List[int]:

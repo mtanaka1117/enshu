@@ -334,10 +334,7 @@ def encode_shifts(shifts: List[int], reps: List[int], widths: List[int], num_shi
     assert len(shifts) == len(reps), 'Must provide same number of reps ({0}) and shifts ({1})'.format(len(reps), len(shifts))
     assert num_shift_bits < BITS_PER_BYTE, 'Number of shift bits must be less than {0}'.format(BITS_PER_BYTE)
     
-    # Encode the count
-    num_shifts = len(shifts)
-    encoded_count = num_shifts.to_bytes(1, 'little')
-
+    # Get masks needed for shifts and bit-widths
     width_mask = (1 << (BITS_PER_BYTE - num_shift_bits)) - 1
     shift_mask = (1 << num_shift_bits) - 1
 
@@ -381,7 +378,7 @@ def decode_shifts(encoded: bytes, num_shift_bits: int) -> Tuple[List[int], List[
     # Extract the header elements
     encoded_header = int(encoded[0])
     reps_width = encoded_header & 0xF
-    num_shifts = (encoded_header >> 4) & 0xF
+    num_shifts = ((encoded_header >> 4) & 0xF)
 
     encoded = encoded[1:]
 

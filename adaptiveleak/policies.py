@@ -12,7 +12,7 @@ from adaptiveleak.energy_systems import EnergyUnit, convert_rate_to_energy, get_
 from adaptiveleak.utils.constants import BITS_PER_BYTE, MIN_WIDTH, SMALL_NUMBER, MAX_WIDTH, SHIFT_BITS, MAX_SHIFT_GROUPS
 from adaptiveleak.utils.constants import MIN_SHIFT_GROUPS, PERIOD, LENGTH_SIZE, BT_FRAME_SIZE, MAX_SHIFT_GROUPS_FACTOR
 from adaptiveleak.utils.data_utils import get_group_widths, get_num_groups, calculate_bytes, pad_to_length, sigmoid, truncate_to_block, round_to_block
-from adaptiveleak.utils.data_utils import prune_sequence, calculate_grouped_bytes, set_widths, select_range_shifts_array, num_bits_for_value
+from adaptiveleak.utils.data_utils import prune_sequence, calculate_grouped_bytes, set_widths, select_range_shifts_array, num_bits_for_value, get_max_num_groups
 from adaptiveleak.utils.shifting import merge_shift_groups
 from adaptiveleak.utils.message import encode_standard_measurements, decode_standard_measurements
 from adaptiveleak.utils.message import encode_stable_measurements, decode_stable_measurements
@@ -311,21 +311,35 @@ class AdaptivePolicy(Policy):
             target_bytes = self._target_bytes
 
             # Conservatively Estimate the meta-data bytes associated with stable encoding
-            size_width = num_bits_for_value(len(collected_indices))
-            size_bytes = int(math.ceil((size_width * self.max_num_groups) / BITS_PER_BYTE))
             mask_bytes = int(math.ceil(self.seq_length / BITS_PER_BYTE))
-
-            shift_bytes = 1 + self.max_num_groups + size_bytes
-            metadata_bytes = shift_bytes + mask_bytes + LENGTH_SIZE
+            metadata_bytes = mask_bytes + LENGTH_SIZE
 
             if self.encryption_mode == EncryptionMode.STREAM:
                 metadata_bytes += CHACHA_NONCE_LEN
             else:
                 metadata_bytes += AES_BLOCK_SIZE
 
-            # Compute the target number of data bytes
+            # Compute the target number of data bytes (without the shift part)
             target_data_bytes = target_bytes - metadata_bytes
-            target_data_bits = (target_data_bytes - self.max_num_groups) * BITS_PER_BYTE
+
+            # Compute the maximum number of groups
+            max_num_groups = get_max_num_groups(width=self.width,
+                                                num_collected=len(collected_indices),
+                                                num_features=self.num_features,
+                                                target_bytes=target_data_bytes)
+
+            # Cap the max number of groups at the predefined number
+            max_num_groups = max(max_num_groups, self.max_num_groups)
+            #max_num_groups = self.max_num_groups
+
+            # Compute the number of bytes needed for the shifting meta-data
+            size_width = num_bits_for_value(len(collected_indices))
+            size_bytes = int(math.ceil((size_width * max_num_groups) / BITS_PER_BYTE))
+            shift_bytes = 1 + max_num_groups + size_bytes
+            target_data_bytes -= shift_bytes
+
+            # Get the target data bits via a conservative estimate
+            target_data_bits = (target_data_bytes - max_num_groups) * BITS_PER_BYTE
 
             assert target_data_bits > 0, 'Must have a positive number of target data bits'
 
@@ -357,7 +371,7 @@ class AdaptivePolicy(Policy):
                 # Merge the shift groups
                 merged_shifts, group_sizes = merge_shift_groups(values=flattened,
                                                                 shifts=shifts,
-                                                                max_num_groups=self.max_num_groups)
+                                                                max_num_groups=max_num_groups)
             elif self.encoding_mode == EncodingMode.GROUP_UNSHIFTED:
                 # Set the group sizes 'evenly'
                 features_per_group = int(round(len(flattened) / self.max_num_groups))
@@ -380,10 +394,11 @@ class AdaptivePolicy(Policy):
 
             # Re-calculate the meta-data size based on the given shift groups. Smaller
             # ranges allow for greater savings.
+            num_groups = len(group_sizes)
             size_width = num_bits_for_value(max(group_sizes))
-            size_bytes = int(math.ceil((size_width * self.max_num_groups) / BITS_PER_BYTE))
+            size_bytes = int(math.ceil((size_width * num_groups) / BITS_PER_BYTE))
 
-            shift_bytes = 1 + self.max_num_groups + size_bytes
+            shift_bytes = 1 + num_groups + size_bytes
             metadata_bytes = shift_bytes + mask_bytes + LENGTH_SIZE
 
             if self.encryption_mode == EncryptionMode.STREAM:
@@ -1051,22 +1066,6 @@ def make_policy(name: str,
 
         did_find_threshold = False
         threshold_rate = collection_rate
-        #encoding_mode = str(kwargs['encoding']).lower()
-
-        ## For 'padded' policies, read the standard test log (if exists) to get the maximum number of collected values.
-        ## This is an impractical policy to use, as it requires prior knowledge of what the policy will do on the test
-        ## set. Nevertheless, we use this strategy to provide an 'ideal' baseline.
-        #max_collected = None
-        #if encoding_mode == 'padded':
-        #    threshold_rate, max_collected = get_padded_collection_rate(dataset=dataset,
-        #                                                               current_rate=collection_rate,
-        #                                                               encryption_mode=encryption_mode,
-        #                                                               policy_type=name,
-        #                                                               collect_mode=collect_mode,
-        #                                                               width=width,
-        #                                                               num_features=num_features,
-        #                                                               seq_length=seq_length)
-
         rate_str = str(round(threshold_rate, 2))
 
         if not os.path.exists(threshold_path):

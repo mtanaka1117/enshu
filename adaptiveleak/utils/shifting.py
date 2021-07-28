@@ -1,9 +1,10 @@
 import numpy as np
+import math
 from typing import List, Tuple
 from sklearn.metrics import mean_absolute_error
 
-from adaptiveleak.utils.data_utils import array_to_float, array_to_fp
-from adaptiveleak.utils.constants import BIG_NUMBER
+from adaptiveleak.utils.data_utils import array_to_float, array_to_fp, num_bits_for_value
+from adaptiveleak.utils.constants import BIG_NUMBER, BITS_PER_BYTE
 
 
 class ShiftGroup:
@@ -131,7 +132,17 @@ def merge_shift_groups(values: List[float], shifts: List[int], max_num_groups: i
     # Create the initial groups using run-length encoding
     grouped_shifts, reps = compute_runs(shifts)
 
-    if len(grouped_shifts) <= max_num_groups:
+    # We calculate the size required if we encoded all measurements fully
+    # with the current group construction. If this meets the budget,
+    # then we can stop here.
+    #size_width = num_bits_for_value(max(reps))
+    #size_bytes = int(math.ceil((size_width * len(reps)) / BITS_PER_BYTE))
+    #total_bytes = size_bytes + len(reps) + 1
+
+    #for group_size in reps:
+    #    total_bytes += int(math.ceil((group_size * width) / BITS_PER_BYTE))
+
+    if (len(grouped_shifts) <= max_num_groups):
         return grouped_shifts, reps
 
     # Initialize the union-find structure
