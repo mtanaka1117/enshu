@@ -1,7 +1,7 @@
 #include "encoding.h"
 
 
-uint8_t GROUP_WIDTHS[MAX_NUM_GROUPS];
+uint8_t GROUP_WIDTHS[16];
 
 
 uint16_t encode_collected_indices(uint8_t *output, struct BitMap *collectedIndices, uint16_t outputIdx) {
@@ -94,7 +94,6 @@ uint16_t encode_group(uint8_t *output,
                       uint16_t numCollected,
                       uint16_t numFeatures,
                       uint16_t seqLength,
-                      uint16_t sizeBytes,
                       uint16_t targetBytes,
                       uint16_t precision,
                       uint16_t maxCollected,
@@ -102,9 +101,11 @@ uint16_t encode_group(uint8_t *output,
                       int8_t *shiftBuffer,
                       uint16_t *countBuffer,
                       uint8_t isBlock) {
+
+
     // Estimate the meta-data associated with stable group encoding
     uint16_t maskBytes = collectedIndices->numBytes;
-    uint16_t metadataBytes = maskBytes + sizeBytes + MAX_NUM_GROUPS + 1;
+    uint16_t metadataBytes = maskBytes + MAX_NUM_GROUPS;
 
     if (isBlock) {
         metadataBytes += AES_BLOCK_SIZE;
@@ -114,6 +115,21 @@ uint16_t encode_group(uint8_t *output,
 
     // Compute the target number of data bytes
     uint16_t targetDataBytes = targetBytes - metadataBytes;
+
+    // Get the maximum number of groups
+    uint16_t maxNumGroups = get_max_num_groups(targetDataBytes, numCollected, numFeatures, 16);
+
+    uint16_t sizeWidth = 0;
+    uint16_t collectedCounter = numCollected;
+    while (collectedCounter > 0) {
+        collectedCounter = collectedCounter >> 1;
+        sizeWidth++;
+    }
+
+    uint16_t sizeBytes = get_num_bytes(sizeWidth * maxNumGroups);
+    uint16_t shiftBytes = 1 + maxNumGroups + sizeBytes;
+    targetDataBytes -= shiftBytes;
+
     uint16_t targetDataBits = (targetDataBytes - MAX_NUM_GROUPS) << 3;
 
     // Prune measurements if needed
@@ -169,7 +185,7 @@ uint16_t encode_group(uint8_t *output,
     get_range_shifts_array(shiftBuffer, tempBuffer, precision, minWidth, count);
 
     // Run-Length Encode the range shifts
-    uint16_t numGroups = create_shift_groups(shiftBuffer, countBuffer, shiftBuffer, count, MAX_NUM_GROUPS); 
+    uint16_t numGroups = create_shift_groups(shiftBuffer, countBuffer, shiftBuffer, count, maxNumGroups); 
 
     // Re-calculate the meta-data size based on the given number of shift groups
     metadataBytes -= sizeBytes;
@@ -183,7 +199,7 @@ uint16_t encode_group(uint8_t *output,
         }
     }
 
-    uint8_t sizeWidth = 0;
+    sizeWidth = 0;
     uint16_t tempSize = maxSize;
     while (tempSize > 0) {
         tempSize = tempSize >> 1;
@@ -294,3 +310,30 @@ uint16_t calculate_grouped_size(uint8_t *groupWidths, uint16_t numCollected, uin
     }
 }
 
+
+uint16_t get_max_num_groups(const uint16_t targetBytes, const uint16_t numCollected, const uint16_t numFeatures, const uint16_t width) {
+    // Get the number of bits for the size value
+    uint16_t totalCount = numCollected * numFeatures;
+    
+    uint8_t countBits = 0;
+    while (totalCount > 0) {
+        totalCount = totalCount >> 1;
+        countBits++;
+    }
+
+    uint16_t dataBytes = get_num_bytes(totalCount * width);    
+    uint16_t groupedDataBytes, totalBytes, shiftBytes;
+    
+    uint16_t numGroups = 15;
+    for (; numGroups > MAX_NUM_GROUPS; numGroups--) {
+        groupedDataBytes = dataBytes - numGroups;
+        shiftBytes = get_num_bytes(countBits * numGroups);
+        totalBytes = groupedDataBytes + shiftBytes + numGroups + 1;
+
+        if (targetBytes < totalBytes) {
+            return numGroups;
+        }
+    }
+
+    return MAX_NUM_GROUPS;
+}

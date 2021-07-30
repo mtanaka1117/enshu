@@ -46,8 +46,6 @@ int8_t get_range_shift(FixedPoint value, uint8_t currentPrecision, uint8_t newWi
 
     volatile int8_t shift = MAX_SHIFT;
     for (; shift >= MIN_SHIFT; shift--) {
-        //shift = i - shiftOffset;
-
         if (shift == prevShift) {
             continue;
         }
@@ -88,7 +86,7 @@ int8_t get_range_shift(FixedPoint value, uint8_t currentPrecision, uint8_t newWi
 
 
 void get_range_shifts_array(int8_t *result, FixedPoint *values, uint8_t currentPrecision, uint8_t newWidth, uint16_t numValues) {
-    volatile int8_t prevShift = 0;
+    volatile int8_t prevShift = MIN_SHIFT;
 
     uint16_t i;
     for (i = 0; i < numValues; i++) {
@@ -171,33 +169,12 @@ void create_union_find(struct ShiftGroup *unionFind, uint8_t *leftParents, uint8
     volatile int8_t score;
     volatile int8_t shiftDiff;
 
-//    volatile int8_t shift1;
-//    volatile int8_t shift2;
-//
-//    volatile uint16_t count1;
-//    volatile uint16_t count2;
-
     uint8_t groupIdx, nextIdx;
     for (groupIdx = 0; groupIdx < numGroups - 1; groupIdx++) {
         nextIdx = groupIdx + 1;
 
-//        shift1 = shifts[groupIdx];
-//        shift2 = shifts[nextIdx];
-//
-//        count1 = counts[groupIdx];
-//        count2 = counts[nextIdx];
-//
-//        shiftDiff = abs8(shift1 - shift2) << 1;
-//        score = (count1 + count2 + shiftDiff) * (shiftDiff > 0);
-
         shiftDiff = abs8(shifts[groupIdx] - shifts[nextIdx]) << 1;
         score = (counts[groupIdx] + counts[nextIdx] + shiftDiff) * (shiftDiff > 0);
-
-//        if (groupIdx == 30) {
-//            finalIdx = groupIdx + 1;
-//        } else if (groupIdx == 34) {
-//            finalIdx = groupIdx + 2;
-//        }
 
         finalIdx = numToMerge - 1;
         if ((groupIdx < numToMerge) || (score < scoreBuffer[finalIdx])) {

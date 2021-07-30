@@ -3,8 +3,8 @@ import math
 import numpy as np
 from typing import Tuple
 
-from adaptiveleak.utils.constants import PERIOD, BT_FRAME_SIZE, BIG_NUMBER
-from adaptiveleak.utils.encryption import AES_BLOCK_SIZE
+from adaptiveleak.utils.constants import PERIOD, BT_FRAME_SIZE, BIG_NUMBER, LENGTH_SIZE
+from adaptiveleak.utils.encryption import AES_BLOCK_SIZE, CHACHA_NONCE_LEN
 from adaptiveleak.utils.data_utils import calculate_bytes, truncate_to_block
 from adaptiveleak.utils.data_types import PolicyType, EncodingMode, CollectMode, EncryptionMode
 from adaptiveleak.utils.file_utils import iterate_dir, read_json_gz
@@ -12,7 +12,8 @@ from .energy_systems import EnergyUnit
 
 
 MARGIN = 1e-2
-NUM_PADDING_FRAMES = 3
+
+NUM_PADDING_FRAMES = 2
 
 
 def convert_rate_to_energy(collection_rate: float, width: int, encryption_mode: EncryptionMode, collect_mode: CollectMode, seq_length: int, num_features: int) -> float:
@@ -91,10 +92,19 @@ def get_group_target_bytes(width: int,
     for _ in range(NUM_PADDING_FRAMES):
         rounded_bytes = truncate_to_block(rounded_bytes, block_size=BT_FRAME_SIZE) - 1
 
+    # Subtract out the meta-data bytes
+    metadata_bytes = LENGTH_SIZE
+    if encryption_mode == EncryptionMode.STREAM:
+        metadata_bytes += CHACHA_NONCE_LEN
+    else:
+        metadata_bytes += AES_BLOCK_SIZE
+
+    data_bytes = rounded_bytes - metadata_bytes
+
     # Align with block encryption padding, as the block padding may put us into
     # the next communication frame.
     if encryption_mode == EncryptionMode.BLOCK:
-        rounded_bytes = truncate_to_block(rounded_bytes, block_size=AES_BLOCK_SIZE)
+        rounded_bytes = truncate_to_block(data_bytes, block_size=AES_BLOCK_SIZE) + metadata_bytes
 
     estimated_energy = energy_unit.get_energy(num_collected=num_collected,
                                               num_bytes=rounded_bytes,
@@ -102,17 +112,17 @@ def get_group_target_bytes(width: int,
 
     # Adjust the number of sent bytes until we reach a lower energy level
     while (estimated_energy > target_energy) and (rounded_bytes >= BT_FRAME_SIZE):
-        rounded_bytes -= BT_FRAME_SIZE
+        rounded_bytes = truncate_to_block(rounded_bytes, block_size=BT_FRAME_SIZE) - 1
 
         if encryption_mode == EncryptionMode.BLOCK:
-            rounded_bytes = truncate_to_block(rounded_bytes, block_size=AES_BLOCK_SIZE)
+            data_bytes = rounded_bytes - metadata_bytes
+            rounded_bytes = truncate_to_block(data_bytes, block_size=AES_BLOCK_SIZE) + metadata_bytes
 
         estimated_energy = energy_unit.get_energy(num_collected=num_collected,
                                                   num_bytes=rounded_bytes,
                                                   use_noise=False)
 
     return rounded_bytes
-
 
 
 def get_padded_collection_rate(dataset: str,

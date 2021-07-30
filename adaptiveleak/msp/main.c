@@ -147,7 +147,7 @@ int main(void) {
         #ifdef IS_STANDARD_ENCODED
         numEncodedBytes = encode_standard(outputBuffer, featureVectors, &collectedIndices, NUM_FEATURES, SEQ_LENGTH);
         #elif defined(IS_GROUP_ENCODED)
-        numEncodedBytes = encode_group(outputBuffer, featureVectors, &collectedIndices, count, NUM_FEATURES, SEQ_LENGTH, SIZE_BYTES, TARGET_BYTES, DEFAULT_PRECISION, MAX_COLLECTED, FEATURE_BUFFER, SHIFT_BUFFER, COUNT_BUFFER, 1);
+        numEncodedBytes = encode_group(outputBuffer, featureVectors, &collectedIndices, count, NUM_FEATURES, SEQ_LENGTH, TARGET_BYTES, DEFAULT_PRECISION, MAX_COLLECTED, FEATURE_BUFFER, SHIFT_BUFFER, COUNT_BUFFER, 1);
         #endif
 
         print_message(outputBuffer, numEncodedBytes);
