@@ -94,17 +94,13 @@ def get_group_target_bytes(width: int,
 
     # Subtract out the meta-data bytes (be conservative here)
     metadata_bytes = LENGTH_SIZE + max(CHACHA_NONCE_LEN, AES_BLOCK_SIZE)
-    #if encryption_mode == EncryptionMode.STREAM:
-    #    metadata_bytes += CHACHA_NONCE_LEN
-    #else:
-    #    metadata_bytes += AES_BLOCK_SIZE
 
     data_bytes = rounded_bytes - metadata_bytes
 
     # Align with block encryption padding, as the block padding may put us into
-    # the next communication frame. This is conservative to equalize all simulated
+    # the next communication frame. Stream ciphers wouldn't need this, but we
+    # use this conservative approach to equalize the simulated communication
     # with the hardware results
-    #if encryption_mode == EncryptionMode.BLOCK:
     rounded_bytes = truncate_to_block(data_bytes, block_size=AES_BLOCK_SIZE) + metadata_bytes
 
     estimated_energy = energy_unit.get_energy(num_collected=num_collected,
@@ -115,7 +111,6 @@ def get_group_target_bytes(width: int,
     while (estimated_energy > target_energy) and (rounded_bytes >= BT_FRAME_SIZE):
         rounded_bytes = truncate_to_block(rounded_bytes, block_size=BT_FRAME_SIZE) - 1
 
-        #if encryption_mode == EncryptionMode.BLOCK:
         data_bytes = rounded_bytes - metadata_bytes
         rounded_bytes = truncate_to_block(data_bytes, block_size=AES_BLOCK_SIZE) + metadata_bytes
 

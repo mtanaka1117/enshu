@@ -9,7 +9,7 @@ from typing import Tuple, List, Dict, Any, Optional
 
 
 from adaptiveleak.energy_systems import EnergyUnit, convert_rate_to_energy, get_group_target_bytes, get_padded_collection_rate
-from adaptiveleak.utils.constants import BITS_PER_BYTE, MIN_WIDTH, SMALL_NUMBER, MAX_WIDTH, SHIFT_BITS, MAX_SHIFT_GROUPS
+from adaptiveleak.utils.constants import BITS_PER_BYTE, MIN_WIDTH, SMALL_NUMBER, SHIFT_BITS, MAX_SHIFT_GROUPS
 from adaptiveleak.utils.constants import MIN_SHIFT_GROUPS, PERIOD, LENGTH_SIZE, BT_FRAME_SIZE, MAX_SHIFT_GROUPS_FACTOR
 from adaptiveleak.utils.data_utils import get_group_widths, get_num_groups, calculate_bytes, pad_to_length, sigmoid, truncate_to_block, round_to_block
 from adaptiveleak.utils.data_utils import prune_sequence, calculate_grouped_bytes, set_widths, select_range_shifts_array, num_bits_for_value, get_max_num_groups
@@ -210,9 +210,7 @@ class AdaptivePolicy(Policy):
                                                       num_features=num_features)
 
         # Set the maximum number of shift groups
-        target_features = int(self.collection_rate * seq_length) * num_features
-        num_groups = int(round(MAX_SHIFT_GROUPS_FACTOR * target_features))
-        self._max_num_groups = max(min(MAX_SHIFT_GROUPS, num_groups), MIN_SHIFT_GROUPS)
+        self._max_num_groups = MAX_SHIFT_GROUPS
 
         self._max_collected = max_collected
 
@@ -330,7 +328,6 @@ class AdaptivePolicy(Policy):
 
             # Cap the max number of groups at the predefined number
             max_num_groups = max(max_num_groups, self.max_num_groups)
-            #max_num_groups = self.max_num_groups
 
             # Compute the number of bytes needed for the shifting meta-data
             size_width = num_bits_for_value(len(collected_indices))
@@ -355,7 +352,7 @@ class AdaptivePolicy(Policy):
 
             flattened = measurements.T.reshape(-1)
             min_width = int(target_data_bits / (self.num_features * len(collected_indices)))
-            min_width = min(min_width, max(MAX_WIDTH, self.width))
+            min_width = min(min_width, self.width)
 
             group_sizes: List[int] = []
             merged_shifts: List[int] = []
@@ -409,7 +406,7 @@ class AdaptivePolicy(Policy):
             target_data_bytes = target_bytes - metadata_bytes
 
             # Set the group sizes
-            group_widths = set_widths(group_sizes, target_bytes=target_data_bytes, start_width=MIN_WIDTH)
+            group_widths = set_widths(group_sizes, target_bytes=target_data_bytes, start_width=MIN_WIDTH, max_width=self.width)
 
             encoded = encode_stable_measurements(measurements=measurements,
                                                  collected_indices=collected_indices,

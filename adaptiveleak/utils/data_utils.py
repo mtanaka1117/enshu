@@ -5,7 +5,7 @@ from functools import partial
 from Cryptodome.Random import get_random_bytes
 from typing import List, Union, Tuple, Iterable
 
-from adaptiveleak.utils.constants import BITS_PER_BYTE, BIG_NUMBER, MIN_WIDTH, SMALL_NUMBER, MAX_WIDTH, LENGTH_SIZE
+from adaptiveleak.utils.constants import BITS_PER_BYTE, BIG_NUMBER, MIN_WIDTH, SMALL_NUMBER, LENGTH_SIZE
 from adaptiveleak.utils.encryption import AES_BLOCK_SIZE, CHACHA_NONCE_LEN
 from adaptiveleak.utils.data_types import EncryptionMode
 
@@ -433,7 +433,7 @@ def get_max_num_groups(target_bytes: int, num_collected: int, num_features: int,
     data_bytes = int(math.ceil((total_count * width) / BITS_PER_BYTE))
 
     for num_groups in range(16):
-        grouped_data_bytes = data_bytes - num_groups
+        grouped_data_bytes = data_bytes + num_groups   # Add padding for each group
         shift_bytes = int(math.ceil((count_bits * num_groups) / BITS_PER_BYTE))
         total_bytes = grouped_data_bytes + shift_bytes + num_groups + 1
 
@@ -443,7 +443,7 @@ def get_max_num_groups(target_bytes: int, num_collected: int, num_features: int,
     return min(num_groups, 15)
 
 
-def set_widths(group_sizes: List[int], target_bytes: int, start_width: int) -> List[int]:
+def set_widths(group_sizes: List[int], target_bytes: int, start_width: int, max_width: int) -> List[int]:
     """
     Sets the group widths in a round-robin fashion
     to saturate the target bytes.
@@ -452,6 +452,7 @@ def set_widths(group_sizes: List[int], target_bytes: int, start_width: int) -> L
         group_sizes: The size (in number of features) of each group
         target_bytes: The target number of data bytes
         start_width: The starting number of bits per feature
+        max_width: The maximum width of a single group
     Returns:
         A list of the bit widths for each group
     """
@@ -463,10 +464,10 @@ def set_widths(group_sizes: List[int], target_bytes: int, start_width: int) -> L
     #even_width = int(target_bits / num_values)
     consumed_bytes = sum((int(math.ceil((start_width * size) / BITS_PER_BYTE)) for size in group_sizes))
 
-    start_widths = min(start_width, MAX_WIDTH)
+    start_widths = min(start_width, max_width)
     widths: List[int] = [start_width for _ in range(num_groups)]
 
-    if start_width >= MAX_WIDTH:
+    if start_width >= max_width:
         return widths
 
     counter = 0
@@ -476,7 +477,7 @@ def set_widths(group_sizes: List[int], target_bytes: int, start_width: int) -> L
         has_improved = False
 
         for idx in range(len(group_sizes)):
-            if (widths[idx] == MAX_WIDTH):
+            if (widths[idx] == max_width):
                 continue
 
             # Increase this group's width by 1 bit
