@@ -41,7 +41,7 @@ DATASET_NAMES = {
     'epilepsy': 'Epilepsy',
     'uci_har': 'Activity',
     'tiselac': 'Tiselac',
-    'haptics': 'Haptics',
+    'haptics': 'Password',
     'eog': 'EOG',
     'trajectories': 'Characters',
     'mnist': 'MNIST'

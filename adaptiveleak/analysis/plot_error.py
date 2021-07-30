@@ -23,7 +23,7 @@ def plot(sim_results: Dict[str, Dict[float, float]], dataset_name: str, output_f
         agg_errors: List[float] = []
 
         policy_names = ['adaptive_heuristic', 'adaptive_deviation'] if is_group_comp else POLICIES
-        encoding_names = ['single_group', 'group_unshifted', 'padded', 'pruned', 'group'] if is_group_comp else ['standard', 'group']
+        encoding_names = ['single_group', 'group_unshifted', 'pruned', 'group'] if is_group_comp else ['standard', 'padded', 'group']
 
         for name in policy_names:
             encodings = encoding_names if name not in ('uniform', 'random') else ['standard']
@@ -42,6 +42,8 @@ def plot(sim_results: Dict[str, Dict[float, float]], dataset_name: str, output_f
                 energy_per_seq = list(sorted(model_results.keys()))
                 errors = [model_results[e] for e in energy_per_seq]
 
+                print('Num Budgets: {0}'.format(len(errors)))
+
                 ax.plot(energy_per_seq, errors, marker=MARKER, linewidth=LINE_WIDTH, markersize=MARKER_SIZE, label=to_label(policy_name), color=COLORS[policy_name])
 
                 avg = np.average(errors)
@@ -56,7 +58,7 @@ def plot(sim_results: Dict[str, Dict[float, float]], dataset_name: str, output_f
                     labels.append(policy_name)
 
         min_error = np.argmin(agg_errors)
-    
+
         print(' & '.join(labels))
         print(' & '.join((('{0:.5f}'.format(x) if i != min_error else '\\textbf{{{0:.5f}}}'.format(x)) for i, x in enumerate(agg_errors))))
 

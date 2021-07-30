@@ -386,6 +386,23 @@ class TestRangeShift(unittest.TestCase):
 
         self.assertEqual(recovered_list, [1.0, 2.0, -3.0, 4.0, -1.0, 3.0])
 
+    def test_range_arr_integers_2(self):
+        measurements = np.array([0, 76, 153, 229, 306, 382, 23, 11, 11, 11, 11, 0, 79, 159, 238, 318, 398, 415, 455])
+        old_width = 16
+        old_precision = 0
+        non_fractional = old_width - old_precision
+
+        new_width = 8
+        num_range_bits = 4
+
+        shifts = data_utils.select_range_shifts_array(measurements=measurements,
+                                                      old_width=old_width,
+                                                      old_precision=old_precision,
+                                                      new_width=new_width,
+                                                      num_range_bits=num_range_bits)
+        shifts_list = shifts.tolist()
+        print(shifts_list)
+
     def test_range_arr_mixed_one(self):
         measurements = np.array([1.75, 2.0, -3.5, 4.75, -1.0, 0.1875])
         old_width = 8

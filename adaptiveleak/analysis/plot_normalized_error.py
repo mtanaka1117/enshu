@@ -51,15 +51,15 @@ def plot(dataset_results: Dict[str, Dict[str, NormalizedError]], output_file: Op
         agg_errors: List[float] = []
 
         policy_names = ['adaptive_heuristic', 'adaptive_deviation'] if is_group_comp else POLICIES
-        encoding_names = ['single_group', 'group_unshifted', 'pruned', 'padded', 'group'] if is_group_comp else ['standard', 'group']
+        encoding_names = ['single_group', 'group_unshifted', 'pruned', 'group'] if is_group_comp else ['standard', 'padded', 'group']
 
-        width = 0.15
-        offset = -1 * width * 2.5
+        width = 0.1
+        offset = -1 * width * 3
 
         xs = np.arange(len(dataset_results) + 1)  # Include the 'All'
 
         # Print the label for the 'Overall' table
-        ax.text(5, 3 - 1.5 * (offset - width), 'Overall Medians', fontweight='bold', fontsize=LEGEND_FONT)
+        ax.text(6, 3 - 2.25 * (offset - width), 'Overall:', fontweight='bold', fontsize=LEGEND_FONT)
 
         for name in policy_names:
             encodings = encoding_names if name not in ('uniform', 'random') else ['standard']
@@ -95,7 +95,7 @@ def plot(dataset_results: Dict[str, Dict[str, NormalizedError]], output_file: Op
                     # Annotate the aggregate score
                     #x, y = xs[-1] + offset, aggregate
                     #ax.annotate('{0:.2f}'.format(aggregate), (x, y), (x - 0.1, y + 0.05))
-                    ax.text(5, 3 - 1.5 * offset, '{0}: {1:.2f}'.format(to_label(label_name), aggregate), fontsize=LEGEND_FONT)
+                    ax.text(6, 3 - 2.25 * offset, '{0}: {1:.2f}'.format(to_label(label_name), aggregate), fontsize=LEGEND_FONT)
 
                 offset += width
 

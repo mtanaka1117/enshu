@@ -15,7 +15,7 @@ from adaptiveleak.analysis.plot_utils import extract_results, iterate_policy_fol
 
 
 def get_policy_names(use_shifted: bool) -> Iterable[str]:
-    adaptive_encodings = ['group', 'group_unshifted', 'single_group'] if use_shifted else ['standard', 'group']
+    adaptive_encodings = ['group', 'group_unshifted', 'single_group'] if use_shifted else ['standard', 'padded', 'group']
     policies = ['adaptive_heuristic', 'adaptive_deviation'] if use_shifted else POLICIES
 
     for name in policies:

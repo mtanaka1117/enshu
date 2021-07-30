@@ -443,13 +443,14 @@ def get_max_num_groups(target_bytes: int, num_collected: int, num_features: int,
     return min(num_groups, 15)
 
 
-def set_widths(group_sizes: List[int], target_bytes: int, start_width: int, max_width: int) -> List[int]:
+def set_widths(group_sizes: List[int], is_all_zero: List[bool], target_bytes: int, start_width: int, max_width: int) -> List[int]:
     """
     Sets the group widths in a round-robin fashion
     to saturate the target bytes.
 
     Args:
         group_sizes: The size (in number of features) of each group
+        is_all_zero: Whether the group is all zero values (true) or not (false)
         target_bytes: The target number of data bytes
         start_width: The starting number of bits per feature
         max_width: The maximum width of a single group
@@ -479,6 +480,9 @@ def set_widths(group_sizes: List[int], target_bytes: int, start_width: int, max_
         for idx in range(len(group_sizes)):
             if (widths[idx] == max_width):
                 continue
+            elif (is_all_zero[idx]):
+                widths[idx] = 2
+                continue  
 
             # Increase this group's width by 1 bit
             widths[idx] += 1

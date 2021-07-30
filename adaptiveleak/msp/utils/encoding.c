@@ -326,7 +326,7 @@ uint16_t get_max_num_groups(const uint16_t targetBytes, const uint16_t numCollec
     
     uint16_t numGroups = 15;
     for (; numGroups > MAX_NUM_GROUPS; numGroups--) {
-        groupedDataBytes = dataBytes - numGroups;
+        groupedDataBytes = dataBytes + numGroups;
         shiftBytes = get_num_bytes(countBits * numGroups);
         totalBytes = groupedDataBytes + shiftBytes + numGroups + 1;
 

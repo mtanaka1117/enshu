@@ -405,8 +405,18 @@ class AdaptivePolicy(Policy):
 
             target_data_bytes = target_bytes - metadata_bytes
 
+            # Check whether any group is all zero
+            flattened = measurements.T.reshape(-1)
+            group_idx = 0
+
+            groups_all_zero: List[bool] = []
+            for group_size in group_sizes:
+                is_all_zero = np.all(np.isclose(flattened[group_idx:group_idx+group_size], 0.0))
+                groups_all_zero.append(is_all_zero)
+                group_idx += group_size
+
             # Set the group sizes
-            group_widths = set_widths(group_sizes, target_bytes=target_data_bytes, start_width=MIN_WIDTH, max_width=self.width)
+            group_widths = set_widths(group_sizes, is_all_zero=groups_all_zero, target_bytes=target_data_bytes, start_width=MIN_WIDTH, max_width=self.width)
 
             encoded = encode_stable_measurements(measurements=measurements,
                                                  collected_indices=collected_indices,

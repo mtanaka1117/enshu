@@ -6,7 +6,7 @@ from argparse import ArgumentParser
 
 from adaptiveleak.policies import make_policy, Policy, UniformPolicy, AdaptiveHeuristic, AdaptiveDeviation, AdaptivePolicy, SkipRNN
 from adaptiveleak.utils.data_utils import to_fixed_point, array_to_fp, calculate_bytes, num_bits_for_value
-from adaptiveleak.utils.constants import BITS_PER_BYTE, MAX_SHIFT_GROUPS, MIN_WIDTH
+from adaptiveleak.utils.constants import BITS_PER_BYTE, MAX_SHIFT_GROUPS, MIN_WIDTH, ENCODING, POLICIES, LENGTH_SIZE
 from adaptiveleak.utils.encryption import AES_BLOCK_SIZE, CHACHA_NONCE_LEN
 from adaptiveleak.utils.data_types import EncodingMode, EncryptionMode, CollectMode
 
@@ -85,10 +85,15 @@ def write_policy(policy: Policy, is_msp: bool):
         fout.write('#define NUM_FEATURES {0}\n'.format(policy.num_features))
         fout.write('#define DEFAULT_WIDTH {0}\n'.format(policy.width))
         fout.write('#define DEFAULT_PRECISION {0}\n'.format(policy.precision))
-        fout.write('#define TARGET_BYTES {0}\n\n'.format(target_bytes))
 
-        if (not isinstance(policy, AdaptivePolicy)) or (policy.encoding_mode == EncodingMode.STANDARD):
+        fout.write('#define TARGET_BYTES {0}\n'.format(target_bytes))
+        fout.write('#define TARGET_DATA_BYTES {0}\n\n'.format(target_bytes - AES_BLOCK_SIZE - LENGTH_SIZE))
+
+        if (not isinstance(policy, AdaptivePolicy)) or (policy.encoding_mode in (EncodingMode.STANDARD, EncodingMode.PADDED)):
             fout.write('#define IS_STANDARD_ENCODED\n')
+
+            if policy.encoding_mode == EncodingMode.PADDED:
+                fout.write('#define IS_PADDED\n')
         else:
             fout.write('#define IS_GROUP_ENCODED\n')
 
@@ -113,7 +118,6 @@ def write_policy(policy: Policy, is_msp: bool):
             max_collected = int(max_features / policy.num_features)
 
             fout.write('#define MAX_COLLECTED {0}\n'.format(max_collected))
-            fout.write('#define SIZE_BYTES {0}\n\n'.format(size_bytes))
 
         # Add policy-specific information
         if isinstance(policy, UniformPolicy):
@@ -197,10 +201,10 @@ def write_policy(policy: Policy, is_msp: bool):
 
 if __name__ == '__main__':
     parser = ArgumentParser()
-    parser.add_argument('--policy', type=str, required=True)
+    parser.add_argument('--policy', type=str, required=True, choices=POLICIES)
     parser.add_argument('--dataset', type=str, required=True)
     parser.add_argument('--collection-rate', type=float, required=True)
-    parser.add_argument('--encoding', type=str, default='standard')
+    parser.add_argument('--encoding', type=str, required=True, choices=ENCODING)
     parser.add_argument('--is-msp', action='store_true')
     args = parser.parse_args()
 

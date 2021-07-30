@@ -30,7 +30,7 @@ def get_attack_results(date: str, dataset: str) -> Dict[str, AttackResult]:
     result: Dict[str, AttackResult] = dict()
     
     for policy_name, policy_results in sim_results.items():
-        if (len(policy_results) == 0) or any((b not in policy_results) for b in energy_budgets) or any(isinstance(policy_results[b], float) for b in energy_budgets):
+        if (len(policy_results) == 0) or any(isinstance(policy_results[b], float) for b in energy_budgets):
             continue
 
         accuracy: List[float] = []
@@ -55,7 +55,7 @@ def plot(dataset_results: Dict[str, Dict[str, AttackResult]], output_file: Optio
         agg_errors: List[float] = []
 
         policy_names = ['adaptive_heuristic', 'adaptive_deviation'] if is_group_comp else POLICIES
-        encoding_names = ['single_group', 'group_unshifted', 'pruned', 'padded', 'group'] if is_group_comp else ['standard', 'group']
+        encoding_names = ['single_group', 'group_unshifted', 'pruned', 'group'] if is_group_comp else ['standard', 'padded', 'group']
 
         width = 0.15
         offset = -1 * width * 2.5
@@ -78,6 +78,7 @@ def plot(dataset_results: Dict[str, Dict[str, AttackResult]], output_file: Optio
 
                 for dataset, policy_results in sorted(dataset_results.items()):
                     if (policy_name not in policy_results):
+                        print('{0}: {1}'.format(dataset, policy_name))
                         continue
 
                     median_errors.append(policy_results[policy_name].median)

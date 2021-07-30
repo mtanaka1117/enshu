@@ -79,4 +79,4 @@ if __name__ == '__main__':
 
         fout.write('static FixedPoint DATASET[{0}] = {1};\n'.format(len(fixed_point), data_string))
 
-        fout.write('#endif')
+        fout.write('#endif\n')

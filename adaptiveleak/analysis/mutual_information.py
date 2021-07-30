@@ -20,7 +20,7 @@ def plot(information_results: DefaultDict[str, Dict[float, float]], dataset: str
         policy_values: List[float] = []
 
         for name in POLICIES:
-            encodings = ['standard', 'group'] if name not in ('uniform', 'random') else ['standard']
+            encodings = ['standard', 'padded', 'group'] if name not in ('uniform', 'random') else ['standard']
 
             for encoding in encodings:
 
@@ -70,15 +70,13 @@ if __name__ == '__main__':
         for sim_file in iterate_dir(folder, pattern='.*json.gz'):
             model = read_json_gz(sim_file)
 
-            if model['policy']['encoding_mode'].lower() in ('single_group', 'group_unshifted', 'padded', 'pruned'):
+            if model['policy']['encoding_mode'].lower() in ('single_group', 'group_unshifted', 'pruned'):
                 continue
 
             name = '{0}_{1}'.format(model['policy']['policy_name'].lower(), model['policy']['encoding_mode'].lower())
             energy_per_seq = model['policy']['energy_per_seq']
 
             mutual_information = model['mutual_information']['norm_mutual_information']
-
-            print(model['mutual_information'])
 
             information_results[name][energy_per_seq] = mutual_information
 
