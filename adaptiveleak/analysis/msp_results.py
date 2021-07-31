@@ -112,6 +112,10 @@ if __name__ == '__main__':
 
             for trial in range(args.num_trials):
                 error_log_path = os.path.join(budget_folder, '{0}_{1}_trial{2}.json.gz'.format(policy_name.replace('padded', 'standard'), collection_rate, trial))
+
+                if not os.path.exists(error_log_path):
+                    continue
+
                 error_log = read_json_gz(error_log_path)
                 maes = error_log['maes']
                 num_bytes = error_log['num_bytes']
@@ -120,10 +124,11 @@ if __name__ == '__main__':
                 bytes_list.extend(num_bytes)
                 num_collected += error_log['recv_count']
 
-            results[policy_name][collection_rate] = Summary(mae=mae_list,
-                                                            energy=energy_list,
-                                                            num_collected=num_collected,
-                                                            num_bytes=bytes_list)
+            if len(mae_list) > 0:
+                results[policy_name][collection_rate] = Summary(mae=mae_list,
+                                                                energy=energy_list,
+                                                                num_collected=num_collected,
+                                                                num_bytes=bytes_list)
 
         # Remove any empty results
         if len(results[policy_name]) == 0:

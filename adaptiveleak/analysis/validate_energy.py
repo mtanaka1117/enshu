@@ -41,7 +41,7 @@ def simulate_policy(policy_name: str, inputs: np.ndarray, collection_rate: float
                                  num_features=inputs.shape[2],
                                  dataset=dataset_name,
                                  collection_rate=collection_rate,
-                                 encryption_mode='stream',
+                                 encryption_mode='block',
                                  collect_mode='tiny',
                                  encoding=encoding_mode,
                                  should_compress=False)
@@ -173,22 +173,18 @@ if __name__ == '__main__':
     parser = ArgumentParser()
     parser.add_argument('--policies', type=str, nargs='+', required=True)
     parser.add_argument('--dataset', type=str, required=True)
+    parser.add_argument('--num-seq', type=int, required=True)
     parser.add_argument('--output-file', type=str)
     args = parser.parse_args()
 
-    e2e_base = os.path.join('..', 'traces', 'end_to_end', args.dataset)
-    comp_base = os.path.join('..', 'traces', 'end_to_end_no_bt', args.dataset)
-
-    # Read the experimental parameters
-    setup = read_json(os.path.join(e2e_base, 'setup.json'))
-    num_seq = setup['num_sequences']
-    num_seconds = setup['time']
-    collection_rate = setup['collection_rate']
+    e2e_base = os.path.join('..', 'device', 'results', args.dataset)
+    comp_base = os.path.join('..', 'traces', 'e2e_no_bt', args.dataset)
+    num_seq = args.num_seq
 
     # Get the trace results
     trace_energy: Dict[str, float] = dict()
     for policy_name in args.policies:
-        e2e_folder = os.path.join(e2e_base, policy_name)
+        e2e_folder = os.path.join(e2e_base, policy_name, '100')
         comp_folder = os.path.join(comp_base, policy_name)
         trace_energy[policy_name] = get_e2e_energy(e2e_folder=e2e_folder, comp_folder=comp_folder)
 
@@ -201,7 +197,7 @@ if __name__ == '__main__':
     for policy_name in args.policies:
         simulated_energy[policy_name] = simulate_policy(policy_name=policy_name,
                                                         inputs=inputs,
-                                                        collection_rate=collection_rate,
+                                                        collection_rate=1.0,
                                                         dataset_name=args.dataset)
 
     # Plot the results

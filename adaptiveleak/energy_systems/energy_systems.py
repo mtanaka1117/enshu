@@ -10,7 +10,7 @@ from adaptiveleak.utils.data_types import PolicyType, EncodingMode, CollectMode,
 
 GROUP_FACTOR = 4
 UNIFORM_FACTOR = 0.5
-BASELINE_FACTOR = 0.55
+BASELINE_FACTOR = 0.45
 
 
 class BluetoothEnergy:

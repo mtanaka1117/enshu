@@ -12,8 +12,7 @@ from adaptiveleak.utils.file_utils import save_json, iterate_dir, read_json
 TraceRecord = namedtuple('TraceRecord', ['current', 'voltage', 'energy'])
 EnergyRange = namedtuple('EnergyRange', ['start', 'end', 'energy'])
 
-POWER_THRESHOLD = 1  # in mW
-PERCENTILE = 15
+POWER_THRESHOLD = 0.3  # in mW
 
 
 def read_trace_file(path: str) -> OrderedDict:
@@ -47,7 +46,8 @@ def get_operation_energy(energy_readings: OrderedDict, active_power: float, num_
     start_time: Optional[str] = None
     end_time: Optional[str] = None
 
-    power_threshold = 1.05 * active_power
+    #power_threshold = 1.05 * active_power
+    power_threshold = POWER_THRESHOLD
 
     energy_list: List[float] = []
     ranges: List[Tuple[str, str]] = []
@@ -93,10 +93,7 @@ def get_comm_energy(energy_readings: OrderedDict, comm_ranges: List[EnergyRange]
         start_time = int(comm_range.start)
         end_time = int(comm_range.end)
 
-        #comm_time = (end_time - start_time) / 1e9
         comm_energy = comm_range.energy
-
-        #comm_time_list.append(comm_time)
         comm_energy_list.append(comm_energy)
 
     max_time = max(map(int, energy_readings.keys()))
@@ -111,9 +108,6 @@ def get_comm_energy(energy_readings: OrderedDict, comm_ranges: List[EnergyRange]
 def get_active_power(energy_readings: OrderedDict) -> float:
     power = [r.current * r.voltage for r in energy_readings.values()]
     return min(filter(lambda p: p > 0, power))
-
-    #baseline = np.percentile(power, PERCENTILE)
-    #return baseline
 
 
 def plot(energy_readings: OrderedDict, comm_ranges: List[EnergyRange], output_path: str):
@@ -152,7 +146,6 @@ if __name__ == '__main__':
 
     # Hold energy values
     comm_energy_list: List[float] = []
-    #comm_time_list: List[float] = []
     baseline_power_list: List[float] = []
     active_power_list: List[float] = []
 
@@ -171,7 +164,6 @@ if __name__ == '__main__':
 
         # Log the energy values for operations and communication
         comm_energy_list.extend(comm_energy)
-        #comm_time_list.extend(comm_time)
         baseline_power_list.append(baseline_power)
         active_power_list.append(active_power)
 
