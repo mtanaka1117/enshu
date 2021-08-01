@@ -481,7 +481,7 @@ def set_widths(group_sizes: List[int], is_all_zero: List[bool], target_bytes: in
             if (widths[idx] == max_width):
                 continue
             elif (is_all_zero[idx]):
-                widths[idx] = 2
+                widths[idx] = MIN_WIDTH
                 continue  
 
             # Increase this group's width by 1 bit
