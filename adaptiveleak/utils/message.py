@@ -5,7 +5,7 @@ import bz2
 from functools import reduce, partial
 from typing import List, Tuple
 
-from adaptiveleak.utils.constants import SHIFT_BITS, BITS_PER_BYTE, SMALL_NUMBER, MAX_SHIFT_GROUPS
+from adaptiveleak.utils.constants import SHIFT_BITS, BITS_PER_BYTE, SMALL_NUMBER, MAX_SHIFT_GROUPS, MIN_WIDTH
 from adaptiveleak.utils.data_utils import array_to_fp, array_to_float, pack, unpack, select_range_shift, to_fixed_point, to_float, get_signs, num_bits_for_value
 from adaptiveleak.utils.data_utils import run_length_encode, run_length_decode, integer_part, fractional_part, apply_signs, select_range_shifts_array
 from adaptiveleak.utils.data_utils import fixed_point_integer_part, fixed_point_frac_part, balance_group_size, array_to_fp_shifted, array_to_float_shifted, set_widths
@@ -225,7 +225,8 @@ def encode_stable_measurements(measurements: np.ndarray,
     encoded_shifts = encode_shifts(shifts=shifts_to_encode,
                                    reps=group_sizes,
                                    widths=widths,
-                                   num_shift_bits=SHIFT_BITS)
+                                   num_shift_bits=SHIFT_BITS,
+                                   min_width=MIN_WIDTH)
 
     # Encode each group of features
     encoded_groups: List[bytes] = []
@@ -280,7 +281,7 @@ def decode_stable_measurements(encoded: bytes, seq_length: int, num_features: in
     encoded = encoded[num_mask_bytes:]
 
     # Retrieve the shifts and run-length decode
-    shifts, widths, reps, shift_bytes = decode_shifts(encoded=encoded, num_shift_bits=SHIFT_BITS)
+    shifts, widths, reps, shift_bytes = decode_shifts(encoded=encoded, num_shift_bits=SHIFT_BITS, min_width=MIN_WIDTH)
 
     # Remove the shift offset
     shift_offset = (1 << (SHIFT_BITS - 1))
@@ -319,7 +320,7 @@ def decode_stable_measurements(encoded: bytes, seq_length: int, num_features: in
     return recovered_features, collected_indices, widths
 
 
-def encode_shifts(shifts: List[int], reps: List[int], widths: List[int], num_shift_bits: int) -> bytes:
+def encode_shifts(shifts: List[int], reps: List[int], widths: List[int], num_shift_bits: int, min_width: int) -> bytes:
     """
     Encodes the given run-length encoded shifts into a bit string.
 
@@ -328,6 +329,7 @@ def encode_shifts(shifts: List[int], reps: List[int], widths: List[int], num_shi
         reps: A list of [K] repetitions
         widths: A list of [K] bit widths
         num_shift_bits: The number of bits per shift value
+        min_width: The minimum bit width
     Returns:
         The shifts and reps encoded as a byte string
     """
@@ -341,7 +343,7 @@ def encode_shifts(shifts: List[int], reps: List[int], widths: List[int], num_shi
     # Encode the shift values
     group_data: List[int] = []
     for width, shift in zip(widths, shifts):
-        packed_data = ((width - 1) & width_mask) << num_shift_bits
+        packed_data = ((width - min_width) & width_mask) << num_shift_bits
         packed_data |= (shift & shift_mask)
 
         group_data.append(packed_data)
@@ -361,13 +363,15 @@ def encode_shifts(shifts: List[int], reps: List[int], widths: List[int], num_shi
     return encoded_header + encoded_reps + encoded_groups
 
 
-def decode_shifts(encoded: bytes, num_shift_bits: int) -> Tuple[List[int], List[int], List[int], int]:
+def decode_shifts(encoded: bytes, num_shift_bits: int, min_width: int) -> Tuple[List[int], List[int], List[int], int]:
     """
     Decodes the shifts into a list of shift values
     and repetitions.
 
     Args:
         encoded: The encoded shifts byte string (output of encode_shifts())
+        num_shift_bits: The number of bits to use for shifts
+        min_width: The minimum bit-width of each feature value
     Returns:
         A tuple with four elements.
             (1) The shift values
@@ -402,7 +406,7 @@ def decode_shifts(encoded: bytes, num_shift_bits: int) -> Tuple[List[int], List[
         width = (packed_data >> num_shift_bits) & width_mask
     
         shifts.append(shift)
-        widths.append(width + 1)
+        widths.append(width + min_width)
 
     total_bytes = 1 + num_reps_bytes + num_shifts
 

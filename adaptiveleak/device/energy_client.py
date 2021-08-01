@@ -14,6 +14,8 @@ BLE_HANDLE = 18
 HCI_DEVICE = 'hci0'
 SLEEP = 2
 
+sizes = [20, 40, 80, 120, 160, 200, 240, 280, 320, 360, 400, 440, 480, 520, 560, 600, 640, 680, 33, 479, 675, 886, 970]
+
 
 def execute_client(num_bytes: int, num_trials: int):
     """
@@ -24,6 +26,7 @@ def execute_client(num_bytes: int, num_trials: int):
         num_bytes: The number of bytes to receive
     """
     assert num_bytes >= 1, 'Must provide a positive number of bytes'
+    byte_index = sizes.index(num_bytes)
 
     # Initialize the device manager
     device_manager = BLEManager(mac_addr=MAC_ADDRESS, handle=BLE_HANDLE, hci_device=HCI_DEVICE)
@@ -45,7 +48,9 @@ def execute_client(num_bytes: int, num_trials: int):
     for _ in range(num_trials):
         try:
             device_manager.start()
-            response = device_manager.query(value=b'\xab')
+
+            size_index = (byte_index + 10).to_bytes(1, 'little')
+            response = device_manager.query(value=size_index)
             #device_manager.send(value=b'\xab')
 
             #data = num_bytes.to_bytes(2, 'big')
