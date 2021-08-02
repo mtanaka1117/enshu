@@ -3,7 +3,7 @@ import os
 from argparse import ArgumentParser
 from collections import defaultdict, namedtuple
 from sklearn.ensemble import AdaBoostClassifier
-from sklearn.model_selection import KFold
+from sklearn.model_selection import StratifiedKFold
 from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score, ndcg_score, top_k_accuracy_score, dcg_score, confusion_matrix
 from typing import Any, Dict, Tuple, List, DefaultDict
 
@@ -151,12 +151,11 @@ def fit_attack_model(message_sizes: np.array, labels: np.array, window_size: int
     test_results = AttackResultList()
     most_freq_results = AttackResultList()
 
-    kf = KFold(n_splits=5, random_state=rand, shuffle=True)
+    kf = StratifiedKFold(n_splits=5, random_state=rand, shuffle=True)
     num_train_samples = int(0.8 * num_samples)
     num_test_samples = num_samples - num_train_samples
 
-
-    for train_idx, test_idx in kf.split(message_sizes):
+    for train_idx, test_idx in kf.split(message_sizes, y=labels):
         # Create the input features based on the given train-test splits. This methodology
         # avoids a case where the training and testing sets have information from the same
         # (size, label) pair.
