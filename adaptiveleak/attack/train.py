@@ -10,6 +10,7 @@ from typing import Any, Dict, Tuple, List, DefaultDict
 from adaptiveleak.utils.analysis import geometric_mean
 from adaptiveleak.utils.constants import ENCODING, POLICIES
 from adaptiveleak.utils.file_utils import read_json_gz, save_json_gz, iterate_dir, make_dir
+from adaptiveleak.utils.loading import load_data
 
 
 AttackResult = namedtuple('AttackResult', ['accuracy', 'precision', 'recall', 'f1', 'ndcg', 'dcg', 'top2', 'confusion_mat'])
@@ -221,6 +222,9 @@ if __name__ == '__main__':
     save_folder = os.path.join(policy_folder, 'attack_models')
     make_dir(save_folder)
 
+    # Load the data
+    test_inputs, test_labels = load_data(args.dataset, fold='test')
+
     for path in iterate_dir(policy_folder, '.*json.gz'):
     
         print('===== STARTING {0} ====='.format(path))
@@ -230,8 +234,20 @@ if __name__ == '__main__':
         model_name = os.path.basename(path)
         model_name = model_name.split('.')[0]
 
-        attack_result = fit_attack_model(message_sizes=np.array(policy_result['num_bytes']),
-                                         labels=np.array(policy_result['labels']),
+        # Get the message sizes
+        message_sizes = policy_result['num_bytes']
+        message_labels = policy_result['labels']
+        
+        # Pad with the average message size when the budget expires
+        if len(message_labels) < len(test_labels):
+            avg_size = int(np.average(message_sizes))
+            
+            for i in range(len(message_labels), len(test_labels)):
+                message_sizes.append(avg_size)
+                message_labels.append(int(test_labels[i]))
+
+        attack_result = fit_attack_model(message_sizes=np.array(message_sizes),
+                                         labels=np.array(message_labels),
                                          window_size=args.window_size,
                                          num_samples=args.num_samples,
                                          name=model_name,
