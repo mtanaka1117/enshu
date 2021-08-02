@@ -168,7 +168,7 @@ def fit_attack_model(message_sizes: np.array, labels: np.array, window_size: int
         test_inputs, test_labels = create_dataset(message_sizes=message_sizes[test_idx],
                                                   labels=labels[test_idx],
                                                   window_size=window_size,
-                                                  num_samples=num_train_samples,
+                                                  num_samples=num_test_samples,
                                                   rand=rand)
 
         # Create the fit the model
