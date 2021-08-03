@@ -69,7 +69,7 @@ def run_test(byte_dist: Dict[int, List[int]], num_trials: int) -> Tuple[float, f
 
     # Compute the entropy of each distribution
     label_counts = np.bincount(labels).astype(float)
-    label_entropy = compute_entropy(counts)
+    label_entropy = compute_entropy(label_counts)
 
     num_bins = int(len(labels) / BIN_FACTOR)
     byte_hist, _ = np.histogram(byte_counts, bins=num_bins)
