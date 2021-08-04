@@ -191,6 +191,7 @@ if __name__ == '__main__':
     parser.add_argument('--policy', type=str, required=True, choices=['adaptive_heuristic', 'adaptive_deviation'])
     parser.add_argument('--collection-rates', type=float, nargs='+', required=True)
     parser.add_argument('--collect', type=str, required=True, choices=['tiny', 'low', 'med', 'high'])
+    parser.add_argument('--encryption', type=str, required=True, choices=['stream', 'block'])
     parser.add_argument('--batch-size', type=int, default=256)
     parser.add_argument('--batches-per-trial', type=int, default=3)
     parser.add_argument('--should-print', action='store_true')
@@ -210,7 +211,8 @@ if __name__ == '__main__':
     max_threshold = np.max(np.sum(np.abs(inputs), axis=-1)) + 1000.0
 
     # Load the parameter files
-    output_file = os.path.join('saved_models', args.dataset, 'thresholds.json.gz')
+    encryption = args.encryption
+    output_file = os.path.join('saved_models', args.dataset, 'thresholds_{0}.json.gz'.format(encryption))
     threshold_map = read_json_gz(output_file) if os.path.exists(output_file) else dict()
 
     policy_name = args.policy
@@ -240,7 +242,7 @@ if __name__ == '__main__':
                                      collection_rate=collection_rate,
                                      seq_length=seq_length,
                                      num_features=num_features,
-                                     encryption_mode='stream',
+                                     encryption_mode=encryption,
                                      collect_mode=collect_mode,
                                      encoding='standard',
                                      dataset=args.dataset,

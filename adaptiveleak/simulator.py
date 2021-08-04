@@ -14,7 +14,7 @@ from adaptiveleak.utils.file_utils import make_dir
 
 MAX_RETRIES = 10
 RETRY_SLEEP = 0.1
-TIMEOUT = 10
+TIMEOUT = 20
 
 SERVER_CMD_ALL = 'python server.py --dataset {0} --encryption {1} --policy {2} --encoding {3} --collect {4} --collection-rate {5} --output-folder {6} --port {7}'
 SERVER_CMD_SAMPLES = 'python server.py --dataset {0} --encryption {1} --policy {2} --encoding {3} --collect {4} --collection-rate {5} --output-folder {6} --port {7} --max-num-seq {8}'

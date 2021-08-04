@@ -1069,7 +1069,7 @@ def make_policy(name: str,
                              should_compress=should_compress)
     elif name.startswith('adaptive'):
         # Look up the threshold path
-        threshold_path = os.path.join(base, 'saved_models', dataset, 'thresholds.json.gz')
+        threshold_path = os.path.join(base, 'saved_models', dataset, 'thresholds_{0}.json.gz'.format(encryption_mode))
 
         did_find_threshold = False
         threshold_rate = collection_rate
@@ -1129,7 +1129,6 @@ def make_policy(name: str,
 
             sim_log = read_json_gz(standard_path)
             max_collected = max(sim_log['num_measurements'])
-
 
         if name == 'adaptive_heuristic':
             cls = AdaptiveHeuristic
