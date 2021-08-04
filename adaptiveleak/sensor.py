@@ -71,7 +71,8 @@ class Sensor:
                 key = self._aes_key if policy.encryption_mode == EncryptionMode.BLOCK else self._chacha_key
                 encrypted_message = encrypt(message=message, key=key, mode=policy.encryption_mode)
 
-                # Include the true number of collected measurements for proper energy logging
+                # Include the true number of collected measurements for proper energy logging. This is NOT
+                # something we send in a real scenario (it would defeat the whole purpose of the defense).
                 true_num_collected = policy_result.num_collected.to_bytes(LENGTH_SIZE, byteorder=LENGTH_ORDER)
 
                 # Include the message length to the front (2 bytes)

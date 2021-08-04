@@ -14,7 +14,7 @@ from adaptiveleak.analysis.plot_utils import PLOT_SIZE, AXIS_FONT, LEGEND_FONT, 
 from adaptiveleak.analysis.plot_utils import extract_results, iterate_policy_folders, dataset_label
 
 
-AttackResult = namedtuple('AttackResult', ['median', 'first', 'third', 'raw'])
+AttackResult = namedtuple('AttackResult', ['median', 'first', 'third', 'raw', 'minimum', 'maximum'])
 
 
 def get_attack_results(date: str, dataset: str) -> Dict[str, AttackResult]:
@@ -40,12 +40,14 @@ def get_attack_results(date: str, dataset: str) -> Dict[str, AttackResult]:
         result[policy_name] = AttackResult(median=np.median(accuracy),
                                            first=np.percentile(accuracy, 25),
                                            third=np.percentile(accuracy, 75),
+                                           minimum=np.min(accuracy),
+                                           maximum=np.max(accuracy),
                                            raw=accuracy)
 
     return result
 
 
-def plot(dataset_results: Dict[str, Dict[str, AttackResult]], output_file: Optional[str], is_group_comp: bool):
+def plot(dataset_results: Dict[str, Dict[str, AttackResult]], output_file: Optional[str], is_group_comp: bool, include_skip_rnn: bool):
 
     with plt.style.context(PLOT_STYLE):
         fig, ax = plt.subplots(figsize=(PLOT_SIZE[0] * 1.5, PLOT_SIZE[1]))
@@ -57,15 +59,18 @@ def plot(dataset_results: Dict[str, Dict[str, AttackResult]], output_file: Optio
         policy_names = ['adaptive_heuristic', 'adaptive_deviation'] if is_group_comp else POLICIES
         encoding_names = ['single_group', 'group_unshifted', 'pruned', 'group'] if is_group_comp else ['standard', 'padded', 'group']
 
-        width = 0.15
-        offset = -1 * width * 2.5
+        width = 0.1
+        offset = -1 * width * 3.5
 
         xs = np.arange(len(dataset_results) + 1)  # Include the 'All'
 
         # Print the label for the 'Overall' table
-        ax.text(3.5, 80 - 25 * (offset - width), 'Overall Medians', fontweight='bold', fontsize=LEGEND_FONT)
+        ax.text(3.5, 75 - 35 * (offset - width), 'Overall Medians', fontweight='bold', fontsize=LEGEND_FONT)
 
         for name in policy_names:
+            if (not include_skip_rnn) and (name.startswith('skip_rnn')):
+                continue
+
             encodings = encoding_names if name not in ('uniform', 'random') else ['standard']
 
             for encoding in encodings:
@@ -98,7 +103,7 @@ def plot(dataset_results: Dict[str, Dict[str, AttackResult]], output_file: Optio
                     ax.errorbar(xs + offset, median_errors, yerr=[first_errors, third_errors], color='k', capsize=2, ls='none')
 
                     # Annotate the aggregate score
-                    ax.text(3.5, 80 - 25 * offset, '{0}: {1:.2f}%'.format(to_label(label_name), aggregate), fontsize=LEGEND_FONT)
+                    ax.text(3.5, 75 - 35 * offset, '{0}: {1:.2f}%'.format(to_label(label_name), aggregate), fontsize=LEGEND_FONT)
 
                 offset += width
 
@@ -129,6 +134,7 @@ if __name__ == '__main__':
     parser.add_argument('--datasets', type=str, nargs='+', required=True)
     parser.add_argument('--output-file', type=str)
     parser.add_argument('--is-group-comp', action='store_true')
+    parser.add_argument('--include-skip-rnn', action='store_true')
     args = parser.parse_args()
 
     print('Num Datasets: {0}'.format(len(args.datasets)))
@@ -139,4 +145,4 @@ if __name__ == '__main__':
     for dataset in args.datasets:
         dataset_errors[dataset_label(dataset)] = get_attack_results(date=args.date, dataset=dataset)
 
-    plot(dataset_errors, output_file=args.output_file, is_group_comp=args.is_group_comp)
+    plot(dataset_errors, output_file=args.output_file, is_group_comp=args.is_group_comp, include_skip_rnn=args.include_skip_rnn)

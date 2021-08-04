@@ -17,7 +17,7 @@ from adaptiveleak.analysis.plot_utils import extract_results, iterate_policy_fol
 NormalizedError = namedtuple('NormalizedError', ['median', 'first', 'third', 'raw'])
 
 
-def normalize_errors_for_dataset(date: str, dataset: str) -> Dict[str, NormalizedError]:
+def normalize_errors_for_dataset(date: str, dataset: str, include_skip_rnn: bool) -> Dict[str, NormalizedError]:
     extract_fn = partial(extract_results, field='mae', aggregate_mode=None)
     policy_folders = list(iterate_policy_folders([date], dataset=dataset))
 
@@ -30,6 +30,9 @@ def normalize_errors_for_dataset(date: str, dataset: str) -> Dict[str, Normalize
     
     for policy_name, policy_results in sim_results.items():
         if (len(policy_results) == 0) or any((b not in policy_results) for b in energy_budgets):
+            continue
+
+        if (not include_skip_rnn) and (policy_name.startswith('skip_rnn')):
             continue
 
         differences = [baseline_results[b] / (policy_results[b] + SMALL_NUMBER) for b in energy_budgets]
@@ -45,7 +48,6 @@ def plot(dataset_results: Dict[str, Dict[str, NormalizedError]], output_file: Op
 
     with plt.style.context(PLOT_STYLE):
         fig, ax = plt.subplots(figsize=(PLOT_SIZE[0] * 1.5, PLOT_SIZE[1]))
-        #fig.subplots_adjust(right=0.8)
 
         labels: List[str] = []
         agg_errors: List[float] = []
@@ -89,12 +91,11 @@ def plot(dataset_results: Dict[str, Dict[str, NormalizedError]], output_file: Op
                     third_errors.append(np.percentile(raw_errors, 75) - aggregate)
 
                     label_name = name if encoding == 'standard' else policy_name
+                    
                     ax.bar(xs + offset, median_errors, width=width, color=COLORS[policy_name], label=to_label(label_name))
                     ax.errorbar(xs + offset, median_errors, yerr=[first_errors, third_errors], color='k', capsize=2, ls='none')
 
                     # Annotate the aggregate score
-                    #x, y = xs[-1] + offset, aggregate
-                    #ax.annotate('{0:.2f}'.format(aggregate), (x, y), (x - 0.1, y + 0.05))
                     ax.text(6, 3 - 2.25 * offset, '{0}: {1:.2f}'.format(to_label(label_name), aggregate), fontsize=LEGEND_FONT)
 
                 offset += width
@@ -126,6 +127,7 @@ if __name__ == '__main__':
     parser.add_argument('--datasets', type=str, nargs='+', required=True)
     parser.add_argument('--output-file', type=str)
     parser.add_argument('--is-group-comp', action='store_true')
+    parser.add_argument('--include-skip-rnn', action='store_true')
     args = parser.parse_args()
 
     print('Num Datasets: {0}'.format(len(args.datasets)))
@@ -134,6 +136,6 @@ if __name__ == '__main__':
     dataset_errors: Dict[str, Dict[str, float]] = dict()
 
     for dataset in args.datasets:
-        dataset_errors[dataset_label(dataset)] = normalize_errors_for_dataset(date=args.date, dataset=dataset)
+        dataset_errors[dataset_label(dataset)] = normalize_errors_for_dataset(date=args.date, dataset=dataset, include_skip_rnn=args.include_skip_rnn)
 
     plot(dataset_errors, output_file=args.output_file, is_group_comp=args.is_group_comp)

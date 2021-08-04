@@ -67,8 +67,8 @@ def encrypt_aes128(message: bytes, key: bytes) -> bytes:
     iv = get_random_bytes(AES_BLOCK_SIZE)
 
     # Pad the message if needed
-    #if (len(message) % AES_BLOCK_SIZE) != 0:
-    message = pad(message, block_size=AES_BLOCK_SIZE, style='x923')
+    if (len(message) % AES_BLOCK_SIZE) != 0:
+        message = pad(message, block_size=AES_BLOCK_SIZE, style='x923')
 
     # Encrypt the message
     cipher = AES.new(key, AES.MODE_CBC, iv)
@@ -98,7 +98,9 @@ def decrypt_aes128(ciphertext: bytes, key: bytes) -> bytes:
     cipher = AES.new(key, AES.MODE_CBC, iv)
     message = cipher.decrypt(ciphertext)
 
-    return unpad(message, block_size=AES_BLOCK_SIZE, style='x923')
+    return message
+
+    #return unpad(message, block_size=AES_BLOCK_SIZE, style='x923')
 
 
 def encrypt_chacha20(message: bytes, key: bytes) -> bytes:

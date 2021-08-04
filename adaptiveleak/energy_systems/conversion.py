@@ -107,6 +107,8 @@ def get_group_target_bytes(width: int,
                                               num_bytes=rounded_bytes,
                                               use_noise=False)
 
+    print('Standard Num Bytes: {0}, Target Energy: {1}, Estimated Energy: {2}, Rounded Bytes: {3}'.format(standard_num_bytes, target_energy, estimated_energy, rounded_bytes))
+
     # Adjust the number of sent bytes until we reach a lower energy level
     while (estimated_energy > target_energy) and (rounded_bytes >= BT_FRAME_SIZE):
         rounded_bytes = truncate_to_block(rounded_bytes, block_size=BT_FRAME_SIZE) - 1
@@ -117,6 +119,8 @@ def get_group_target_bytes(width: int,
         estimated_energy = energy_unit.get_energy(num_collected=num_collected,
                                                   num_bytes=rounded_bytes,
                                                   use_noise=False)
+
+        print('Standard Num Bytes: {0}, Target Energy: {1}, Estimated Energy: {2}, Rounded Bytes: {3}'.format(standard_num_bytes, target_energy, estimated_energy, rounded_bytes))
 
     return rounded_bytes
 

@@ -48,20 +48,23 @@ def plot(sim_results: Dict[str, Dict[float, float]], dataset_name: str, output_f
                         f1.append(0.0)
                     else:
                         budget_accuracy = [x * 100 for x in model_results[budget]['test']['accuracy']]
-                        accuracy.append(geometric_mean(budget_accuracy))
+                        accuracy.append(np.median(budget_accuracy))
                         all_accuracy.extend(budget_accuracy)
 
-                        budget_f1 = model_results[budget]['test']['f1']
-                        f1.append(geometric_mean(budget_f1))
+                        budget_f1 = model_results[budget]['test']['top2']
+                        f1.append(np.median(budget_f1))
                         all_f1.extend(budget_f1)
 
                 ax1.plot(energy_budgets, accuracy, marker=MARKER, linewidth=LINE_WIDTH, markersize=MARKER_SIZE, label=to_label(policy_name), color=COLORS[policy_name])
                 ax2.plot(energy_budgets, f1, marker=MARKER, linewidth=LINE_WIDTH, markersize=MARKER_SIZE, label=to_label(policy_name), color=COLORS[policy_name])
 
                 if len(all_accuracy) > 0:
+                    if 'standard' in policy_name:
+                        print('{0}: {1}'.format(policy_name, np.argmax(all_accuracy)))
+
                     policy_names.append(to_label(policy_name))
-                    accuracy_values.append((geometric_mean(all_accuracy), np.max(all_accuracy)))
-                    f1_values.append((geometric_mean(all_f1), np.max(all_f1)))
+                    accuracy_values.append((np.median(all_accuracy), np.max(all_accuracy)))
+                    f1_values.append((np.median(all_f1), np.max(all_f1)))
 
         # Print our the results in a table format
         print(' & '.join(policy_names))

@@ -39,6 +39,12 @@ def filter_list(values: List[Any], idx_to_keep: Set[int]) -> List[Any]:
     return [x for i, x in enumerate(values) if i in idx_to_keep]
 
 
+def filter_outliers(values: List[float]) -> List[float]:
+    median = np.median(values)
+    mad = np.median([np.abs(x - median) for x in values])
+    return list(filter(lambda x: (x >= (median - 3 * mad)) and (x <= (median + 3 * mad)), values))
+
+
 def plot(policy_results: Dict[str, Dict[int, Summary]], collection_rates: List[int]):
 
     with plt.style.context(PLOT_STYLE):
@@ -146,8 +152,12 @@ if __name__ == '__main__':
             errors = filter_list(policy_result[rate].mae, idx_to_keep)
             num_bytes = filter_list(policy_result[rate].num_bytes, idx_to_keep)
 
-            med_energy = np.median(energy)
-            iqr_energy = np.percentile(energy, 75) - np.percentile(energy, 25)
+            energy = filter_outliers(energy)
+
+            #med_energy = np.median(energy)
+            #iqr_energy = np.percentile(energy, 75) - np.percentile(energy, 25)
+            avg_energy = np.average(energy)
+            std_energy = np.std(energy)
 
             avg_error = np.average(errors)
             std_error = np.std(errors)
@@ -155,7 +165,7 @@ if __name__ == '__main__':
             avg_bytes = np.average(num_bytes)
             std_bytes = np.std(num_bytes)
 
-            print('{0} & {1:.4f} ($\\pm {2:.4f}$) & {3:.2f} ({4:.2f}) & {5:.4f} ($\\pm {6:.4f}$)'.format(policy_name, avg_error, std_error, med_energy, iqr_energy, avg_bytes, std_bytes)) 
+            print('{0} & {1:.4f} ($\\pm {2:.4f}$) & {3:.2f} ({4:.2f}) & {5:.4f} ($\\pm {6:.4f}$)'.format(policy_name, avg_error, std_error, avg_energy, std_energy, avg_bytes, std_bytes)) 
 
         print()
 

@@ -14,7 +14,7 @@ from adaptiveleak.analysis.plot_utils import PLOT_SIZE, AXIS_FONT, LEGEND_FONT, 
 from adaptiveleak.analysis.plot_utils import extract_results, iterate_policy_folders, dataset_label
 
 
-def plot(sim_results: Dict[str, Dict[float, float]], dataset_name: str, output_file: Optional[str], is_group_comp: bool, metric: str):
+def plot(sim_results: Dict[str, Dict[float, float]], dataset_name: str, output_file: Optional[str], is_group_comp: bool, metric: str, include_skip_rnn: bool):
 
     with plt.style.context(PLOT_STYLE):
         fig, ax = plt.subplots(figsize=PLOT_SIZE)
@@ -23,6 +23,10 @@ def plot(sim_results: Dict[str, Dict[float, float]], dataset_name: str, output_f
         agg_errors: List[float] = []
 
         policy_names = ['adaptive_heuristic', 'adaptive_deviation'] if is_group_comp else POLICIES
+
+        if not include_skip_rnn:
+            policy_names = list(filter(lambda t: not t.startswith('skip_rnn'), policy_names))
+
         encoding_names = ['single_group', 'group_unshifted', 'pruned', 'group'] if is_group_comp else ['standard', 'padded', 'group']
 
         for name in policy_names:
@@ -81,10 +85,11 @@ if __name__ == '__main__':
     parser.add_argument('--metric', type=str, required=True)
     parser.add_argument('--output-file', type=str)
     parser.add_argument('--is-group-comp', action='store_true')
+    parser.add_argument('--include-skip-rnn', action='store_true')
     args = parser.parse_args()
 
     extract_fn = partial(extract_results, field=args.metric, aggregate_mode=None)
     policy_folders = list(iterate_policy_folders(args.dates, dataset=args.dataset))
 
     sim_results = {name: res for name, res in map(extract_fn, policy_folders)}
-    plot(sim_results, output_file=args.output_file, dataset_name=args.dataset, metric=args.metric, is_group_comp=args.is_group_comp)
+    plot(sim_results, output_file=args.output_file, dataset_name=args.dataset, metric=args.metric, is_group_comp=args.is_group_comp, include_skip_rnn=args.include_skip_rnn)
