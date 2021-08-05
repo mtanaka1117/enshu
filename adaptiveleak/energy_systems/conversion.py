@@ -14,6 +14,7 @@ from .energy_systems import EnergyUnit
 MARGIN = 1e-2
 
 NUM_PADDING_FRAMES = 2
+PADDING_FRAMES_FACTOR = 500
 
 
 def convert_rate_to_energy(collection_rate: float, width: int, encryption_mode: EncryptionMode, collect_mode: CollectMode, seq_length: int, num_features: int) -> float:
@@ -88,8 +89,10 @@ def get_group_target_bytes(width: int,
     # Estimate the energy required to send the number of bytes. We start by (conservatively)
     # going multiple blocks under the given limit.
     rounded_bytes = standard_num_bytes
+    num_padding_frames = NUM_PADDING_FRAMES + int(math.floor(rounded_bytes / PADDING_FRAMES_FACTOR))
+    #num_padding_frames = NUM_PADDING_FRAMES
 
-    for _ in range(NUM_PADDING_FRAMES):
+    for _ in range(num_padding_frames):
         rounded_bytes = truncate_to_block(rounded_bytes, block_size=BT_FRAME_SIZE) - 1
 
     # Subtract out the meta-data bytes (be conservative here)
@@ -106,8 +109,6 @@ def get_group_target_bytes(width: int,
     estimated_energy = energy_unit.get_energy(num_collected=num_collected,
                                               num_bytes=rounded_bytes,
                                               use_noise=False)
-
-    print('Standard Num Bytes: {0}, Target Energy: {1}, Estimated Energy: {2}, Rounded Bytes: {3}'.format(standard_num_bytes, target_energy, estimated_energy, rounded_bytes))
 
     # Adjust the number of sent bytes until we reach a lower energy level
     while (estimated_energy > target_energy) and (rounded_bytes >= BT_FRAME_SIZE):
