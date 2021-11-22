@@ -41,16 +41,14 @@ def expect_with_retry(comm_module: pexpect.spawn, expected: str):
 
 if __name__ == '__main__':
     parser = ArgumentParser()
-    parser.add_argument('--dataset', type=str, required=True)
-    parser.add_argument('--policy', type=str, required=True, choices=POLICIES)
-    parser.add_argument('--encoding', type=str, required=True, choices=ENCODING)
-    parser.add_argument('--encryption', type=str, required=True, choices=ENCRYPTION)
-    parser.add_argument('--collect', type=str, required=True, choices=COLLECTION)
-    parser.add_argument('--collection-rate', type=float, required=True, nargs='+')
-    parser.add_argument('--should-compress', action='store_true')
-    parser.add_argument('--max-num-samples', type=int)
-    parser.add_argument('--should-print', action='store_true')
-    parser.add_argument('--should-ignore-budget', action='store_true')
+    parser.add_argument('--dataset', type=str, required=True, help='Name of the dataset.')
+    parser.add_argument('--policy', type=str, required=True, choices=POLICIES, help='Name of the policy.')
+    parser.add_argument('--encoding', type=str, required=True, choices=ENCODING, help='Name of the encoding strategy.')
+    parser.add_argument('--encryption', type=str, required=True, choices=ENCRYPTION, help='Name of the encryption type.')
+    parser.add_argument('--collection-rate', type=float, required=True, nargs='+', help='The fraction of elements used to set the budget. Either a single element or [min, max, step].')
+    parser.add_argument('--max-num-samples', type=int, help='Maximum number of samples to execute. Useful for debugging.')
+    parser.add_argument('--should-print', action='store_true', help='Whether to print status information during execution.')
+    parser.add_argument('--should-ignore-budget', action='store_true', help='Whether to ignore the budget. Useful for Skip RNNs.')
     args = parser.parse_args()
 
     # Unpack the target collection rates
@@ -83,15 +81,11 @@ if __name__ == '__main__':
 
         # Set the commands
         if args.max_num_samples is None:
-            server_cmd = SERVER_CMD_ALL.format(args.dataset, args.encryption, args.policy, args.encoding, args.collect, collection_rate, output_folder, port)
-            sensor_cmd = SENSOR_CMD_ALL.format(args.dataset, args.encryption, args.policy, args.encoding, args.collect, collection_rate, port)
+            server_cmd = SERVER_CMD_ALL.format(args.dataset, args.encryption, args.policy, args.encoding, 'tiny', collection_rate, output_folder, port)
+            sensor_cmd = SENSOR_CMD_ALL.format(args.dataset, args.encryption, args.policy, args.encoding, 'tiny', collection_rate, port)
         else:
-            server_cmd = SERVER_CMD_SAMPLES.format(args.dataset, args.encryption, args.policy, args.encoding, args.collect, collection_rate, output_folder, port, args.max_num_samples)
-            sensor_cmd = SENSOR_CMD_SAMPLES.format(args.dataset, args.encryption, args.policy, args.encoding, args.collect, collection_rate, port, args.max_num_samples)
-
-        if args.should_compress:
-            server_cmd += ' --should-compress'
-            sensor_cmd += ' --should-compress'
+            server_cmd = SERVER_CMD_SAMPLES.format(args.dataset, args.encryption, args.policy, args.encoding, 'tiny', collection_rate, output_folder, port, args.max_num_samples)
+            sensor_cmd = SENSOR_CMD_SAMPLES.format(args.dataset, args.encryption, args.policy, args.encoding, 'tiny', collection_rate, port, args.max_num_samples)
 
         if args.should_ignore_budget:
             server_cmd += ' --should-ignore-budget'

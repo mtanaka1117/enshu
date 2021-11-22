@@ -2,3 +2,8 @@ scikit-learn
 more-itertools
 numpy
 scipy
+matplotlib
+pexpect
+requests
+h5py
+pycryptodomex

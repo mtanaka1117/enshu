@@ -11,7 +11,6 @@ from adaptiveleak.utils.constants import POLICIES, SMALL_NUMBER
 from adaptiveleak.utils.file_utils import read_json_gz, iterate_dir
 
 
-
 def plot(information_results: DefaultDict[str, Dict[float, float]], dataset: str, output_file: Optional[str]):
     with plt.style.context('seaborn-ticks'):
         fig, ax = plt.subplots(figsize=PLOT_SIZE)
@@ -44,9 +43,9 @@ def plot(information_results: DefaultDict[str, Dict[float, float]], dataset: str
 
         ax.legend(fontsize=LEGEND_FONT, loc='center')
 
-        ax.set_title('Empirical Mutual Information between Message Size and Label on the {0} Dataset'.format(dataset_label(dataset)), fontsize=TITLE_FONT)
+        ax.set_title('Mutual Info between Message Size and Label on the {0} Dataset'.format(dataset_label(dataset)), fontsize=AXIS_FONT)
         ax.set_xlabel('Energy Budget (mJ)', fontsize=AXIS_FONT)
-        ax.set_ylabel('Empirical Mutual Information (nits)', fontsize=AXIS_FONT)
+        ax.set_ylabel('Empirical Normalized Mutual Information', fontsize=AXIS_FONT)
 
         print(' & '.join(names))
         print(' & '.join(map(lambda t: '{0:.2f} ({1:.2f})'.format(t[0], t[1]), policy_values)))
@@ -59,14 +58,14 @@ def plot(information_results: DefaultDict[str, Dict[float, float]], dataset: str
 
 if __name__ == '__main__':
     parser = ArgumentParser()
-    parser.add_argument('--dates', type=str, required=True, nargs='+')
-    parser.add_argument('--dataset', type=str, required=True)
-    parser.add_argument('--output-file', type=str)
+    parser.add_argument('--folder', type=str, required=True, help='The folder containing the experiment logs.')
+    parser.add_argument('--dataset', type=str, required=True, help='The name of the dataset.')
+    parser.add_argument('--output-file', type=str, help='An optional path in which to save the output plot.')
     args = parser.parse_args()
 
     information_results: DefaultDict[str, Dict[float, float]] = defaultdict(dict)
 
-    for folder in iterate_policy_folders(args.dates, dataset=args.dataset):
+    for folder in iterate_policy_folders([args.folder], dataset=args.dataset):
         for sim_file in iterate_dir(folder, pattern='.*json.gz'):
             model = read_json_gz(sim_file)
 

@@ -16,8 +16,8 @@ THRESHOLD = 0.01
 
 if __name__ == '__main__':
     parser = ArgumentParser()
-    parser.add_argument('--dates', type=str, required=True, nargs='+')
-    parser.add_argument('--datasets', type=str, required=True, nargs='+')
+    parser.add_argument('--folder', type=str, required=True, help='The name of the experiment log directory.')
+    parser.add_argument('--datasets', type=str, required=True, nargs='+', help='The names of all datasets to analyze.')
     args = parser.parse_args()
 
     print('Num Datasets: {0}'.format(len(args.datasets)))
@@ -27,7 +27,7 @@ if __name__ == '__main__':
     budget_counts: DefaultDict[str, int] = defaultdict(int)
 
     for dataset in args.datasets:
-        for folder in iterate_policy_folders(args.dates, dataset=dataset):
+        for folder in iterate_policy_folders([args.folder], dataset=dataset):
             for sim_file in iterate_dir(folder, pattern='.*json.gz'):
                 model = read_json_gz(sim_file)
 
@@ -44,7 +44,6 @@ if __name__ == '__main__':
 
                 test_results[name] += int(upper_bound < THRESHOLD)
                 budget_counts[name] += 1
-
 
     policy_names: List[str] = []
     policy_values: List[Tuple[int, int]] = []

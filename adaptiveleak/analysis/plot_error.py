@@ -3,7 +3,6 @@ import os
 import numpy as np
 from argparse import ArgumentParser
 from functools import partial
-from scipy import stats
 from collections import namedtuple, OrderedDict
 from typing import Any, Dict, List, Optional
 
@@ -46,8 +45,6 @@ def plot(sim_results: Dict[str, Dict[float, float]], dataset_name: str, output_f
                 energy_per_seq = list(sorted(model_results.keys()))
                 errors = [model_results[e] for e in energy_per_seq]
 
-                print('Num Budgets: {0}'.format(len(errors)))
-
                 if name != 'random' and encoding != 'padded':
                     ax.plot(energy_per_seq, errors, marker=MARKER, linewidth=LINE_WIDTH, markersize=MARKER_SIZE, label=to_label(policy_name), color=COLORS[policy_name])
 
@@ -63,24 +60,8 @@ def plot(sim_results: Dict[str, Dict[float, float]], dataset_name: str, output_f
                     labels.append(policy_name)
 
         min_error = np.argmin(agg_errors)
-        #max_error = np.max(agg_errors)
-
-        #if not include_skip_rnn:
-        #    mult = get_multiplier(max_error)
-        #    agg_errors = [x * pow(10, mult) for x in agg_errors]
-
-        #    print('Multiplier: {0}'.format(-1 * mult))
-
         print(' & '.join(labels))
         print(' & '.join((('{0:.4f}'.format(x) if i != min_error else '\\textbf{{{0:.4f}}}'.format(x)) for i, x in enumerate(agg_errors))))
-        
-
-        # Increase the font size of the ticks
-        start, end = ax.get_ylim()
-        ax.set_yticks(np.arange(0.0, end, 0.01))
-
-        ax.set_xticklabels([round(x, 1) for x in ax.get_xticks()], fontsize=AXIS_FONT)
-        ax.set_yticklabels([round(y, 5) for y in ax.get_yticks()], fontsize=AXIS_FONT)
 
         ax.set_xlabel('Energy Budget (Average mJ / Seq)', fontsize=AXIS_FONT)
         ax.set_ylabel(metric.upper(), fontsize=AXIS_FONT)
@@ -89,24 +70,23 @@ def plot(sim_results: Dict[str, Dict[float, float]], dataset_name: str, output_f
         ax.legend(fontsize=LEGEND_FONT)
 
         if output_file is None:
-            #plt.show()
-            pass
+            plt.show()
         else:
             plt.savefig(output_file, bbox_inches='tight', transparent=True)
-        
+
 
 if __name__ == '__main__':
     parser = ArgumentParser()
-    parser.add_argument('--dates', type=str, nargs='+', required=True)
-    parser.add_argument('--dataset', type=str, required=True)
-    parser.add_argument('--metric', type=str, required=True)
-    parser.add_argument('--output-file', type=str)
-    parser.add_argument('--is-group-comp', action='store_true')
-    parser.add_argument('--include-skip-rnn', action='store_true')
+    parser.add_argument('--folder', type=str, required=True, help='The name of the folder holding the experiment logs.')
+    parser.add_argument('--dataset', type=str, required=True, help='The dataset name.')
+    parser.add_argument('--metric', type=str, choices=['mae', 'rmse'], required=True, help='The error metric to use.')
+    parser.add_argument('--output-file', type=str, help='An optional output file in which to save the plot.')
+    parser.add_argument('--is-group-comp', action='store_true', help='Whether to use variants of AGE [default: no].')
+    parser.add_argument('--include-skip-rnn', action='store_true', help='Whether to include Skip RNNs [default: no)].')
     args = parser.parse_args()
 
     extract_fn = partial(extract_results, field=args.metric, aggregate_mode=None)
-    policy_folders = list(iterate_policy_folders(args.dates, dataset=args.dataset))
+    policy_folders = list(iterate_policy_folders([args.folder], dataset=args.dataset))
 
     sim_results = {name: res for name, res in map(extract_fn, policy_folders)}
     plot(sim_results, output_file=args.output_file, dataset_name=args.dataset, metric=args.metric, is_group_comp=args.is_group_comp, include_skip_rnn=args.include_skip_rnn)

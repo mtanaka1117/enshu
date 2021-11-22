@@ -58,7 +58,7 @@ def run_test(byte_dist: Dict[int, List[int]], num_trials: int) -> Tuple[float, f
     Args:
         byte_dist: A map of label -> List of message sizes (in bytes)
     """
-     # Extract a list of labels and byte counts
+    # Extract a list of labels and byte counts
     labels: List[int] = []
     byte_counts: List[int] = []
 
@@ -96,7 +96,7 @@ def run_test(byte_dist: Dict[int, List[int]], num_trials: int) -> Tuple[float, f
     return {
         'percentile': perc,
         'p_value': p_value,
-        'randomized_mi': { 'avg': float(np.average(randomized_information)), 'std': float(np.std(randomized_information)) },
+        'randomized_mi': {'avg': float(np.average(randomized_information)), 'std': float(np.std(randomized_information))},
         'norm_mutual_information': float(norm_information),
         'num_trials': num_trials
     }
@@ -104,16 +104,16 @@ def run_test(byte_dist: Dict[int, List[int]], num_trials: int) -> Tuple[float, f
 
 if __name__ == '__main__':
     parser = ArgumentParser()
-    parser.add_argument('--dates', type=str, required=True, nargs='+')
-    parser.add_argument('--trials', type=int, required=True)
-    parser.add_argument('--dataset', type=str, required=True)
+    parser.add_argument('--folder', type=str, required=True, help='The name of the experiment log folder.')
+    parser.add_argument('--trials', type=int, required=True, help='The number of trials to execute for the permutation test.')
+    parser.add_argument('--dataset', type=str, required=True, help='The name of the dataset.')
     args = parser.parse_args()
 
     assert args.trials > 0, '# Trials must be positive'
 
     information_results: DefaultDict[str, Dict[float, float]] = defaultdict(dict)
 
-    for folder in iterate_policy_folders(args.dates, dataset=args.dataset):
+    for folder in iterate_policy_folders([args.folder], dataset=args.dataset):
         for sim_file in iterate_dir(folder, pattern='.*json.gz'):
             model = read_json_gz(sim_file)
 

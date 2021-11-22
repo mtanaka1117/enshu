@@ -10,19 +10,19 @@ This repository contains the implementation of Adaptive Group Encoding (AGE), a 
 7. `skip_rnn`: Implements a Skip RNN sampling policy.
 8. `traces`: Contains the pre-collected energy traces from a TI MSP430 FR5994.
 9. `unit_tests`: A suite of unit tests for various aspects of the system.
-10. `utils`: Holds a set of utility functions for actions such as encryption and encoding.
-11. `policies.py`: Implements all sampling policies and encoding strategies.
-12. `sensor.py`: Represents the simulated sensor.
-13. `server.py`: Contains the simulated server.
-14. `serialize_policy`: Converts a policy to a C header file for deployment onto a microcontroller (MCU).
-15. `simulator.py`: The simulator entry point.
+10. `utils`: Holds a set of utility functions for actions such as encryption and encoding. The README in this folder contains more information on the implemented functionality.
+11. `fit_threshold.py`: Script to train threshold-based adaptive sampling policies for various energy budgets.
+12. `policies.py`: Implements all sampling policies and encoding strategies.
+13. `sensor.py`: Represents the simulated sensor.
+14. `server.py`: Contains the simulated server.
+15. `serialize_policy`: Converts a policy to a C header file for deployment onto a microcontroller (MCU).
+16. `simulator.py`: The simulator entry point.
 
 ## Simulator
-
 The simulator framework executes sub-sampling policies standard machines by representing sensors and servers as independent processes. This framework is written entirely in Python 3 and runs on pre-collected datasets.
 
 ### Installation
-You can install the Python package (and associated dependencies) using `pip`. To avoid version conflicts, it is best to install the package inside a virtual environment. You may create an environment called `adaptiveleak-env` using the command below.
+This repository requires Python 3. You can install the Python package (and associated dependencies) using `pip`. To avoid version conflicts, it is best to install the package inside a virtual environment. You may create an environment called `adaptiveleak-env` using the command below.
 ```
 python3 -m venv adaptiveleak-env
 ```
@@ -38,14 +38,59 @@ pip3 install -e .
 
 ### Downloading Datasets
 
+### Naming
+There are two naming conventions in the code repository that differ from the paper. First, in the code, the `AGE` encoding system is called `group`. Second, the `Linear` policy in the paper is called the adaptive `heuristic` policy in the code.
+
 ### Running Sampling Policies
+The entry point for the simulator is the script `adaptiveleak/simulator.py`. You must navigate into the `adaptiveleak` directory to run the script. This code has many command line options which are best viewed when running `python simulator.py --help`. You can execute the simulator on a single dataset and policy using the command below. In the next paragraph, we describe a utility that runs all policies on a single dataset.
+```
+python simulator.py --dataset <dataset-name> --encoding <encoding-name> --encryption <encryption-type> --collection-rate <budget> --should-print
+```
+The collection rate is the target fraction of elements in each sequence to capture; the budget is set at the `Uniform` policy's energy consumption at this fraction. You can specify a range of elements by providing three values (space-separated) in the form `<min> <max> <step>`. The results in the paper use `--colelction-rate 0.3 1.0 0.1`. As a note, the encoding algorithm `group` is the full `AGE` system. The dataset name is the name of the folder in `datasets` (e.g. `datasets/<dataset-name>`) containing the data files. The shell script `adaptiveleak/run_simulator.sh` executes all policies on the dataset passed as a command line argument (shown below).
+```
+./run_simlator.sh <dataset-name>
+```
+This command can take a few minutes to run, especially for the larger datasets (`uci_har`, `mnist`, `tiselac`). The `epilepsy` dataset is relatively small and represents a good starting point.
+
+After execution, the results are automatically stored in the folder `saved_models/<dataset-name>/<date>`. There will be a folder in this directory for the sampling policy and the encoding algorithm. Keep note of the date, as you will use this value to reference these results during the analysis phase (below).
+
+### Analyzing Experimental Results
+The `adaptiveleak/analysis` folder contains a few scripts to process the results of each experiment. This section describes how to compute the reconstruction error, as well as the mutual information between message size and event label.
+
+#### Reconstruction Error
+The script `adaptiveleak/analysis/plot_error.py` displays the arithmetic mean reconstruction error for each budget in the executed experiment. You can run this script by navigating to the directory `adaptiveleak/analysis` folder and running the command below.
+```
+python plot_error.py --folder <experiment-name> --dataset <dataset-name> --metric <metric-name>
+```
+The arguments are described when running `python plot_error.py --help`. The `--folder` should be the date of the experiment as produced by the execution step in the last section. The code will look for the folder `adaptiveleak/saved_models/<dataset>/<folder>` and retrieve the results from this directory.
+
+The script will produce a plot showing the error for each constraint. The code will also print out the arithmetic mean error (across all constraints) for each policy. When the provided `metric` is `mae`, the printed error values should align with the results in Table 3 of the paper.
+
+#### Mutual Information
+We measure the theoretical information leakage on each task using the mutual information between message sizes and event labels. You can compute these results using the script `adaptiveleak/analysis/leakage_test.py`. This script also executes permutation tests to measure the significance of the observed empirical relationship. The command below describes how to run the script. You must be in the `adaptiveleak/analysis` directory.
+```
+python leakage_test.py --folder <experiment-name> --dataset <dataset-name> --trials <num-perm-trials>
+```
+The `folder` and `dataset` arguments are the same with previous scripts. The `trials` argument controls the number of randomized permutation trials. Larger values create higher-confidence results at the cost of greater computation; using a large number of trials can take a long time. To just compute the mutual information, set the `trials` argument to `1`.
+
+The script `adaptiveleak/analysis/mutual_information.py` displays the mutual information results for every budget. You can run this command as shown below.
+```
+python mutual_information.py --folder <experiment-name> --dataset <dataset-name>
+```
+The plot shows the mutual information for each constraint. The script also prints out the median and maximum mutual information across all constraints. The printed values should align with the results in Table 4 of the paper. For Skip RNNs, the mutual information values are in Table 5.
+
+Finally, you can view the results of the permutation test using the script `adaptiveleak/analysis/permutation_test_results.py`. The script takes the following arguments.
+```
+python permutation_test_results.py --folder <experiment-log> --datasets <list-of-dataset-names>
+```
+The dataset argument should be a space-separated list of dataset names. The script will print out the fraction (across all budgets) of mutual information values which are significantly different than a randomized association. Section 5.3 in the paper describes this process, as well as the corresponding results across all 9 datasets.
 
 ### Attack Classifier
 After policy execution, you can execute a more practical attack using a statistical classifier. This model is an AdaBoost ensemble of decision trees that uses the message sizes from consecutive sequences to predict the corresponding event label. To train a classifier for a set of simulator results, navigate into the `adaptiveleak/attack` directory and run the following command.
 ```
 python train.py --policy <policy-name> --encoding <encoding-name> --dataset <dataset-name> --folder <experiment-name> --window-size <window-size> --num-samples <num-samples>
 ```
-For a longer description of each option, run `python train.py --help`. The `folder` option should be the name of the folder containing the experimental logs in `saved_models/<dataset-name>`. These logs are the results of the previous section. Note that the folder name defaults to the current date.
+For a longer description of each option, run `python train.py --help`. The `folder` option should be the name of the folder containing the experimental logs in `saved_models/<dataset-name>`. These logs are the results of the previous section. Note that the folder name defaults to the current date as described in the section about running experiments.
 
 The training process uses 5-fold stratified cross evaluation. The results get automatically stored in the evaluation logs for each sampling policy, encoding algorithm, and collection rate. Each entry in the serialized result is a list of 5 elements following the 5-fold evaluation.
 
