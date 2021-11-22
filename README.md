@@ -19,7 +19,24 @@ This repository contains the implementation of Adaptive Group Encoding (AGE), a 
 
 ## Simulator
 
+The simulator framework executes sub-sampling policies standard machines by representing sensors and servers as independent processes. This framework is written entirely in Python 3 and runs on pre-collected datasets.
+
 ### Installation
+You can install the Python package (and associated dependencies) using `pip`. To avoid version conflicts, it is best to install the package inside a virtual environment. You may create an environment called `adaptiveleak-env` using the command below.
+```
+python3 -m venv adaptiveleak-env
+```
+You can then enter the environment using the following command.
+```
+. adaptiveleak-env/bin/activate
+```
+To exit the environment, run the command `deactivate`. **The entirety of the simulator must run inside the virtual environment**. Once inside the environment, install the package using the commands below. Note this must run in the root directory of the repository.
+```
+pip3 install --upgrade pip
+pip3 install -e .
+```
+
+### Downloading Datasets
 
 ### Running Sampling Policies
 
