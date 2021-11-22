@@ -1,3 +1,6 @@
+"""
+This script trains and evaluates an Decision Tree attack classifier against sampling policies.
+"""
 import numpy as np
 import os
 from argparse import ArgumentParser
@@ -208,16 +211,16 @@ def fit_attack_model(message_sizes: np.array, labels: np.array, window_size: int
 
 if __name__ == '__main__':
     parser = ArgumentParser()
-    parser.add_argument('--policy', type=str, required=True, choices=POLICIES)
-    parser.add_argument('--encoding', type=str, required=True, choices=ENCODING)
-    parser.add_argument('--dataset', type=str, required=True)
-    parser.add_argument('--date', type=str, required=True)
-    parser.add_argument('--window-size', type=int, required=True)
-    parser.add_argument('--num-samples', type=int, required=True)
+    parser.add_argument('--policy', type=str, required=True, choices=POLICIES, help='Name of the sampling policy.')
+    parser.add_argument('--encoding', type=str, required=True, choices=ENCODING, help='Name of the encoding strategy.')
+    parser.add_argument('--dataset', type=str, required=True, help='Name of the dataset.')
+    parser.add_argument('--folder', type=str, required=True, help='Name of the folder containing the experiment logs to evaluate.')
+    parser.add_argument('--window-size', type=int, required=True, help='The number of sequences to consider in a single "same-label" window.')
+    parser.add_argument('--num-samples', type=int, required=True, help='The number of samples to use to train / evaluate the model.')
     args = parser.parse_args()
 
     policy_name = '{0}_{1}'.format(args.policy, args.encoding)
-    policy_folder = os.path.join('..', 'saved_models', args.dataset, args.date, policy_name)
+    policy_folder = os.path.join('..', 'saved_models', args.dataset, args.folder, policy_name)
 
     save_folder = os.path.join(policy_folder, 'attack_models')
     make_dir(save_folder)
@@ -226,22 +229,21 @@ if __name__ == '__main__':
     test_inputs, test_labels = load_data(args.dataset, fold='test')
 
     for path in iterate_dir(policy_folder, '.*json.gz'):
-    
         print('===== STARTING {0} ====='.format(path))
 
         policy_result = read_json_gz(path)
-        
+
         model_name = os.path.basename(path)
         model_name = model_name.split('.')[0]
 
         # Get the message sizes
         message_sizes = policy_result['num_bytes']
         message_labels = policy_result['labels']
-        
+
         # Pad with the average message size when the budget expires
         if len(message_labels) < len(test_labels):
             avg_size = int(np.average(message_sizes))
-            
+
             for i in range(len(message_labels), len(test_labels)):
                 message_sizes.append(avg_size)
                 message_labels.append(int(test_labels[i]))

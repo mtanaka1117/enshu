@@ -1,9 +1,11 @@
+"""
+Plots attacker accuracy results for a single dataset.
+"""
 import matplotlib.pyplot as plt
 import os
 import numpy as np
 from argparse import ArgumentParser
 from functools import partial
-from scipy import stats
 from collections import namedtuple, OrderedDict
 from typing import Any, Dict, List, Optional
 
@@ -12,7 +14,6 @@ from adaptiveleak.utils.file_utils import read_json_gz
 from adaptiveleak.analysis.plot_utils import COLORS, to_label, geometric_mean, MARKER, MARKER_SIZE, LINE_WIDTH, PLOT_STYLE
 from adaptiveleak.analysis.plot_utils import PLOT_SIZE, AXIS_FONT, LEGEND_FONT, TITLE_FONT
 from adaptiveleak.analysis.plot_utils import extract_results, iterate_policy_folders
-
 
 
 def plot(sim_results: Dict[str, Dict[float, float]], dataset_name: str, output_file: Optional[str]):
@@ -59,9 +60,6 @@ def plot(sim_results: Dict[str, Dict[float, float]], dataset_name: str, output_f
                 ax2.plot(energy_budgets, f1, marker=MARKER, linewidth=LINE_WIDTH, markersize=MARKER_SIZE, label=to_label(policy_name), color=COLORS[policy_name])
 
                 if len(all_accuracy) > 0:
-                    if 'standard' in policy_name:
-                        print('{0}: {1}'.format(policy_name, np.argmax(all_accuracy)))
-
                     policy_names.append(to_label(policy_name))
                     accuracy_values.append((np.median(all_accuracy), np.max(all_accuracy)))
                     f1_values.append((np.median(all_f1), np.max(all_f1)))
@@ -85,18 +83,17 @@ def plot(sim_results: Dict[str, Dict[float, float]], dataset_name: str, output_f
             plt.show()
         else:
             plt.savefig(output_file, bbox_inches='tight')
-        
+
 
 if __name__ == '__main__':
     parser = ArgumentParser()
-    parser.add_argument('--dates', type=str, nargs='+', required=True)
-    parser.add_argument('--dataset', type=str, required=True)
-    parser.add_argument('--output-file', type=str)
+    parser.add_argument('--folder', type=str, required=True, help='Name of the experimental logs folder.')
+    parser.add_argument('--dataset', type=str, required=True, help='Name of the dataset.')
+    parser.add_argument('--output-file', type=str, help='Optional output file for the resulting plot.')
     args = parser.parse_args()
 
     extract_fn = partial(extract_results, field='attack', aggregate_mode=None, default_value=dict(test_accuracy=0.0))
-    policy_folders = iterate_policy_folders(args.dates, dataset=args.dataset)
+    policy_folders = iterate_policy_folders([args.folder], dataset=args.dataset)
 
     sim_results = {name: res for name, res in map(extract_fn, policy_folders)}
     plot(sim_results, output_file=args.output_file, dataset_name=args.dataset)
-

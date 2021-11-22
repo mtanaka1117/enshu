@@ -1,9 +1,11 @@
+"""
+Plots the aggregate attack results for all datasets.
+"""
 import matplotlib.pyplot as plt
 import os
 import numpy as np
 from argparse import ArgumentParser
 from functools import partial
-from scipy import stats
 from collections import namedtuple, OrderedDict
 from typing import Any, Dict, List, Optional
 
@@ -29,9 +31,9 @@ DATASET_LABELS = {
 }
 
 
-def get_attack_results(date: str, dataset: str) -> Dict[str, AttackResult]:
+def get_attack_results(folder: str, dataset: str) -> Dict[str, AttackResult]:
     extract_fn = partial(extract_results, field='attack', aggregate_mode=None)
-    policy_folders = list(iterate_policy_folders([date], dataset=dataset))
+    policy_folders = list(iterate_policy_folders([folder], dataset=dataset))
 
     sim_results = {name: res for name, res in map(extract_fn, policy_folders)}
 
@@ -40,7 +42,7 @@ def get_attack_results(date: str, dataset: str) -> Dict[str, AttackResult]:
     energy_budgets = list(sorted(baseline_results.keys()))
 
     result: Dict[str, AttackResult] = dict()
-    
+
     for policy_name, policy_results in sim_results.items():
         if (len(policy_results) == 0) or any(isinstance(policy_results[b], float) for b in energy_budgets):
             continue
@@ -59,7 +61,7 @@ def get_attack_results(date: str, dataset: str) -> Dict[str, AttackResult]:
     return result
 
 
-def plot(dataset_results: Dict[str, Dict[str, AttackResult]], output_file: Optional[str], is_group_comp: bool, include_skip_rnn: bool):
+def plot(dataset_results: Dict[str, Dict[str, AttackResult]], output_file: Optional[str]):
 
     with plt.style.context(PLOT_STYLE):
         fig, ax = plt.subplots(figsize=(PLOT_SIZE[0] * 1.25, PLOT_SIZE[1] * 0.75))
@@ -67,8 +69,6 @@ def plot(dataset_results: Dict[str, Dict[str, AttackResult]], output_file: Optio
         labels: List[str] = []
         agg_errors: List[float] = []
 
-        #policy_names = ['adaptive_heuristic', 'adaptive_deviation'] if is_group_comp else POLICIES
-        #encoding_names = ['single_group', 'group_unshifted', 'pruned', 'group'] if is_group_comp else ['standard', 'padded', 'group']
         policy_names = ['adaptive_heuristic', 'adaptive_deviation']
         encoding_names = ['standard', 'group']
 
@@ -77,13 +77,7 @@ def plot(dataset_results: Dict[str, Dict[str, AttackResult]], output_file: Optio
 
         xs = np.arange(len(dataset_results) + 1)  # Include the 'All'
 
-        # Print the label for the 'Overall' table
-        #ax.text(3.5, 75 - 35 * (offset - width), 'Overall Medians', fontweight='bold', fontsize=LEGEND_FONT)
-
         for name in policy_names:
-            if (not include_skip_rnn) and (name.startswith('skip_rnn')):
-                continue
-
             encodings = encoding_names if name not in ('uniform', 'random') else ['standard']
 
             for encoding in encodings:
@@ -97,7 +91,6 @@ def plot(dataset_results: Dict[str, Dict[str, AttackResult]], output_file: Optio
 
                 for dataset, policy_results in sorted(dataset_results.items()):
                     if (policy_name not in policy_results):
-                        print('{0}: {1}'.format(dataset, policy_name))
                         continue
 
                     median_errors.append(policy_results[policy_name].median)
@@ -114,17 +107,10 @@ def plot(dataset_results: Dict[str, Dict[str, AttackResult]], output_file: Optio
                     third_errors.append(np.percentile(raw_errors, 75) - aggregate)
                     max_errors.append(np.max(raw_errors))
 
-                    #first_errors.append(aggregate - np.min(raw_errors))
-                    #third_errors.append(np.max(raw_errors) - aggregate)
-
                     label_name = name if encoding == 'standard' else policy_name
                     ax.bar(xs + offset, median_errors, width=width, color=COLORS[policy_name], label=to_label(label_name))
                     ax.errorbar(xs + offset, median_errors, yerr=[first_errors, third_errors], color='k', capsize=2, ls='none')
                     ax.scatter(xs + offset, max_errors, color=COLORS[policy_name])
-
-                    # Annotate the aggregate score
-                    print('{0}: {1}'.format(label_name, aggregate))
-                    #ax.text(3.5, 75 - 35 * offset, '{0}: {1:.2f}%'.format(to_label(label_name), aggregate), fontsize=ANNOTATE_FONT)
 
                 offset += width
 
@@ -148,23 +134,20 @@ def plot(dataset_results: Dict[str, Dict[str, AttackResult]], output_file: Optio
             plt.show()
         else:
             plt.savefig(output_file, bbox_inches='tight', transparent=True)
-        
+
 
 if __name__ == '__main__':
     parser = ArgumentParser()
-    parser.add_argument('--date', type=str, required=True)
-    parser.add_argument('--datasets', type=str, nargs='+', required=True)
-    parser.add_argument('--output-file', type=str)
-    parser.add_argument('--is-group-comp', action='store_true')
-    parser.add_argument('--include-skip-rnn', action='store_true')
+    parser.add_argument('--folder', type=str, required=True, help='Name of the experiment log folder.')
+    parser.add_argument('--datasets', type=str, nargs='+', required=True, help='A list of dataset names.')
+    parser.add_argument('--output-file', type=str, help='An optional path to an output file.')
     args = parser.parse_args()
 
     print('Num Datasets: {0}'.format(len(args.datasets)))
-    print('==========')
 
     dataset_errors: Dict[str, Dict[str, float]] = dict()
 
     for dataset in args.datasets:
-        dataset_errors[DATASET_LABELS[dataset]] = get_attack_results(date=args.date, dataset=dataset)
+        dataset_errors[DATASET_LABELS[dataset]] = get_attack_results(folder=args.folder, dataset=dataset)
 
-    plot(dataset_errors, output_file=args.output_file, is_group_comp=args.is_group_comp, include_skip_rnn=args.include_skip_rnn)
+    plot(dataset_errors, output_file=args.output_file)
