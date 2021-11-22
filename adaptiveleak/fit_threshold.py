@@ -79,7 +79,7 @@ def fit(policy: BudgetWrappedPolicy,
     rand = np.random.RandomState(seed=581)
 
     observed = BIG_NUMBER
-    
+
     current = (lower + upper) / 2
     best_threshold = upper
     best_error = BIG_NUMBER

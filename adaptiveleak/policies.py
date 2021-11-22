@@ -7,7 +7,6 @@ from collections import deque, OrderedDict
 from enum import Enum, auto
 from typing import Tuple, List, Dict, Any, Optional
 
-
 from adaptiveleak.energy_systems import EnergyUnit, convert_rate_to_energy, get_group_target_bytes, get_padded_collection_rate
 from adaptiveleak.utils.constants import BITS_PER_BYTE, MIN_WIDTH, SMALL_NUMBER, SHIFT_BITS, MAX_SHIFT_GROUPS
 from adaptiveleak.utils.constants import MIN_SHIFT_GROUPS, PERIOD, LENGTH_SIZE, BT_FRAME_SIZE, MAX_SHIFT_GROUPS_FACTOR
@@ -749,7 +748,6 @@ class RandomPolicy(Policy):
 
     def reset(self):
         self._indices = [0]
-        
         idx_to_collect = np.sort(self._rand.choice(self._rand_indices, size=self._num_to_collect, replace=False)).tolist()
         self._indices.extend(idx_to_collect)
 
@@ -897,7 +895,7 @@ class BudgetWrappedPolicy(Policy):
         return self._policy.decode(message=message)
 
     def should_collect(self, seq_idx: int) -> bool:
-        return self._policy.should_collect(seq_idx=seq_idx)    
+        return self._policy.should_collect(seq_idx=seq_idx)
 
     def collect(self, measurement: np.ndarray):
         self._policy.collect(measurement=measurement)
@@ -1026,6 +1024,7 @@ def run_policy(policy: BudgetWrappedPolicy, sequence: np.ndarray, should_enforce
                         encoded=encoded,
                         num_bytes=num_bytes,
                         energy=energy)
+
 
 def make_policy(name: str,
                 seq_length: int,

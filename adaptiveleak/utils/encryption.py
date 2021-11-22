@@ -100,8 +100,6 @@ def decrypt_aes128(ciphertext: bytes, key: bytes) -> bytes:
 
     return message
 
-    #return unpad(message, block_size=AES_BLOCK_SIZE, style='x923')
-
 
 def encrypt_chacha20(message: bytes, key: bytes) -> bytes:
     """

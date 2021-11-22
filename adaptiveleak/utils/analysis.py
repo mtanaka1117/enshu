@@ -25,7 +25,7 @@ def normalized_rmse(y_true: np.ndarray, y_pred: np.ndarray) -> float:
 
     # Get the standard deviation for each feature; [D]
     std_dev = np.std(y_true, axis=0)
-    
+
     # Normalize the error; [D]
     normalized_errors = avg_error / (std_dev + SMALL_NUMBER)
 

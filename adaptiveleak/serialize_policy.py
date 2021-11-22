@@ -45,7 +45,7 @@ def serialize_vector(vec: np.ndarray, name: str, width: int, precision: int) -> 
     """
     # Flatten the vector
     vec = vec.reshape(-1)
-        
+
     # Convert to fixed point
     fp = array_to_fp(vec, width=width, precision=precision)
 
@@ -141,8 +141,8 @@ def write_policy(policy: Policy, is_msp: bool):
                 precision = max(5, policy.precision)
                 fout.write('#define DEVIATION_PRECISION {0}\n'.format(precision))
 
-                alpha = to_fixed_point(policy._alpha, width=policy.width, precision=precision);
-                beta = to_fixed_point(policy._beta, width=policy.width, precision=precision);
+                alpha = to_fixed_point(policy._alpha, width=policy.width, precision=precision)
+                beta = to_fixed_point(policy._beta, width=policy.width, precision=precision)
 
                 fout.write('#define ALPHA {0}\n'.format(alpha))
                 fout.write('#define BETA {0}\n'.format(beta))

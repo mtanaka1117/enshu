@@ -41,7 +41,7 @@ def to_float(fp: int, precision: int) -> float:
 
 def array_to_fp(arr: np.ndarray, precision: int, width: int) -> np.ndarray:
     multiplier = 1 << abs(precision)
-    
+
     if precision > 0:
         quantized = arr * multiplier
     else:
@@ -121,8 +121,7 @@ def select_range_shift(measurement: int, old_width: int, old_precision: int, new
     width_mask = (1 << (new_width - 1)) - 1  # Masks out all non-data bits (including the sign bit)
     recovered_mask = (1 << (old_width - 1)) - 1  # Mask out all non-data bits in the old size (including sign bit)
 
-    # Get the new precision based on the (fixed) number of non-fractional bits 
-    #new_precision = new_width - non_fractional
+    # Get base shift value using the width differences
     base_shift = old_width - new_width
 
     # Get the absolute value of the given fixed point measurement. The routine
@@ -157,7 +156,7 @@ def select_range_shift(measurement: int, old_width: int, old_precision: int, new
 
     for idx in range(limit):
         shift = idx - offset
-        
+
         # Convert the value to and from floating point
         conversion_shift = base_shift + shift
 
@@ -462,7 +461,6 @@ def set_widths(group_sizes: List[int], is_all_zero: List[bool], target_bytes: in
     target_bits = target_bytes * BITS_PER_BYTE
 
     # Set the initial widths based on an even distribution
-    #even_width = int(target_bits / num_values)
     consumed_bytes = sum((int(math.ceil((start_width * size) / BITS_PER_BYTE)) for size in group_sizes))
 
     start_widths = min(start_width, max_width)
@@ -482,7 +480,7 @@ def set_widths(group_sizes: List[int], is_all_zero: List[bool], target_bytes: in
                 continue
             elif (is_all_zero[idx]):
                 widths[idx] = MIN_WIDTH
-                continue  
+                continue
 
             # Increase this group's width by 1 bit
             widths[idx] += 1
@@ -566,7 +564,7 @@ def get_group_widths(group_size: int,
                                                 group_size=group_size,
                                                 seq_length=seq_length,
                                                 encryption_mode=encryption_mode)
-    
+
         # Exit the loop when we find the inflection point
         if (data_bytes <= target_bytes and updated_bytes > target_bytes):
             widths[group_idx] = max(widths[group_idx] - 1, MIN_WIDTH)
@@ -728,7 +726,7 @@ def prune_sequence(measurements: np.ndarray, collected_indices: List[int], max_c
 
     # Compute the two-step differences in indices
     idx_diff = np.array([(collected_indices[i+1] - collected_indices[i]) for i in range(len(collected_indices) - 1)])  # [L - 1]
-    
+
     scores = measurement_diff + (0.125 * idx_diff)  # [L - 1]
     scores = scores[:-1]  # [L - 2]
 
@@ -742,7 +740,7 @@ def prune_sequence(measurements: np.ndarray, collected_indices: List[int], max_c
 
         # Remove the given elements from the measurements and collected lists
         to_remove_set = set(idx_to_prune)
- 
+
     idx_to_keep = [i for i in range(len(measurements)) if i not in to_remove_set]
 
     pruned_measurements = measurements[idx_to_keep]
@@ -850,7 +848,7 @@ def fixed_point_integer_part(fixed_point_val: int, precision: int) -> int:
     """
     if (precision >= 0):
         return fixed_point_val >> precision
-    
+
     return fixed_point_val << precision
 
 
@@ -861,8 +859,9 @@ def fixed_point_frac_part(fixed_point_val: int, precision: int) -> int:
     if (precision >= 0):
         mask = (1 << precision) - 1
         return fixed_point_val & mask
-    
+
     return 0
+
 
 def num_bits_for_value(x: int) -> int:
     """
@@ -925,6 +924,7 @@ def run_length_encode(values: List[int], signs: List[int]) -> str:
     metadata_bytes = metadata.to_bytes(3, 'little')
 
     return metadata_bytes + encoded_values + encoded_reps + encoded_signs
+
 
 def run_length_decode(encoded: bytes) -> List[int]:
     """

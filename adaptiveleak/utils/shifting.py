@@ -1,14 +1,13 @@
 import numpy as np
 import math
 from typing import List, Tuple
-from sklearn.metrics import mean_absolute_error
 
 from adaptiveleak.utils.data_utils import array_to_float, array_to_fp, num_bits_for_value
 from adaptiveleak.utils.constants import BIG_NUMBER, BITS_PER_BYTE
 
 
 class ShiftGroup:
-    
+
     def __init__(self, shift: int, count: int, group_id: int, parent: int):
         self.parent = parent
         self.shift = shift
@@ -17,9 +16,6 @@ class ShiftGroup:
 
     def __str__(self) -> str:
         return '(Id: {0}, P: {1}, S: {2}, C: {3})'.format(self.group_id, self.parent, self.shift, self.count)
-
-def absolute_error(y_true: np.ndarray, y_pred: np.ndarray) -> float:
-    return np.average(np.abs(y_true - y_pred))
 
 
 class UnionFind:
@@ -112,7 +108,7 @@ class UnionFind:
 
     def get_parents(self) -> List[ShiftGroup]:
         return list(filter(lambda g: g.parent == -1, self._union_find))
-        
+
     def __str__(self) -> str:
         return ';'.join(map(str, self._union_find))
 
@@ -132,16 +128,7 @@ def merge_shift_groups(values: List[float], shifts: List[int], max_num_groups: i
     # Create the initial groups using run-length encoding
     grouped_shifts, reps = compute_runs(shifts)
 
-    # We calculate the size required if we encoded all measurements fully
-    # with the current group construction. If this meets the budget,
-    # then we can stop here.
-    #size_width = num_bits_for_value(max(reps))
-    #size_bytes = int(math.ceil((size_width * len(reps)) / BITS_PER_BYTE))
-    #total_bytes = size_bytes + len(reps) + 1
-
-    #for group_size in reps:
-    #    total_bytes += int(math.ceil((group_size * width) / BITS_PER_BYTE))
-
+    # Stop early if the number of groups does not exceed the budget
     if (len(grouped_shifts) <= max_num_groups):
         return grouped_shifts, reps
 

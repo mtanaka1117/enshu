@@ -101,12 +101,10 @@ if __name__ == '__main__':
         try:
             # Start the server
             server = pexpect.spawn(server_cmd)
-
             expect_with_retry(comm_module=server, expected='Started Server.')
 
             # Start the sensor
             sensor = pexpect.spawn(sensor_cmd)
-            
             expect_with_retry(comm_module=server, expected='Accepted connection')
 
             # Print out progress

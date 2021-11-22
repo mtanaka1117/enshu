@@ -83,7 +83,7 @@ if __name__ == '__main__':
         reconstructed = reconstruct_sequence(measurements=recv_measurements,
                                              collected_indices=recv_indices,
                                              seq_length=seq_length)
-                                             
+
         error = mean_absolute_error(y_true=sequence, y_pred=reconstructed)
 
         # Record the policy results
@@ -96,9 +96,6 @@ if __name__ == '__main__':
 
         if not policy.has_exhausted_budget():
             collected_seq = idx + 1
-
-    print(errors)
-    print([len(x) for x in collected])
 
     num_samples = collected_seq * seq_length
     num_collected = sum(len(c) for c in collected[:collected_seq])
@@ -136,7 +133,6 @@ if __name__ == '__main__':
         print('{0} -> {1:.2f} ({2:.2f})'.format(label, np.average(counts), np.std(counts)))
 
     with plt.style.context('seaborn-ticks'):
-        #fig, (ax1, ax2) = plt.subplots(nrows=2, ncols=1)
         fig, ax1 = plt.subplots()
 
         xs = list(range(seq_length))
@@ -149,7 +145,4 @@ if __name__ == '__main__':
 
         ax1.legend()
 
-        #ax2.hist(x=errors, bins=50)
-
         plt.show()
-

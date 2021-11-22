@@ -185,7 +185,7 @@ class Server:
                         policy._consumed_energy = policy._budget + SMALL_NUMBER
                         num_bytes = 0
                     else:
-                        # Record the energy consumption (use the true number of 
+                        # Record the energy consumption (use the true number of
                         # collected measurements for proper recording in the case of pruning)
                         energy = policy.consume_energy(num_collected=parsed.true_num_collected,
                                                        num_bytes=num_bytes)

@@ -206,7 +206,7 @@ def encode_stable_measurements(measurements: np.ndarray,
     """
     assert len(measurements.shape) == 2, 'Must provide a 2d array of measurements.'
     assert len(group_sizes) == len(widths), 'Must have an equal number of group sizes and widths'
-    assert len(group_sizes) == len(shifts), 'Must have an equal number of group sizes and shifts' 
+    assert len(group_sizes) == len(shifts), 'Must have an equal number of group sizes and shifts'
 
     # Collect the group meta-data
     num_measurements, num_features = measurements.shape
@@ -230,7 +230,7 @@ def encode_stable_measurements(measurements: np.ndarray,
 
     # Encode each group of features
     encoded_groups: List[bytes] = []
-        
+
     start_idx = 0
     for size, shift, width in zip(group_sizes, shifts, widths):
         # Get the features for this group
@@ -335,7 +335,7 @@ def encode_shifts(shifts: List[int], reps: List[int], widths: List[int], num_shi
     """
     assert len(shifts) == len(reps), 'Must provide same number of reps ({0}) and shifts ({1})'.format(len(reps), len(shifts))
     assert num_shift_bits < BITS_PER_BYTE, 'Number of shift bits must be less than {0}'.format(BITS_PER_BYTE)
-    
+
     # Get masks needed for shifts and bit-widths
     width_mask = (1 << (BITS_PER_BYTE - num_shift_bits)) - 1
     shift_mask = (1 << num_shift_bits) - 1
@@ -404,7 +404,7 @@ def decode_shifts(encoded: bytes, num_shift_bits: int, min_width: int) -> Tuple[
         packed_data = encoded[group_idx]
         shift = packed_data & shift_mask
         width = (packed_data >> num_shift_bits) & width_mask
-    
+
         shifts.append(shift)
         widths.append(width + min_width)
 

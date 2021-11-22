@@ -93,7 +93,7 @@ def save_json(data: Any, file_path: str):
 
 def read_json_gz(file_path: str) -> Any:
     assert file_path.endswith('.json.gz'), 'Must provide a json gzip file.'
-    
+
     with gzip.GzipFile(file_path, 'rb') as f:
         reader = codecs.getreader('utf-8')
         return json.load(reader(f), object_pairs_hook=OrderedDict)
