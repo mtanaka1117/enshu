@@ -4,7 +4,7 @@ from argparse import ArgumentParser
 from functools import partial
 from typing import Dict, Any
 
-from adaptiveleak.utils.constants import POLICIES
+from adaptiveleak.utils.constants import POLICIES, SMALL_NUMBER
 from adaptiveleak.utils.file_utils import read_json_gz
 from adaptiveleak.analysis.plot_utils import COLORS, to_label, geometric_mean, MARKER, MARKER_SIZE, LINE_WIDTH, PLOT_STYLE
 from adaptiveleak.analysis.plot_utils import PLOT_SIZE, AXIS_FONT, LEGEND_FONT, TITLE_FONT
@@ -12,38 +12,38 @@ from adaptiveleak.analysis.plot_utils import extract_results, iterate_policy_fol
 
 
 
-def compute_average_loss(sim_results: Dict[str, Dict[float, Any]]) -> float:
-    total_perc_diff = 0.0
-    total_count = 0.0
+def compute_max_differences(sim_results: Dict[str, Dict[float, Any]]) -> Dict[str, float]:
+    results: Dict[str, float] = dict()
 
-    for policy_name in POLICIES:
-        if (not policy_name.endswith('group')) or (policy_name not in sim_results):
-            continue
-
+    for policy_name in ['adaptive_heuristic_group', 'adaptive_deviation_group']:
         standard_name = policy_name.replace('group', 'standard')
 
-        policy_error = np.average(list(sim_results[policy_name].values()))
-        standard_error = np.average(list(sim_results[standard_name].values()))
+        max_diff = 0.0
+        max_perc = 0.0
+        for budget in sim_results[policy_name].keys():
+            for p, s in zip(sim_results[policy_name][budget], sim_results[standard_name][budget]):
+                diff = p - s
+                perc_diff = diff / (s + SMALL_NUMBER)
 
-        middle = (policy_error + standard_error) / 2.0
-        avg_perc_diff = (policy_error - standard_error) / middle * 100.0
+                if diff > max_diff:
+                    max_diff = diff
+                    max_perc = perc_diff
+                    print('p: {:.4f}, s: {:.4f}'.format(p, s))
 
-        total_perc_diff += avg_perc_diff
-        total_count += 1.0
+        results[policy_name] = (max_diff, max_perc * 100.0)
 
-    print('Retrieved {0} Policies'.format(int(total_count)))
-    return total_perc_diff / total_count
+    return results
 
 
 if __name__ == '__main__':
     parser = ArgumentParser()
     parser.add_argument('--dates', type=str, nargs='+', required=True)
     parser.add_argument('--dataset', type=str, required=True)
-    parser.add_argument('--output-file', type=str)
     args = parser.parse_args()
 
-    extract_fn = partial(extract_results, field='errors', aggregate_mode='avg')
+    extract_fn = partial(extract_results, field='all_mae', aggregate_mode=None)
     policy_folders = iterate_policy_folders(args.dates, dataset=args.dataset)
 
     sim_results = {name: res for name, res in map(extract_fn, policy_folders)}
-    print('Average Symmetric Percentage Difference: {0:.2f}%'.format(compute_average_loss(sim_results)))
+    results = compute_max_differences(sim_results)
+    print(results)
