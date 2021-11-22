@@ -25,7 +25,7 @@ uint16_t encode_shifts(uint8_t *output, int8_t *shifts, uint8_t *widths, uint16_
 
     uint8_t i;
     for (i = 0; i < numGroups; i++) {
-        output[outputIdx] = (((widths[i] - 1) & WIDTH_MASK) << NUM_SHIFT_BITS) | ((shifts[i] + SHIFT_OFFSET) & SHIFT_MASK);
+        output[outputIdx] = (((widths[i] - MIN_WIDTH) & WIDTH_MASK) << NUM_SHIFT_BITS) | ((shifts[i] + SHIFT_OFFSET) & SHIFT_MASK);
         outputIdx++;
     }
 
@@ -104,8 +104,8 @@ uint16_t encode_group(uint8_t *output,
 
 
     // Estimate the meta-data associated with stable group encoding
-    uint16_t maskBytes = collectedIndices->numBytes;
-    uint16_t metadataBytes = maskBytes + MAX_NUM_GROUPS;
+    const uint16_t maskBytes = collectedIndices->numBytes;
+    uint16_t metadataBytes = maskBytes + LENGTH_SIZE;
 
     if (isBlock) {
         metadataBytes += AES_BLOCK_SIZE;
@@ -114,20 +114,20 @@ uint16_t encode_group(uint8_t *output,
     }
 
     // Compute the target number of data bytes
-    uint16_t targetDataBytes = targetBytes - metadataBytes;
+    volatile uint16_t targetDataBytes = targetBytes - metadataBytes;
 
     // Get the maximum number of groups
     uint16_t maxNumGroups = get_max_num_groups(targetDataBytes, numCollected, numFeatures, 16);
 
-    uint16_t sizeWidth = 0;
+    volatile uint16_t sizeWidth = 0;
     uint16_t collectedCounter = numCollected;
     while (collectedCounter > 0) {
         collectedCounter = collectedCounter >> 1;
         sizeWidth++;
     }
 
-    uint16_t sizeBytes = get_num_bytes(sizeWidth * maxNumGroups);
-    uint16_t shiftBytes = 1 + maxNumGroups + sizeBytes;
+    volatile uint16_t sizeBytes = get_num_bytes(sizeWidth * maxNumGroups);
+    volatile uint16_t shiftBytes = 1 + maxNumGroups + sizeBytes;
     targetDataBytes -= shiftBytes;
 
     uint16_t targetDataBits = (targetDataBytes - MAX_NUM_GROUPS) << 3;
@@ -188,7 +188,7 @@ uint16_t encode_group(uint8_t *output,
     uint16_t numGroups = create_shift_groups(shiftBuffer, countBuffer, shiftBuffer, count, maxNumGroups); 
 
     // Re-calculate the meta-data size based on the given number of shift groups
-    metadataBytes -= sizeBytes;
+    //shiftBytes -= sizeBytes;
 
     uint16_t maxSize = 0;
     uint16_t s;
@@ -207,8 +207,8 @@ uint16_t encode_group(uint8_t *output,
     }
 
     sizeBytes = get_num_bytes(sizeWidth * numGroups);
-    metadataBytes += sizeBytes;
-    targetDataBytes = targetBytes - metadataBytes;
+    shiftBytes = 1 + sizeBytes + numGroups;
+    targetDataBytes = targetBytes - metadataBytes - shiftBytes;
 
     // Set the group widths
     set_group_widths(GROUP_WIDTHS, countBuffer, numGroups, targetDataBytes, minWidth);

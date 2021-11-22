@@ -19,12 +19,8 @@ uint8_t uniform_should_collect(struct UniformPolicy *policy, uint16_t seqIdx) {
     }
 
     uint8_t result = (seqIdx == policy->collectIndices[policy->collectIdx]);
+    policy->collectIdx += result;
     return result;
-}
-
-
-void uniform_update(struct UniformPolicy *policy) {
-    policy->collectIdx += 1;
 }
 
 
@@ -35,8 +31,9 @@ void uniform_reset(struct UniformPolicy *policy) {
 /**
  * Heuristic Policy Functions
  */
-void heuristic_policy_init(struct HeuristicPolicy *policy, uint16_t maxSkip, FixedPoint threshold) {
+void heuristic_policy_init(struct HeuristicPolicy *policy, uint16_t maxSkip, uint16_t minSkip, FixedPoint threshold) {
     policy->maxSkip = maxSkip;
+    policy->minSkip = minSkip;
     policy->threshold = threshold;
     policy->currentSkip = 0;
     policy->sampleSkip = 0;
@@ -53,7 +50,7 @@ void heuristic_update(struct HeuristicPolicy *policy, struct Vector *curr, struc
     FixedPoint norm = vector_diff_norm(curr, prev);
 
     if (norm >= policy->threshold) {
-        policy->currentSkip = 0;
+        policy->currentSkip = policy->minSkip;
     } else {
         uint16_t nextSkip = policy->currentSkip + 1;
         uint8_t cond = nextSkip < policy->maxSkip;
@@ -73,8 +70,9 @@ void heuristic_reset(struct HeuristicPolicy *policy)  {
 /**
  * Deviation Policy Functions
  */
-void deviation_policy_init(struct DeviationPolicy *policy, uint16_t maxSkip, FixedPoint threshold, FixedPoint alpha, FixedPoint beta, struct Vector *mean, struct Vector *dev) {
+void deviation_policy_init(struct DeviationPolicy *policy, uint16_t maxSkip, uint16_t minSkip, FixedPoint threshold, FixedPoint alpha, FixedPoint beta, struct Vector *mean, struct Vector *dev, uint16_t precision) {
     policy->maxSkip = maxSkip;
+    policy->minSkip = minSkip;
     policy->currentSkip = 0;
     policy->sampleSkip = 0;
     policy->threshold = threshold;
@@ -82,6 +80,7 @@ void deviation_policy_init(struct DeviationPolicy *policy, uint16_t maxSkip, Fix
     policy->beta = beta;
     policy->mean = mean;
     policy->dev = dev;
+    policy->precision = precision;
 }
 
 
@@ -93,16 +92,22 @@ uint8_t deviation_should_collect(struct DeviationPolicy *policy, uint16_t seqIdx
 
 
 void deviation_update(struct DeviationPolicy *policy, struct Vector *curr, uint16_t precision) {
-    policy->mean = vector_gated_add_scalar(policy->mean, curr, policy->mean, policy->alpha, precision);
+    // Convert the current vector to the policy's precision
+    struct Vector shifted = { POLICY_BUFFER, curr->size };
+    vector_change_precision(&shifted, curr, precision, policy->precision);
 
-    struct Vector temp = { POLICY_BUFFER, curr->size };
-    vector_absolute_diff(&temp, curr, policy->mean);
+    policy->mean = vector_gated_add_scalar(policy->mean, &shifted, policy->mean, policy->alpha, policy->precision);
 
-    policy->dev = vector_gated_add_scalar(policy->dev, &temp, policy->dev, policy->beta, precision);
+    struct Vector temp = { POLICY_BUFFER + shifted.size, curr->size };
+    vector_absolute_diff(&temp, &shifted, policy->mean);
+
+    policy->dev = vector_gated_add_scalar(policy->dev, &temp, policy->dev, policy->beta, policy->precision);
     FixedPoint norm = vector_norm(policy->dev);
 
     if (norm >= policy->threshold) {
-        policy->currentSkip = (policy->currentSkip) >> 1;
+        uint16_t nextSkip = (policy->currentSkip) >> 1;
+        uint8_t cond = nextSkip < policy->minSkip;
+        policy->currentSkip = cond * policy->minSkip + (1 - cond) * nextSkip;
     } else {
         uint16_t nextSkip = policy->currentSkip + 1;
         uint8_t cond = nextSkip < policy->maxSkip;

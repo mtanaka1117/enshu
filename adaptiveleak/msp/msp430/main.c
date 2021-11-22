@@ -40,7 +40,7 @@ volatile uint16_t seqIdx = 0;
 volatile uint16_t elemIdx = 0;
 
 // Buffer for messages to send
-static uint8_t outputBuffer[802];
+static uint8_t outputBuffer[1024];
 volatile uint16_t numOutputBytes = 0;
 volatile uint16_t numDataBytes = 0;
 volatile uint16_t numBytesToSend = 0;
@@ -132,14 +132,14 @@ int main(void)
     }
 
     struct HeuristicPolicy policy;
-    heuristic_policy_init(&policy, MAX_SKIP, THRESHOLD);
+    heuristic_policy_init(&policy, MAX_SKIP, MIN_SKIP, THRESHOLD);
 
     #elif defined(IS_ADAPTIVE_DEVIATION)
     struct DeviationPolicy policy;
     struct Vector mean = { meanData, NUM_FEATURES };
     struct Vector dev = { devData, NUM_FEATURES };
 
-    deviation_policy_init(&policy, MAX_SKIP, THRESHOLD, ALPHA, BETA, &mean, &dev);
+    deviation_policy_init(&policy, MAX_SKIP, MIN_SKIP, THRESHOLD, ALPHA, BETA, &mean, &dev);
 
     #elif defined(IS_SKIP_RNN)
     struct SkipRNNPolicy policy;
@@ -225,12 +225,8 @@ int main(void)
             #ifdef IS_STANDARD_ENCODED
             numDataBytes = encode_standard(outputBuffer + OUTPUT_OFFSET, featureVectors, &collectedIndices, NUM_FEATURES, SEQ_LENGTH);
             #elif defined(IS_GROUP_ENCODED)
-            numDataBytes = encode_group(outputBuffer + OUTPUT_OFFSET, featureVectors, &collectedIndices, numCollected, NUM_FEATURES, SEQ_LENGTH, SIZE_BYTES, TARGET_BYTES, DEFAULT_PRECISION, MAX_COLLECTED, TEMP_DATA_BUFFER, SHIFT_BUFFER, COUNT_BUFFER, 1);
+            numDataBytes = encode_group(outputBuffer + OUTPUT_OFFSET, featureVectors, &collectedIndices, numCollected, NUM_FEATURES, SEQ_LENGTH, TARGET_BYTES, DEFAULT_PRECISION, MAX_COLLECTED, TEMP_DATA_BUFFER, SHIFT_BUFFER, COUNT_BUFFER, 1);
             #endif
-
-            // Set the length (before padding)
-            outputBuffer[0] = (numDataBytes >> 8) & 0xFF;
-            outputBuffer[1] = (numDataBytes) & 0xFF;
 
             // Generate the initialization vector via an LFSR step
             lfsr_array(aesIV, AES_BLOCK_SIZE);
@@ -248,11 +244,16 @@ int main(void)
             numBytesToSend = numOutputBytes + HEADER_SIZE;
 
             // Extend Group Encoded Messages if needed
-            #ifdef IS_GROUP_ENCODED
-            if (numBytesToSend < (TARGET_BYTES + LENGTH_SIZE)) {
-                numBytesToSend = TARGET_BYTES + LENGTH_SIZE;
+            #if defined(IS_GROUP_ENCODED) || defined(IS_PADDED)
+            if (numBytesToSend < TARGET_BYTES) {
+                numBytesToSend = TARGET_BYTES;
             }
             #endif
+
+            // Add the message size for proper retrieval. This leaks no information
+            // because recipient can read the message size for themselves
+            outputBuffer[0] = (numBytesToSend >> 8) & 0xFF;
+            outputBuffer[1] = (numBytesToSend) & 0xFF;
 
             // Clear the encryption flag and increment the element index to avoid
             // encrypting again

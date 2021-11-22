@@ -134,19 +134,24 @@ def write_policy(policy: Policy, is_msp: bool):
 
             if isinstance(policy, AdaptiveHeuristic):
                 fout.write('#define IS_ADAPTIVE_HEURISTIC\n')
+                precision = policy.precision
             else:
                 fout.write('#define IS_ADAPTIVE_DEVIATION\n')
 
-                alpha = to_fixed_point(policy._alpha, width=policy.width, precision=policy.precision);
-                beta = to_fixed_point(policy._beta, width=policy.width, precision=policy.precision);
+                precision = max(5, policy.precision)
+                fout.write('#define DEVIATION_PRECISION {0}\n'.format(precision))
+
+                alpha = to_fixed_point(policy._alpha, width=policy.width, precision=precision);
+                beta = to_fixed_point(policy._beta, width=policy.width, precision=precision);
 
                 fout.write('#define ALPHA {0}\n'.format(alpha))
                 fout.write('#define BETA {0}\n'.format(beta))
 
-            threshold = to_fixed_point(policy._threshold, width=policy.width, precision=policy.precision)
+            threshold = to_fixed_point(policy._threshold, width=policy.width, precision=precision)
 
             fout.write('#define THRESHOLD {0}\n'.format(threshold))
-            fout.write('#define MAX_SKIP {0}\n'.format(policy._max_skip))
+            fout.write('#define MAX_SKIP {0}\n'.format(policy.max_skip))
+            fout.write('#define MIN_SKIP {0}\n'.format(policy.min_skip))
         elif isinstance(policy, SkipRNN):
             fout.write('#define IS_SKIP_RNN\n')
 

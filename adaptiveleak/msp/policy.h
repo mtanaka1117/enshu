@@ -14,6 +14,7 @@ struct UniformPolicy {
 
 struct HeuristicPolicy {
     uint16_t maxSkip;
+    uint16_t minSkip;
     uint16_t currentSkip;
     uint16_t sampleSkip;
     FixedPoint threshold;
@@ -21,6 +22,7 @@ struct HeuristicPolicy {
 
 struct DeviationPolicy {
     uint16_t maxSkip;
+    uint16_t minSkip;
     uint16_t currentSkip;
     uint16_t sampleSkip;
     FixedPoint threshold;
@@ -28,6 +30,7 @@ struct DeviationPolicy {
     FixedPoint beta;
     struct Vector *mean;
     struct Vector *dev;
+    uint16_t precision;
 };
 
 struct SkipRNNPolicy {
@@ -53,14 +56,14 @@ void uniform_update(struct UniformPolicy *policy);
 void uniform_reset(struct UniformPolicy *policy);
 
 // Heuristic Policy Operations
-void heuristic_policy_init(struct HeuristicPolicy *policy, uint16_t maxSkip, FixedPoint threshold);
+void heuristic_policy_init(struct HeuristicPolicy *policy, uint16_t maxSkip, uint16_t minSkip, FixedPoint threshold);
 uint8_t heuristic_should_collect(struct HeuristicPolicy *policy, uint16_t seqIdx);
 void heuristic_update(struct HeuristicPolicy *policy, struct Vector *curr, struct Vector *prev);
 void heuristic_reset(struct HeuristicPolicy *policy);
 
 
 // Deviation Policy Operations
-void deviation_policy_init(struct DeviationPolicy *policy, uint16_t maxSkip, FixedPoint threshold, FixedPoint alpha, FixedPoint beta, struct Vector *mean, struct Vector *dev);
+void deviation_policy_init(struct DeviationPolicy *policy, uint16_t maxSkip, uint16_t minSkip, FixedPoint threshold, FixedPoint alpha, FixedPoint beta, struct Vector *mean, struct Vector *dev, uint16_t precision);
 uint8_t deviation_should_collect(struct DeviationPolicy *policy, uint16_t seqIdx);
 void deviation_update(struct DeviationPolicy *policy, struct Vector *curr, uint16_t precision);
 void deviation_reset(struct DeviationPolicy *policy);

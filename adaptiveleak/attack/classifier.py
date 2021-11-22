@@ -107,10 +107,11 @@ class AttackClassifier:
                                                      patience=self.lr_decay,
                                                      min_lr=self.min_learning_rate)
 
-        save_path = os.path.join(save_folder, self.weights_file_name)
-        checkpoint = keras.callbacks.ModelCheckpoint(filepath=save_path, monitor='val_loss', save_best_only=True)
+        #save_path = os.path.join(save_folder, self.weights_file_name)
+        #checkpoint = keras.callbacks.ModelCheckpoint(filepath=save_path, monitor='val_loss', save_best_only=True)
 
-        callbacks = [lr_decay, checkpoint]
+        #callbacks = [lr_decay, checkpoint]
+        callbacks = [lr_decay]
 
         # Train the model
         batch_size = min(int(train_inputs.shape[0] / 10), self.batch_size)

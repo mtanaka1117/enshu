@@ -50,6 +50,9 @@ void test_scale_10_up(void);
 void test_apply_sigmoid(void);
 void test_apply_tanh(void);
 
+void test_convert_precision_4(void);
+void test_convert_precision_6(void);
+
 uint8_t vector_equal(struct Vector *expected, struct Vector *given);
 
 #endif

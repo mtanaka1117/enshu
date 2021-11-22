@@ -15,6 +15,7 @@ policy.obj: /home/tejask/ti/ccs1010/ccs/tools/compiler/ti-cgt-msp430_20.2.1.LTS/
 policy.obj: ../utils/fixed_point.h
 policy.obj: ../utils/matrix.h
 policy.obj: ../utils/fixed_point.h
+policy.obj: ../utils/constants.h
 
 ../policy.c: 
 ../policy.h: 
@@ -31,3 +32,4 @@ policy.obj: ../utils/fixed_point.h
 ../utils/fixed_point.h: 
 ../utils/matrix.h: 
 ../utils/fixed_point.h: 
+../utils/constants.h: 

@@ -21,6 +21,7 @@ struct Matrix {
 
 struct Vector *vector_add(struct Vector *result, struct Vector *vec1, struct Vector *vec2);
 struct Vector *vector_mul(struct Vector *result, struct Vector *vec1, struct Vector *vec2, uint16_t precision);
+struct Vector *vector_change_precision(struct Vector *result, struct Vector *vec, uint16_t oldPrecision, uint16_t newPrecision);
 
 struct Vector *vector_gated_add(struct Vector *result, struct Vector *vec1, struct Vector *vec2, struct Vector *gate, uint16_t precision);
 struct Vector *vector_gated_add_scalar(struct Vector *result, struct Vector *vec1, struct Vector *vec2, FixedPoint gate, uint16_t precision);

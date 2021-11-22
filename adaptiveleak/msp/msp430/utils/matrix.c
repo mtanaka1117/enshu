@@ -108,8 +108,8 @@ struct Vector *vector_gated_add(struct Vector *result, struct Vector *vec1, stru
         gateValue = gate->data[i];
         oneMinusGate = fp_sub(one, gateValue);
 
-        temp1 = fp32_mul(vec1->data[i], gateValue, precision);
-        temp2 = fp32_mul(vec2->data[i], oneMinusGate, precision);
+        temp1 = fp_mul(vec1->data[i], gateValue, precision);
+        temp2 = fp_mul(vec2->data[i], oneMinusGate, precision);
         result->data[i] = fp_add(temp1, temp2);
     }
 

@@ -44,8 +44,8 @@ int8_t get_range_shift(FixedPoint value, uint8_t currentPrecision, uint8_t newWi
     volatile FixedPoint bestError = prevError;
     volatile int8_t bestShift = prevShift;
 
-    volatile int8_t shift = MAX_SHIFT;
-    for (; shift >= MIN_SHIFT; shift--) {
+    volatile int8_t shift = MIN_SHIFT;
+    for (; shift <= MAX_SHIFT; shift++) {
         if (shift == prevShift) {
             continue;
         }
@@ -67,7 +67,7 @@ int8_t get_range_shift(FixedPoint value, uint8_t currentPrecision, uint8_t newWi
         shiftedValue &= CONV_MASK;  // Prevent negative values
         error = fp_abs(fp_sub(absValue, shiftedValue));
 
-        if (error <= bestError) {
+        if (error < bestError) {
             bestError = error;
             bestShift = shift;
         }
@@ -90,6 +90,11 @@ void get_range_shifts_array(int8_t *result, FixedPoint *values, uint8_t currentP
 
     uint16_t i;
     for (i = 0; i < numValues; i++) {
+        if (i == 143) {
+            prevShift++;
+            prevShift--;
+        }
+
         prevShift = get_range_shift(values[i], currentPrecision, newWidth, prevShift);
         result[i] = prevShift;
     }

@@ -63,6 +63,44 @@ struct Vector *vector_mul(struct Vector *result, struct Vector *vec1, struct Vec
 }
 
 
+struct Vector *vector_change_precision(struct Vector *result, struct Vector *vec, uint16_t oldPrecision, uint16_t newPrecision) {
+    if (result->size != vec->size) {
+        return result;
+    }
+
+    const int16_t diff = (oldPrecision - newPrecision);
+    const uint8_t isRight = oldPrecision > newPrecision;
+    const int16_t shift = diff * isRight - diff * (1 - isRight);
+    const int16_t maxVal = (1 << (15 - shift)) - 1;
+    const int16_t minVal = -1 * maxVal;
+    volatile FixedPoint value;
+
+    uint16_t i, j;
+    for (i = vec->size; i > 0; i--) {
+        j = i - 1;
+
+        if (shift >= 16) {
+            result->data[j] = 0;
+        } else if (isRight) {
+            result->data[j] = (vec->data[j]) >> shift;
+        } else {
+            value = vec->data[j];
+
+            if (value > maxVal) {
+                result->data[j] = INT16_MAX;
+            } else if (value < minVal) {
+                result->data[j] = -1 * INT16_MAX;
+            } else {
+                result->data[j] = value << shift;
+            }
+        }
+    }
+
+    return result;
+}
+
+
+
 struct Vector *vector_gated_add_scalar(struct Vector *result, struct Vector *vec1, struct Vector *vec2, FixedPoint gate, uint16_t precision) {
     /**
      * Returns a vector with gate * vec1 + (1 - gate) * vec2

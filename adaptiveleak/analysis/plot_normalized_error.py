@@ -16,6 +16,10 @@ from adaptiveleak.analysis.plot_utils import extract_results, iterate_policy_fol
 
 NormalizedError = namedtuple('NormalizedError', ['median', 'first', 'third', 'raw'])
 
+MEDIAN_OFFSET_X = 4
+MEDIAN_OFFSET_Y = 5
+MEDIAN_OFFSET_FACTOR = 3
+
 
 def normalize_errors_for_dataset(date: str, dataset: str, include_skip_rnn: bool) -> Dict[str, NormalizedError]:
     extract_fn = partial(extract_results, field='mae', aggregate_mode=None)
@@ -61,7 +65,7 @@ def plot(dataset_results: Dict[str, Dict[str, NormalizedError]], output_file: Op
         xs = np.arange(len(dataset_results) + 1)  # Include the 'All'
 
         # Print the label for the 'Overall' table
-        ax.text(6, 3 - 2.25 * (offset - width), 'Overall:', fontweight='bold', fontsize=LEGEND_FONT)
+        ax.text(MEDIAN_OFFSET_X, MEDIAN_OFFSET_Y - MEDIAN_OFFSET_FACTOR * (offset - width), 'Overall Medians:', fontweight='bold', fontsize=LEGEND_FONT)
 
         for name in policy_names:
             encodings = encoding_names if name not in ('uniform', 'random') else ['standard']
@@ -96,7 +100,7 @@ def plot(dataset_results: Dict[str, Dict[str, NormalizedError]], output_file: Op
                     ax.errorbar(xs + offset, median_errors, yerr=[first_errors, third_errors], color='k', capsize=2, ls='none')
 
                     # Annotate the aggregate score
-                    ax.text(6, 3 - 2.25 * offset, '{0}: {1:.2f}'.format(to_label(label_name), aggregate), fontsize=LEGEND_FONT)
+                    ax.text(MEDIAN_OFFSET_X, MEDIAN_OFFSET_Y - MEDIAN_OFFSET_FACTOR * offset, '{0}: {1:.2f}'.format(to_label(label_name), aggregate), fontsize=LEGEND_FONT)
 
                 offset += width
 
@@ -104,10 +108,11 @@ def plot(dataset_results: Dict[str, Dict[str, NormalizedError]], output_file: Op
         dataset_names.append('Overall')
 
         ax.set_xticks(xs)
-        ax.set_xticklabels(dataset_names)
+        ax.set_xticklabels(dataset_names, fontsize=AXIS_FONT - 3)
+        ax.set_yticklabels([round(y, 3) for y in ax.get_yticks()], fontsize=AXIS_FONT)
 
         # Add a line to separate the 'All' category
-        ax.axvline((xs[-1] + xs[-2]) / 2, linestyle='--', color='k')
+        ax.axvline((xs[-1] + xs[-2]) / 2, ymax=0.4, linestyle='--', color='k')
 
         ax.set_xlabel('Dataset', fontsize=AXIS_FONT)
         ax.set_ylabel('Median Normalized Reciprocal MAE', fontsize=AXIS_FONT)

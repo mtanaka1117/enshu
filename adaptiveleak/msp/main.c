@@ -48,7 +48,7 @@ int main(void) {
     struct Vector *prevFeatures;
     
     struct HeuristicPolicy policy;
-    heuristic_policy_init(&policy, MAX_SKIP, THRESHOLD);
+    heuristic_policy_init(&policy, MAX_SKIP, MIN_SKIP, THRESHOLD);
     #elif defined(IS_ADAPTIVE_DEVIATION)
     struct DeviationPolicy policy;
 
@@ -58,7 +58,7 @@ int main(void) {
     FixedPoint devData[NUM_FEATURES];
     struct Vector dev = { devData, NUM_FEATURES };
 
-    deviation_policy_init(&policy, MAX_SKIP, THRESHOLD, ALPHA, BETA, &mean, &dev);
+    deviation_policy_init(&policy, MAX_SKIP, MIN_SKIP, THRESHOLD, ALPHA, BETA, &mean, &dev, DEVIATION_PRECISION);
     #elif defined(IS_SKIP_RNN)
     struct SkipRNNPolicy policy;
 
@@ -80,7 +80,7 @@ int main(void) {
     uint8_t shouldCollect = 0;
     uint8_t didCollect = 1;
 
-    for (seqIdx = 0; seqIdx < 3; seqIdx++) {
+    for (seqIdx = 0; seqIdx < 75; seqIdx++) {
         // Clear the collected bit map
         clear_bitmap(&collectedIndices);
 
@@ -150,10 +150,14 @@ int main(void) {
         numEncodedBytes = encode_group(outputBuffer, featureVectors, &collectedIndices, count, NUM_FEATURES, SEQ_LENGTH, TARGET_BYTES, DEFAULT_PRECISION, MAX_COLLECTED, FEATURE_BUFFER, SHIFT_BUFFER, COUNT_BUFFER, 1);
         #endif
 
-        print_message(outputBuffer, numEncodedBytes);
+        //if (numEncodedBytes > TARGET_DATA_BYTES) {
+        //    printf("%d %d\n", seqIdx, numEncodedBytes);
+        //}
 
-        //printf("%d ", count);
-        printf("\n");
+        //print_message(outputBuffer, numEncodedBytes);
+
+        printf("%d ", count);
+        //printf("\n");
     }
 
     printf("\n");

@@ -27,8 +27,8 @@ def percent_errors_for_dataset(date: str, dataset: str, policy_one: str, policy_
     energy_budgets = list(sorted(policy_one_results.keys()))
 
     return {
-        policy_one: [(policy_two_results[b] - policy_one_results[b]) / ((policy_one_results[b] + policy_two_results[b]) / 2 + SMALL_NUMBER) for b in energy_budgets],
-        policy_two: [(policy_one_results[b] - policy_two_results[b]) / ((policy_one_results[b] + policy_two_results[b]) / 2 + SMALL_NUMBER) for b in energy_budgets]
+        policy_one: [(policy_one_results[b] - policy_two_results[b]) / ((policy_one_results[b] + policy_two_results[b]) / 2 + SMALL_NUMBER) for b in energy_budgets],
+        policy_two: [(policy_two_results[b] - policy_one_results[b]) / ((policy_one_results[b] + policy_two_results[b]) / 2 + SMALL_NUMBER) for b in energy_budgets]
     }
  
 

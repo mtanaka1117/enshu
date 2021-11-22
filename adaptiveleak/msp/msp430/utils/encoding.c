@@ -1,7 +1,7 @@
 #include "encoding.h"
 
 
-uint8_t GROUP_WIDTHS[MAX_NUM_GROUPS];
+uint8_t GROUP_WIDTHS[16];
 
 
 uint16_t encode_collected_indices(uint8_t *output, struct BitMap *collectedIndices, uint16_t outputIdx) {
@@ -25,7 +25,7 @@ uint16_t encode_shifts(uint8_t *output, int8_t *shifts, uint8_t *widths, uint16_
 
     uint8_t i;
     for (i = 0; i < numGroups; i++) {
-        output[outputIdx] = ((widths[i] & WIDTH_MASK) << NUM_SHIFT_BITS) | ((shifts[i] + SHIFT_OFFSET) & SHIFT_MASK);
+        output[outputIdx] = (((widths[i] - MIN_WIDTH) & WIDTH_MASK) << NUM_SHIFT_BITS) | ((shifts[i] + SHIFT_OFFSET) & SHIFT_MASK);
         outputIdx++;
     }
 
@@ -94,7 +94,6 @@ uint16_t encode_group(uint8_t *output,
                       uint16_t numCollected,
                       uint16_t numFeatures,
                       uint16_t seqLength,
-                      uint16_t sizeBytes,
                       uint16_t targetBytes,
                       uint16_t precision,
                       uint16_t maxCollected,
@@ -102,9 +101,11 @@ uint16_t encode_group(uint8_t *output,
                       int8_t *shiftBuffer,
                       uint16_t *countBuffer,
                       uint8_t isBlock) {
+
+
     // Estimate the meta-data associated with stable group encoding
-    uint16_t maskBytes = collectedIndices->numBytes;
-    uint16_t metadataBytes = maskBytes + sizeBytes + MAX_NUM_GROUPS + 3;
+    const uint16_t maskBytes = collectedIndices->numBytes;
+    uint16_t metadataBytes = maskBytes + LENGTH_SIZE;
 
     if (isBlock) {
         metadataBytes += AES_BLOCK_SIZE;
@@ -113,7 +114,22 @@ uint16_t encode_group(uint8_t *output,
     }
 
     // Compute the target number of data bytes
-    uint16_t targetDataBytes = targetBytes - metadataBytes;
+    volatile uint16_t targetDataBytes = targetBytes - metadataBytes;
+
+    // Get the maximum number of groups
+    uint16_t maxNumGroups = get_max_num_groups(targetDataBytes, numCollected, numFeatures, 16);
+
+    volatile uint16_t sizeWidth = 0;
+    uint16_t collectedCounter = numCollected;
+    while (collectedCounter > 0) {
+        collectedCounter = collectedCounter >> 1;
+        sizeWidth++;
+    }
+
+    volatile uint16_t sizeBytes = get_num_bytes(sizeWidth * maxNumGroups);
+    volatile uint16_t shiftBytes = 1 + maxNumGroups + sizeBytes;
+    targetDataBytes -= shiftBytes;
+
     uint16_t targetDataBits = (targetDataBytes - MAX_NUM_GROUPS) << 3;
 
     // Prune measurements if needed
@@ -166,13 +182,12 @@ uint16_t encode_group(uint8_t *output,
     uint16_t minWidth = targetDataBits / (numFeatures * numCollected);
     minWidth = min16u(minWidth, MAX_WIDTH);
 
-    get_range_shifts_array(shiftBuffer, tempBuffer, precision, minWidth, NUM_SHIFT_BITS, count);
+    get_range_shifts_array(shiftBuffer, tempBuffer, precision, minWidth, count);
 
     // Run-Length Encode the range shifts
-    uint16_t numGroups = create_shift_groups(shiftBuffer, countBuffer, shiftBuffer, count, MAX_NUM_GROUPS); 
+    uint16_t numGroups = create_shift_groups(shiftBuffer, countBuffer, shiftBuffer, count, maxNumGroups); 
 
     // Re-calculate the meta-data size based on the given number of shift groups
-    metadataBytes -= sizeBytes;
 
     uint16_t maxSize = 0;
     uint16_t s;
@@ -183,7 +198,7 @@ uint16_t encode_group(uint8_t *output,
         }
     }
 
-    uint8_t sizeWidth = 0;
+    sizeWidth = 0;
     uint16_t tempSize = maxSize;
     while (tempSize > 0) {
         tempSize = tempSize >> 1;
@@ -191,8 +206,8 @@ uint16_t encode_group(uint8_t *output,
     }
 
     sizeBytes = get_num_bytes(sizeWidth * numGroups);
-    metadataBytes += sizeBytes;
-    targetDataBytes = targetBytes - metadataBytes;
+    shiftBytes = 1 + sizeBytes + numGroups;
+    targetDataBytes = targetBytes - metadataBytes - shiftBytes;
 
     // Set the group widths
     set_group_widths(GROUP_WIDTHS, countBuffer, numGroups, targetDataBytes, minWidth);
@@ -288,9 +303,36 @@ uint16_t calculate_grouped_size(uint8_t *groupWidths, uint16_t numCollected, uin
     totalBytes += numGroups + get_num_bytes(seqLength) + 1;
 
     if (isBlock) {
-        return 2 + AES_BLOCK_SIZE + round_to_aes_block(totalBytes);
+        return AES_BLOCK_SIZE + LENGTH_SIZE + round_to_aes_block(totalBytes);
     } else {
-        return 2 + CHACHA_NONCE_LEN + totalBytes;
+        return CHACHA_NONCE_LEN + LENGTH_SIZE + totalBytes;
     }
 }
 
+
+uint16_t get_max_num_groups(const uint16_t targetBytes, const uint16_t numCollected, const uint16_t numFeatures, const uint16_t width) {
+    // Get the number of bits for the size value
+    uint16_t totalCount = numCollected * numFeatures;
+    
+    uint8_t countBits = 0;
+    while (totalCount > 0) {
+        totalCount = totalCount >> 1;
+        countBits++;
+    }
+
+    uint16_t dataBytes = get_num_bytes(totalCount * width);    
+    uint16_t groupedDataBytes, totalBytes, shiftBytes;
+    
+    uint16_t numGroups = 15;
+    for (; numGroups > MAX_NUM_GROUPS; numGroups--) {
+        groupedDataBytes = dataBytes + numGroups;
+        shiftBytes = get_num_bytes(countBits * numGroups);
+        totalBytes = groupedDataBytes + shiftBytes + numGroups + 1;
+
+        if (targetBytes < totalBytes) {
+            return numGroups;
+        }
+    }
+
+    return MAX_NUM_GROUPS;
+}

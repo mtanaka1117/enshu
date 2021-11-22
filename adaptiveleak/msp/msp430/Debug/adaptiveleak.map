@@ -1,7 +1,7 @@
 ******************************************************************************
                   MSP430 Linker Unix v20.2.1                   
 ******************************************************************************
->> Linked Thu Jul 22 15:00:46 2021
+>> Linked Wed Aug  4 21:40:39 2021
 
 OUTPUT FILE NAME:   <adaptiveleak.out>
 ENTRY POINT SYMBOL: "_c_int00_noargs_mpu"  address: 0000487e
@@ -17,10 +17,10 @@ MEMORY CONFIGURATION
   INFOC                 00001880   00000080  00000000  00000080  RWIX
   INFOB                 00001900   00000080  00000000  00000080  RWIX
   INFOA                 00001980   00000080  00000000  00000080  RWIX
-  RAM                   00001c00   00001000  00000b2e  000004d2  RWIX
+  RAM                   00001c00   00001000  00000bda  00000426  RWIX
   LEARAM                00002c00   00000ec8  00000000  00000ec8  RWIX
   LEASTACK              00003ac8   00000138  00000000  00000138  RWIX
-  FRAM                  00004000   0000bf80  0000092e  0000b652  RWIX
+  FRAM                  00004000   0000bf80  00000928  0000b658  RWIX
   JTAGSIGNATURE         0000ff80   00000004  00000004  00000000  RWIX  ffff 
   BSLSIGNATURE          0000ff84   00000004  00000004  00000000  RWIX  ffff 
   IPESIGNATURE          0000ff88   00000008  00000008  00000000  RWIX  ffff 
@@ -80,7 +80,7 @@ MEMORY CONFIGURATION
   INT53                 0000fffa   00000002  00000002  00000000  RWIX
   INT54                 0000fffc   00000002  00000002  00000000  RWIX
   RESET                 0000fffe   00000002  00000002  00000000  RWIX
-  FRAM2                 00010000   00033ff8  00008e8a  0002b16e  RWIX
+  FRAM2                 00010000   00033ff8  0000a0ca  00029f2e  RWIX
 
 
 SECTION ALLOCATION MAP
@@ -88,14 +88,14 @@ SECTION ALLOCATION MAP
  output                                  attributes/
 section   page    origin      length       input sections
 --------  ----  ----------  ----------   ----------------
-.matrix    0    00004000    000005dc     UNINITIALIZED
-                  00004000    000005dc     main.obj (.matrix)
+.matrix    0    00004000    0000047e     UNINITIALIZED
+                  00004000    0000047e     main.obj (.matrix)
 
 .binit     0    00004000    00000000     
 
-.cio       0    000045dc    00000000     UNINITIALIZED
+.cio       0    0000447e    00000000     UNINITIALIZED
 
-.sysmem    0    000045dc    00000000     UNINITIALIZED
+.sysmem    0    0000447e    00000000     UNINITIALIZED
 
 .ipestruct 
 *          0    00004800    00000000     UNINITIALIZED
@@ -108,17 +108,17 @@ section   page    origin      length       input sections
 .ipe:_isr 
 *          0    00004800    00000000     UNINITIALIZED
 
-.cinit     0    000048e4    0000004a     
-                  000048e4    00000019     (.cinit..data.load) [load image, compression = lzss]
-                  000048fd    00000001     --HOLE-- [fill = 0]
-                  000048fe    0000000c     (__TI_handler_table)
-                  0000490a    00000006     (.cinit..bss.load) [load image, compression = zero_init]
-                  00004910    00000006     (.cinit..matrix.load) [load image, compression = zero_init]
-                  00004916    00000018     (__TI_cinit_table)
+.cinit     0    000048de    0000004a     
+                  000048de    00000019     (.cinit..data.load) [load image, compression = lzss]
+                  000048f7    00000001     --HOLE-- [fill = 0]
+                  000048f8    0000000c     (__TI_handler_table)
+                  00004904    00000006     (.cinit..bss.load) [load image, compression = zero_init]
+                  0000490a    00000006     (.cinit..matrix.load) [load image, compression = zero_init]
+                  00004910    00000018     (__TI_cinit_table)
 
 .TI.persistent 
-*          0    00010000    00007530     
-                  00010000    00007530     sampler.obj (.TI.persistent:DATASET)
+*          0    00010000    00008890     
+                  00010000    00008890     sampler.obj (.TI.persistent:DATASET)
 
 .init_array 
 *          0    00004000    00000000     UNINITIALIZED
@@ -131,25 +131,23 @@ section   page    origin      length       input sections
                   0000489e    0000001c     msp_lea_isr.obj (.text:_isr:msp_lea_isr)
                   000048ba    00000008     rts430x_lc_ld_eabi.lib : isr_trap.asm.obj (.text:_isr:__TI_ISR_TRAP)
 
-.bss       0    00001c00    00000a74     UNINITIALIZED
-                  00001c00    00000322     main.obj (.bss:outputBuffer)
-                  00001f22    00000258     main.obj (.bss:FEATURE_BUFFER)
-                  0000217a    00000200     policy.obj (.bss:POLICY_BUFFER)
-                  0000237a    00000190     range_shifting.obj (.bss:UNION_FIND)
-                  0000250a    00000064     range_shifting.obj (.bss:LEFT_PARENTS)
-                  0000256e    00000064     range_shifting.obj (.bss:SCORE_BUFFER)
-                  000025d2    0000003c     (.common:LOWEST_IDX)
-                  0000260e    0000003c     (.common:LOWEST_SCORES)
-                  0000264a    0000000c     main.obj (.bss:devData)
-                  00002656    0000000c     main.obj (.bss:meanData)
-                  00002662    00000008     main.obj (.bss:INDEX_BUFFER)
-                  0000266a    00000006     (.common:GROUP_WIDTHS)
-                  00002670    00000002     (.common:msp_lea_ifg)
-                  00002672    00000002     (.common:opMode)
+.bss       0    00001c00    00000b20     UNINITIALIZED
+                  00001c00    00000400     main.obj (.bss:outputBuffer)
+                  00002000    00000320     range_shifting.obj (.bss:UNION_FIND)
+                  00002320    000001cc     main.obj (.bss:FEATURE_BUFFER)
+                  000024ec    000000c8     range_shifting.obj (.bss:LEFT_PARENTS)
+                  000025b4    000000c8     range_shifting.obj (.bss:SCORE_BUFFER)
+                  0000267c    0000003c     (.common:LOWEST_IDX)
+                  000026b8    0000003c     (.common:LOWEST_SCORES)
+                  000026f4    00000014     main.obj (.bss:ZERO_BUFFER)
+                  00002708    00000010     (.common:GROUP_WIDTHS)
+                  00002718    00000004     main.obj (.bss:INDEX_BUFFER)
+                  0000271c    00000002     (.common:msp_lea_ifg)
+                  0000271e    00000002     (.common:opMode)
 
-.data      0    00002674    0000001a     UNINITIALIZED
-                  00002674    00000010     main.obj (.data:aesIV)
-                  00002684    0000000a     main.obj (.data)
+.data      0    00002720    0000001a     UNINITIALIZED
+                  00002720    00000010     main.obj (.data:aesIV)
+                  00002730    0000000a     main.obj (.data)
 
 .stack     0    00002b60    000000a0     UNINITIALIZED
                   00002b60    00000004     rts430x_lc_ld_eabi.lib : boot.c.obj (.stack)
@@ -290,95 +288,89 @@ SYSNMI     0    0000fffc    00000002
 .reset     0    0000fffe    00000002     
                   0000fffe    00000002     rts430x_lc_ld_eabi.lib : boot.c.obj (.reset)
 
-.const     0    000048c2    00000022     
+.const     0    000048c2    0000001c     
                   000048c2    00000010     main.obj (.const:.string:AES_KEY)
                   000048d2    00000006     main.obj (.const:$P$T0$1)
                   000048d8    00000006     main.obj (.const:$P$T1$2)
-                  000048de    00000006     main.obj (.const:$P$T2$3)
 
-.text      0    00017530    0000195a     
-                  00017530    00000350     main.obj (.text:main)
-                  00017880    000002da     encoding.obj (.text:encode_group)
-                  00017b5a    000001be     range_shifting.obj (.text:get_range_shift)
-                  00017d18    000001b0     range_shifting.obj (.text:create_union_find)
-                  00017ec8    0000013a     packing.obj (.text:pack)
-                  00018002    00000120     pruning.obj (.text:prune_sequence)
-                  00018122    000000c0     encoding.obj (.text:set_group_widths)
-                  000181e2    000000aa     policy.obj (.text:deviation_update)
-                  0001828c    0000009c     range_shifting.obj (.text:create_shift_groups)
-                  00018328    0000008c     aes256.obj (.text:AES256_encryptData)
-                  000183b4    0000008c     matrix.obj (.text:vector_gated_add_scalar)
-                  00018440    0000007a     range_shifting.obj (.text:run_length_encode_shifts)
-                  000184ba    00000078     rts430x_lc_ld_eabi.lib : autoinit.c.obj (.text:__TI_auto_init_nobinit_nopinit_hold_wdt:__TI_auto_init_nobinit_nopinit_hold_wdt)
-                  00018532    00000076                            : copy_decompress_lzss.c.obj (.text:decompress:lzss:__TI_decompress_lzss)
-                  000185a8    00000076     encoding.obj (.text:encode_shifts)
-                  0001861e    00000074     aes256.obj (.text:AES256_setCipherKey)
-                  00018692    00000072     init.obj (.text:init_gpio)
-                  00018704    00000064     pruning.obj (.text:insertSorted)
-                  00018768    00000060     sampler.obj (.text:get_measurement)
-                  000187c8    00000060     matrix.obj (.text:vector_diff_norm)
-                  00018828    00000056     matrix.obj (.text:vector_absolute_diff)
-                  0001887e    00000054     range_shifting.obj (.text:get_range_shifts_array)
-                  000188d2    00000054     range_shifting.obj (.text:merge)
-                  00018926    0000004a     lfsr.obj (.text:lfsr_array)
-                  00018970    00000044     matrix.obj (.text:vector_norm)
-                  000189b4    0000003e     rts430x_lc_ld_eabi.lib : asr32.asm.obj (.text:l_asr_const)
-                  000189f2    0000003c     fixed_point.obj (.text:fp_convert_array)
-                  00018a2e    0000003c     rts430x_lc_ld_eabi.lib : memcpy.c.obj (.text:memcpy)
-                  00018a6a    00000038     init.obj (.text:init_uart_system)
-                  00018aa2    00000032     policy.obj (.text:deviation_policy_init)
-                  00018ad4    00000030     encryption.obj (.text:encrypt_aes128)
-                  00018b04    0000002c     MSPMPU_INIT_LIB_CCS_msp430_large_code_large_data.lib : mpu_init.o (.text:__mpu_init)
-                  00018b30    00000028     range_shifting.obj (.text:find)
-                  00018b58    00000028     math.obj (.text:max8)
-                  00018b80    00000028     math.obj (.text:min16u)
-                  00018ba8    00000028     packing.obj (.text:min)
-                  00018bd0    00000026     fixed_point.obj (.text:fp_convert)
-                  00018bf6    00000024     rts430x_lc_ld_eabi.lib : copy_zero_init.c.obj (.text:decompress:ZI:__TI_zero_init)
-                  00018c1a    00000024     policy.obj (.text:deviation_reset)
-                  00018c3e    00000024     encoding.obj (.text:encode_collected_indices)
-                  00018c62    00000024     rts430x_lc_ld_eabi.lib : mult32_f5hw.asm.obj (.text)
-                  00018c86    00000020     bitmap.obj (.text:set_bit)
-                  00018ca6    00000020     bitmap.obj (.text:unset_bit)
-                  00018cc6    0000001e     matrix.obj (.text:vector_set)
-                  00018ce4    0000001c     rts430x_lc_ld_eabi.lib : mult1632_f5hw.asm.obj (.text:__mpysl)
-                  00018d00    0000001c                            : mult1632_f5hw.asm.obj (.text:__mpyul)
-                  00018d1c    0000001c     bitmap.obj (.text:clear_bitmap)
-                  00018d38    0000001c     lfsr.obj (.text:lfsr)
-                  00018d54    0000001a     policy.obj (.text:deviation_should_collect)
-                  00018d6e    0000001a     fixed_point.obj (.text:fp_abs)
-                  00018d88    0000001a     bt_functions.obj (.text:send_message)
-                  00018da2    00000018     rts430x_lc_ld_eabi.lib : mult16_f5hw.asm.obj (.text)
-                  00018dba    00000016                            : copy_decompress_none.c.obj (.text:decompress:none:__TI_decompress_none)
-                  00018dd0    00000016                            : div16u.asm.obj (.text)
-                  00018de6    00000014     bt_functions.obj (.text:send_byte)
-                  00018dfa    00000012     fixed_point.obj (.text:fp32_mul)
-                  00018e0c    00000012     encoding.obj (.text:get_num_bytes)
-                  00018e1e    00000010     rts430x_lc_ld_eabi.lib : asr32.asm.obj (.text:l_asr)
-                  00018e2e    0000000e     init.obj (.text:init_timer)
-                  00018e3c    0000000e     init.obj (.text:init_uart_pins)
-                  00018e4a    0000000e     encryption.obj (.text:round_to_aes_block)
-                  00018e58    0000000a     rts430x_lc_ld_eabi.lib : asr16.asm.obj (.text)
-                  00018e62    0000000a                            : lsl16.asm.obj (.text)
-                  00018e6c    0000000a                            : lsr16.asm.obj (.text)
-                  00018e76    00000006                            : exit.c.obj (.text:abort)
-                  00018e7c    00000004                            : pre_init.c.obj (.text:_system_pre_init)
-                  00018e80    00000004     fixed_point.obj (.text:fp_add)
-                  00018e84    00000004     fixed_point.obj (.text:fp_sub)
-                  00018e88    00000002     rts430x_lc_ld_eabi.lib : startup.c.obj (.text:_system_post_cinit)
+.text      0    00018890    0000183a     
+                  00018890    00000346     main.obj (.text:main)
+                  00018bd6    00000344     encoding.obj (.text:encode_group)
+                  00018f1a    000001ae     range_shifting.obj (.text:create_union_find)
+                  000190c8    000001a2     range_shifting.obj (.text:get_range_shift)
+                  0001926a    0000013a     packing.obj (.text:pack)
+                  000193a4    00000120     pruning.obj (.text:prune_sequence)
+                  000194c4    000000c0     encoding.obj (.text:set_group_widths)
+                  00019584    000000a8     range_shifting.obj (.text:create_shift_groups)
+                  0001962c    0000008c     aes256.obj (.text:AES256_encryptData)
+                  000196b8    0000007e     encoding.obj (.text:encode_shifts)
+                  00019736    0000007a     range_shifting.obj (.text:run_length_encode_shifts)
+                  000197b0    00000078     rts430x_lc_ld_eabi.lib : autoinit.c.obj (.text:__TI_auto_init_nobinit_nopinit_hold_wdt:__TI_auto_init_nobinit_nopinit_hold_wdt)
+                  00019828    00000076                            : copy_decompress_lzss.c.obj (.text:decompress:lzss:__TI_decompress_lzss)
+                  0001989e    00000074     aes256.obj (.text:AES256_setCipherKey)
+                  00019912    0000006a     init.obj (.text:init_gpio)
+                  0001997c    00000068     range_shifting.obj (.text:merge)
+                  000199e4    00000064     pruning.obj (.text:insertSorted)
+                  00019a48    00000060     sampler.obj (.text:get_measurement)
+                  00019aa8    00000060     matrix.obj (.text:vector_diff_norm)
+                  00019b08    0000005e     encoding.obj (.text:get_max_num_groups)
+                  00019b66    0000004e     policy.obj (.text:heuristic_update)
+                  00019bb4    0000004a     lfsr.obj (.text:lfsr_array)
+                  00019bfe    00000048     range_shifting.obj (.text:get_range_shifts_array)
+                  00019c46    00000046     range_shifting.obj (.text:find)
+                  00019c8c    0000003e     init.obj (.text:init_uart_system)
+                  00019cca    0000003e     rts430x_lc_ld_eabi.lib : asr32.asm.obj (.text:l_asr_const)
+                  00019d08    0000003c     fixed_point.obj (.text:fp_convert_array)
+                  00019d44    0000003c     rts430x_lc_ld_eabi.lib : memcpy.c.obj (.text:memcpy)
+                  00019d80    00000030     encryption.obj (.text:encrypt_aes128)
+                  00019db0    0000002c     MSPMPU_INIT_LIB_CCS_msp430_large_code_large_data.lib : mpu_init.o (.text:__mpu_init)
+                  00019ddc    00000028     math.obj (.text:max8)
+                  00019e04    00000028     math.obj (.text:min16u)
+                  00019e2c    00000028     packing.obj (.text:min)
+                  00019e54    00000026     fixed_point.obj (.text:fp_convert)
+                  00019e7a    00000024     rts430x_lc_ld_eabi.lib : copy_zero_init.c.obj (.text:decompress:ZI:__TI_zero_init)
+                  00019e9e    00000024     encoding.obj (.text:encode_collected_indices)
+                  00019ec2    00000024     rts430x_lc_ld_eabi.lib : mult32_f5hw.asm.obj (.text)
+                  00019ee6    00000020     bitmap.obj (.text:set_bit)
+                  00019f06    00000020     bitmap.obj (.text:unset_bit)
+                  00019f26    0000001c     rts430x_lc_ld_eabi.lib : mult1632_f5hw.asm.obj (.text:__mpyul)
+                  00019f42    0000001c     math.obj (.text:abs8)
+                  00019f5e    0000001c     bitmap.obj (.text:clear_bitmap)
+                  00019f7a    0000001c     lfsr.obj (.text:lfsr)
+                  00019f96    0000001a     fixed_point.obj (.text:fp_abs)
+                  00019fb0    0000001a     policy.obj (.text:heuristic_should_collect)
+                  00019fca    0000001a     bt_functions.obj (.text:send_message)
+                  00019fe4    00000018     rts430x_lc_ld_eabi.lib : mult16_f5hw.asm.obj (.text)
+                  00019ffc    00000016                            : copy_decompress_none.c.obj (.text:decompress:none:__TI_decompress_none)
+                  0001a012    00000016     policy.obj (.text:heuristic_policy_init)
+                  0001a028    00000016     rts430x_lc_ld_eabi.lib : div16u.asm.obj (.text)
+                  0001a03e    00000014     bt_functions.obj (.text:send_byte)
+                  0001a052    00000012     encoding.obj (.text:get_num_bytes)
+                  0001a064    0000000e     init.obj (.text:init_timer)
+                  0001a072    0000000e     init.obj (.text:init_uart_pins)
+                  0001a080    0000000e     encryption.obj (.text:round_to_aes_block)
+                  0001a08e    0000000a     policy.obj (.text:heuristic_reset)
+                  0001a098    0000000a     rts430x_lc_ld_eabi.lib : asr16.asm.obj (.text)
+                  0001a0a2    0000000a                            : lsl16.asm.obj (.text)
+                  0001a0ac    0000000a                            : lsr16.asm.obj (.text)
+                  0001a0b6    00000006                            : exit.c.obj (.text:abort)
+                  0001a0bc    00000004                            : pre_init.c.obj (.text:_system_pre_init)
+                  0001a0c0    00000004     fixed_point.obj (.text:fp_add)
+                  0001a0c4    00000004     fixed_point.obj (.text:fp_sub)
+                  0001a0c8    00000002     rts430x_lc_ld_eabi.lib : startup.c.obj (.text:_system_post_cinit)
 
 MODULE SUMMARY
 
        Module                       code   ro data   rw data
        ------                       ----   -------   -------
     ./
-       sampler.obj                  96     0         30000  
-       main.obj                     974    38        2962   
-       policy.obj                   282    0         512    
-       init.obj                     198    0         0      
+       sampler.obj                  96     0         34960  
+       main.obj                     964    32        2686   
+       init.obj                     196    0         0      
+       policy.obj                   136    0         0      
        bt_functions.obj             46     0         0      
     +--+----------------------------+------+---------+---------+
-       Total:                       1596   38        33474  
+       Total:                       1438   32        37646  
                                                             
     ./dsplib/source/lea/
        msp_lea_isr.obj              28     2         0      
@@ -387,19 +379,19 @@ MODULE SUMMARY
        Total:                       28     2         2      
                                                             
     ./utils/
-       range_shifting.obj           1364   0         600    
-       encoding.obj                 1094   0         6      
+       range_shifting.obj           1384   0         1200   
+       encoding.obj                 1302   0         16     
        pruning.obj                  388    0         120    
-       matrix.obj                   420    0         0      
        packing.obj                  354    0         0      
        aes256.obj                   256    0         0      
-       fixed_point.obj              150    0         0      
+       fixed_point.obj              132    0         0      
+       math.obj                     108    0         0      
        lfsr.obj                     102    0         0      
+       matrix.obj                   96     0         0      
        bitmap.obj                   92     0         0      
-       math.obj                     80     0         0      
        encryption.obj               62     0         0      
     +--+----------------------------+------+---------+---------+
-       Total:                       4362   0         726    
+       Total:                       4276   0         1336   
                                                             
     /home/tejask/ti/ccs1010/ccs/ccs_base/msp430/lib/FR59xx/MSPMPU_INIT_LIB_CCS_msp430_large_code_large_data.lib
        mpu_init.o                   44     0         0      
@@ -409,12 +401,12 @@ MODULE SUMMARY
     /home/tejask/ti/ccs1010/ccs/tools/compiler/ti-cgt-msp430_20.2.1.LTS/lib/rts430x_lc_ld_eabi.lib
        autoinit.c.obj               120    0         0      
        copy_decompress_lzss.c.obj   118    0         0      
-       asr32.asm.obj                78     0         0      
+       asr32.asm.obj                62     0         0      
        memcpy.c.obj                 60     0         0      
-       mult1632_f5hw.asm.obj        56     0         0      
        copy_zero_init.c.obj         36     0         0      
        mult32_f5hw.asm.obj          36     0         0      
        boot.c.obj                   32     2         0      
+       mult1632_f5hw.asm.obj        28     0         0      
        mult16_f5hw.asm.obj          24     0         0      
        copy_decompress_none.c.obj   22     0         0      
        div16u.asm.obj               22     0         0      
@@ -460,25 +452,25 @@ MODULE SUMMARY
        int54.asm.obj                0      2         0      
        startup.c.obj                2      0         0      
     +--+----------------------------+------+---------+---------+
-       Total:                       654    70        0      
+       Total:                       610    70        0      
                                                             
        Stack:                       0      0         160    
        Linker Generated:            0      73        0      
     +--+----------------------------+------+---------+---------+
-       Grand Total:                 6684   183       34362  
+       Grand Total:                 6396   177       39144  
 
 
 LINKER GENERATED COPY TABLES
 
-__TI_cinit_table @ 00004916 records: 3, size/record: 8, table size: 24
-	.data: load addr=000048e4, load size=00000019 bytes, run addr=00002674, run size=0000001a bytes, compression=lzss
-	.bss: load addr=0000490a, load size=00000006 bytes, run addr=00001c00, run size=00000a74 bytes, compression=zero_init
-	.matrix: load addr=00004910, load size=00000006 bytes, run addr=00004000, run size=000005dc bytes, compression=zero_init
+__TI_cinit_table @ 00004910 records: 3, size/record: 8, table size: 24
+	.data: load addr=000048de, load size=00000019 bytes, run addr=00002720, run size=0000001a bytes, compression=lzss
+	.bss: load addr=00004904, load size=00000006 bytes, run addr=00001c00, run size=00000b20 bytes, compression=zero_init
+	.matrix: load addr=0000490a, load size=00000006 bytes, run addr=00004000, run size=0000047e bytes, compression=zero_init
 
 
 LINKER GENERATED HANDLER TABLE
 
-__TI_handler_table @ 000048fe records: 3, size/record: 4, table size: 12
+__TI_handler_table @ 000048f8 records: 3, size/record: 4, table size: 12
 	index: 0, handler: __TI_zero_init
 	index: 1, handler: __TI_decompress_lzss
 	index: 2, handler: __TI_decompress_none
@@ -719,8 +711,8 @@ address   name
 00000872  ADC12MEM9                              
 00000873  ADC12MEM9_H                            
 00000872  ADC12MEM9_L                            
-00018328  AES256_encryptData                     
-0001861e  AES256_setCipherKey                    
+0001962c  AES256_encryptData                     
+0001989e  AES256_setCipherKey                    
 000009c0  AESACTL0                               
 000009c1  AESACTL0_H                             
 000009c0  AESACTL0_L                             
@@ -751,7 +743,7 @@ address   name
 000004bc  BIN2BCD                                
 000004bd  BIN2BCD_H                              
 000004bc  BIN2BCD_L                              
-00018e76  C$$EXIT                                
+0001a0b6  C$$EXIT                                
 0000043e  CAPTIO0CTL                             
 0000043f  CAPTIO0CTL_H                           
 0000043e  CAPTIO0CTL_L                           
@@ -941,7 +933,7 @@ address   name
 00000146  GCCTL1                                 
 00000147  GCCTL1_H                               
 00000146  GCCTL1_L                               
-0000266a  GROUP_WIDTHS                           
+00002708  GROUP_WIDTHS                           
 00000a80  LEACAP                                 
 00000a82  LEACAPH                                
 00000a80  LEACAPL                                
@@ -1005,8 +997,8 @@ address   name
 00000aac  LEAS1STAT                              
 00000aae  LEAS1STATH                             
 00000aac  LEAS1STATL                             
-000025d2  LOWEST_IDX                             
-0000260e  LOWEST_SCORES                          
+0000267c  LOWEST_IDX                             
+000026b8  LOWEST_SCORES                          
 000004c4  MAC                                    
 000004da  MAC32H                                 
 000004db  MAC32H_H                               
@@ -1997,14 +1989,14 @@ address   name
 0000015c  WDTCTL_L                               
 00002c00  __STACK_END                            
 000000a0  __STACK_SIZE                           
-00004916  __TI_CINIT_Base                        
-0000492e  __TI_CINIT_Limit                       
-000048fe  __TI_Handler_Table_Base                
-0000490a  __TI_Handler_Table_Limit               
+00004910  __TI_CINIT_Base                        
+00004928  __TI_CINIT_Limit                       
+000048f8  __TI_Handler_Table_Base                
+00004904  __TI_Handler_Table_Limit               
 000048ba  __TI_ISR_TRAP                          
-000184ba  __TI_auto_init_nobinit_nopinit_hold_wdt
-00018532  __TI_decompress_lzss                   
-00018dba  __TI_decompress_none                   
+000197b0  __TI_auto_init_nobinit_nopinit_hold_wdt
+00019828  __TI_decompress_lzss                   
+00019ffc  __TI_decompress_none                   
 0000ffb4  __TI_int18                             
 0000ffb6  __TI_int19                             
 0000ffb8  __TI_int20                             
@@ -2045,106 +2037,101 @@ address   name
 ffffffff  __TI_pprof_out_hndl                    
 ffffffff  __TI_prof_data_size                    
 ffffffff  __TI_prof_data_start                   
-00018bf6  __TI_zero_init                         
+00019e7a  __TI_zero_init                         
 ffffffff  __c_args__                             
 00000001  __mpu_enable                           
-00018b04  __mpu_init                             
-00018dd0  __mspabi_divu                          
-00018da2  __mspabi_mpyi_f5hw                     
-00018c62  __mspabi_mpyl_f5hw                     
-00018ce4  __mspabi_mpysl_f5hw                    
-00018d00  __mspabi_mpyul_f5hw                    
-00018dd0  __mspabi_remu                          
-00018e62  __mspabi_slli                          
-00018e58  __mspabi_srai                          
-00018e1e  __mspabi_sral                          
-000189ec  __mspabi_sral_1                        
-000189c8  __mspabi_sral_10                       
-000189c4  __mspabi_sral_11                       
-000189c0  __mspabi_sral_12                       
-000189bc  __mspabi_sral_13                       
-000189b8  __mspabi_sral_14                       
-000189b4  __mspabi_sral_15                       
-000189e8  __mspabi_sral_2                        
-000189e4  __mspabi_sral_3                        
-000189e0  __mspabi_sral_4                        
-000189dc  __mspabi_sral_5                        
-000189d8  __mspabi_sral_6                        
-000189d4  __mspabi_sral_7                        
-000189d0  __mspabi_sral_8                        
-000189cc  __mspabi_sral_9                        
-00018e6c  __mspabi_srli                          
+00019db0  __mpu_init                             
+0001a028  __mspabi_divu                          
+00019fe4  __mspabi_mpyi_f5hw                     
+00019ec2  __mspabi_mpyl_f5hw                     
+00019f26  __mspabi_mpyul_f5hw                    
+0001a028  __mspabi_remu                          
+0001a0a2  __mspabi_slli                          
+0001a098  __mspabi_srai                          
+00019d02  __mspabi_sral_1                        
+00019cde  __mspabi_sral_10                       
+00019cda  __mspabi_sral_11                       
+00019cd6  __mspabi_sral_12                       
+00019cd2  __mspabi_sral_13                       
+00019cce  __mspabi_sral_14                       
+00019cca  __mspabi_sral_15                       
+00019cfe  __mspabi_sral_2                        
+00019cfa  __mspabi_sral_3                        
+00019cf6  __mspabi_sral_4                        
+00019cf2  __mspabi_sral_5                        
+00019cee  __mspabi_sral_6                        
+00019cea  __mspabi_sral_7                        
+00019ce6  __mspabi_sral_8                        
+00019ce2  __mspabi_sral_9                        
+0001a0ac  __mspabi_srli                          
 0000487e  _c_int00_noargs_mpu                    
 0000fffe  _reset_vector                          
 00002b60  _stack                                 
-00018e88  _system_post_cinit                     
-00018e7c  _system_pre_init                       
-00018e76  abort                                  
-00018d1c  clear_bitmap                           
-0001828c  create_shift_groups                    
-00017d18  create_union_find                      
-00018aa2  deviation_policy_init                  
-00018c1a  deviation_reset                        
-00018d54  deviation_should_collect               
-000181e2  deviation_update                       
-00002686  elemIdx                                
-00018c3e  encode_collected_indices               
-00017880  encode_group                           
-000185a8  encode_shifts                          
-00018ad4  encrypt_aes128                         
-00018b30  find                                   
-00018dfa  fp32_mul                               
-00018d6e  fp_abs                                 
-00018e80  fp_add                                 
-00018bd0  fp_convert                             
-000189f2  fp_convert_array                       
-00018e84  fp_sub                                 
+0001a0c8  _system_post_cinit                     
+0001a0bc  _system_pre_init                       
+0001a0b6  abort                                  
+00019f42  abs8                                   
+00019f5e  clear_bitmap                           
+00019584  create_shift_groups                    
+00018f1a  create_union_find                      
+00002732  elemIdx                                
+00019e9e  encode_collected_indices               
+00018bd6  encode_group                           
+000196b8  encode_shifts                          
+00019d80  encrypt_aes128                         
+00019c46  find                                   
+00019f96  fp_abs                                 
+0001a0c0  fp_add                                 
+00019e54  fp_convert                             
+00019d08  fp_convert_array                       
+0001a0c4  fp_sub                                 
 00004800  fram_ipe_end                           
 00004800  fram_ipe_start                         
 00004000  fram_rw_start                          
 00004800  fram_rx_start                          
-00018768  get_measurement                        
-00018e0c  get_num_bytes                          
-00017b5a  get_range_shift                        
-0001887e  get_range_shifts_array                 
-00018692  init_gpio                              
-00018e2e  init_timer                             
-00018e3c  init_uart_pins                         
-00018a6a  init_uart_system                       
-00018704  insertSorted                           
-00018d38  lfsr                                   
-00018926  lfsr_array                             
-00017530  main                                   
-00018b58  max8                                   
-00018a2e  memcpy                                 
-000188d2  merge                                  
-00018ba8  min                                    
-00018b80  min16u                                 
+00019b08  get_max_num_groups                     
+00019a48  get_measurement                        
+0001a052  get_num_bytes                          
+000190c8  get_range_shift                        
+00019bfe  get_range_shifts_array                 
+0001a012  heuristic_policy_init                  
+0001a08e  heuristic_reset                        
+00019fb0  heuristic_should_collect               
+00019b66  heuristic_update                       
+00019912  init_gpio                              
+0001a064  init_timer                             
+0001a072  init_uart_pins                         
+00019c8c  init_uart_system                       
+000199e4  insertSorted                           
+00019f7a  lfsr                                   
+00019bb4  lfsr_array                             
+00018890  main                                   
+00019ddc  max8                                   
+00019d44  memcpy                                 
+0001997c  merge                                  
+00019e2c  min                                    
+00019e04  min16u                                 
 0000a501  mpu_ctl0_value                         
 00001513  mpu_sam_value                          
 00000480  mpu_segment_border1                    
 00000480  mpu_segment_border2                    
-00002670  msp_lea_ifg                            
+0000271c  msp_lea_ifg                            
 0000489e  msp_lea_isr                            
-0000268c  numBytesToSend                         
-0000268a  numDataBytes                           
-00002688  numOutputBytes                         
-00002672  opMode                                 
-00017ec8  pack                                   
-00018002  prune_sequence                         
-00018e4a  round_to_aes_block                     
-00018440  run_length_encode_shifts               
-00018de6  send_byte                              
-00018d88  send_message                           
-00002684  seqIdx                                 
-00018c86  set_bit                                
-00018122  set_group_widths                       
-00018ca6  unset_bit                              
-00018828  vector_absolute_diff                   
-000187c8  vector_diff_norm                       
-000183b4  vector_gated_add_scalar                
-00018970  vector_norm                            
-00018cc6  vector_set                             
+00002738  numBytesToSend                         
+00002736  numDataBytes                           
+00002734  numOutputBytes                         
+0000271e  opMode                                 
+0001926a  pack                                   
+000193a4  prune_sequence                         
+0001a080  round_to_aes_block                     
+00019736  run_length_encode_shifts               
+0001a03e  send_byte                              
+00019fca  send_message                           
+00002730  seqIdx                                 
+00019ee6  set_bit                                
+000194c4  set_group_widths                       
+00019f06  unset_bit                              
+00019aa8  vector_diff_norm                       
 
 
 GLOBAL SYMBOLS: SORTED BY Symbol Address 
@@ -3655,16 +3642,16 @@ address   name
 00000afc  LEAIVL                                 
 00000afe  LEAIVH                                 
 00001513  mpu_sam_value                          
-000025d2  LOWEST_IDX                             
-0000260e  LOWEST_SCORES                          
-0000266a  GROUP_WIDTHS                           
-00002670  msp_lea_ifg                            
-00002672  opMode                                 
-00002684  seqIdx                                 
-00002686  elemIdx                                
-00002688  numOutputBytes                         
-0000268a  numDataBytes                           
-0000268c  numBytesToSend                         
+0000267c  LOWEST_IDX                             
+000026b8  LOWEST_SCORES                          
+00002708  GROUP_WIDTHS                           
+0000271c  msp_lea_ifg                            
+0000271e  opMode                                 
+00002730  seqIdx                                 
+00002732  elemIdx                                
+00002734  numOutputBytes                         
+00002736  numDataBytes                           
+00002738  numBytesToSend                         
 00002b60  _stack                                 
 00002c00  __STACK_END                            
 00004000  fram_rw_start                          
@@ -3676,10 +3663,10 @@ address   name
 0000487e  _c_int00_noargs_mpu                    
 0000489e  msp_lea_isr                            
 000048ba  __TI_ISR_TRAP                          
-000048fe  __TI_Handler_Table_Base                
-0000490a  __TI_Handler_Table_Limit               
-00004916  __TI_CINIT_Base                        
-0000492e  __TI_CINIT_Limit                       
+000048f8  __TI_Handler_Table_Base                
+00004904  __TI_Handler_Table_Limit               
+00004910  __TI_CINIT_Base                        
+00004928  __TI_CINIT_Limit                       
 0000a501  mpu_ctl0_value                         
 0000ffb4  __TI_int18                             
 0000ffb6  __TI_int19                             
@@ -3719,94 +3706,89 @@ address   name
 0000fffa  __TI_int53                             
 0000fffc  __TI_int54                             
 0000fffe  _reset_vector                          
-00017530  main                                   
-00017880  encode_group                           
-00017b5a  get_range_shift                        
-00017d18  create_union_find                      
-00017ec8  pack                                   
-00018002  prune_sequence                         
-00018122  set_group_widths                       
-000181e2  deviation_update                       
-0001828c  create_shift_groups                    
-00018328  AES256_encryptData                     
-000183b4  vector_gated_add_scalar                
-00018440  run_length_encode_shifts               
-000184ba  __TI_auto_init_nobinit_nopinit_hold_wdt
-00018532  __TI_decompress_lzss                   
-000185a8  encode_shifts                          
-0001861e  AES256_setCipherKey                    
-00018692  init_gpio                              
-00018704  insertSorted                           
-00018768  get_measurement                        
-000187c8  vector_diff_norm                       
-00018828  vector_absolute_diff                   
-0001887e  get_range_shifts_array                 
-000188d2  merge                                  
-00018926  lfsr_array                             
-00018970  vector_norm                            
-000189b4  __mspabi_sral_15                       
-000189b8  __mspabi_sral_14                       
-000189bc  __mspabi_sral_13                       
-000189c0  __mspabi_sral_12                       
-000189c4  __mspabi_sral_11                       
-000189c8  __mspabi_sral_10                       
-000189cc  __mspabi_sral_9                        
-000189d0  __mspabi_sral_8                        
-000189d4  __mspabi_sral_7                        
-000189d8  __mspabi_sral_6                        
-000189dc  __mspabi_sral_5                        
-000189e0  __mspabi_sral_4                        
-000189e4  __mspabi_sral_3                        
-000189e8  __mspabi_sral_2                        
-000189ec  __mspabi_sral_1                        
-000189f2  fp_convert_array                       
-00018a2e  memcpy                                 
-00018a6a  init_uart_system                       
-00018aa2  deviation_policy_init                  
-00018ad4  encrypt_aes128                         
-00018b04  __mpu_init                             
-00018b30  find                                   
-00018b58  max8                                   
-00018b80  min16u                                 
-00018ba8  min                                    
-00018bd0  fp_convert                             
-00018bf6  __TI_zero_init                         
-00018c1a  deviation_reset                        
-00018c3e  encode_collected_indices               
-00018c62  __mspabi_mpyl_f5hw                     
-00018c86  set_bit                                
-00018ca6  unset_bit                              
-00018cc6  vector_set                             
-00018ce4  __mspabi_mpysl_f5hw                    
-00018d00  __mspabi_mpyul_f5hw                    
-00018d1c  clear_bitmap                           
-00018d38  lfsr                                   
-00018d54  deviation_should_collect               
-00018d6e  fp_abs                                 
-00018d88  send_message                           
-00018da2  __mspabi_mpyi_f5hw                     
-00018dba  __TI_decompress_none                   
-00018dd0  __mspabi_divu                          
-00018dd0  __mspabi_remu                          
-00018de6  send_byte                              
-00018dfa  fp32_mul                               
-00018e0c  get_num_bytes                          
-00018e1e  __mspabi_sral                          
-00018e2e  init_timer                             
-00018e3c  init_uart_pins                         
-00018e4a  round_to_aes_block                     
-00018e58  __mspabi_srai                          
-00018e62  __mspabi_slli                          
-00018e6c  __mspabi_srli                          
-00018e76  C$$EXIT                                
-00018e76  abort                                  
-00018e7c  _system_pre_init                       
-00018e80  fp_add                                 
-00018e84  fp_sub                                 
-00018e88  _system_post_cinit                     
+00018890  main                                   
+00018bd6  encode_group                           
+00018f1a  create_union_find                      
+000190c8  get_range_shift                        
+0001926a  pack                                   
+000193a4  prune_sequence                         
+000194c4  set_group_widths                       
+00019584  create_shift_groups                    
+0001962c  AES256_encryptData                     
+000196b8  encode_shifts                          
+00019736  run_length_encode_shifts               
+000197b0  __TI_auto_init_nobinit_nopinit_hold_wdt
+00019828  __TI_decompress_lzss                   
+0001989e  AES256_setCipherKey                    
+00019912  init_gpio                              
+0001997c  merge                                  
+000199e4  insertSorted                           
+00019a48  get_measurement                        
+00019aa8  vector_diff_norm                       
+00019b08  get_max_num_groups                     
+00019b66  heuristic_update                       
+00019bb4  lfsr_array                             
+00019bfe  get_range_shifts_array                 
+00019c46  find                                   
+00019c8c  init_uart_system                       
+00019cca  __mspabi_sral_15                       
+00019cce  __mspabi_sral_14                       
+00019cd2  __mspabi_sral_13                       
+00019cd6  __mspabi_sral_12                       
+00019cda  __mspabi_sral_11                       
+00019cde  __mspabi_sral_10                       
+00019ce2  __mspabi_sral_9                        
+00019ce6  __mspabi_sral_8                        
+00019cea  __mspabi_sral_7                        
+00019cee  __mspabi_sral_6                        
+00019cf2  __mspabi_sral_5                        
+00019cf6  __mspabi_sral_4                        
+00019cfa  __mspabi_sral_3                        
+00019cfe  __mspabi_sral_2                        
+00019d02  __mspabi_sral_1                        
+00019d08  fp_convert_array                       
+00019d44  memcpy                                 
+00019d80  encrypt_aes128                         
+00019db0  __mpu_init                             
+00019ddc  max8                                   
+00019e04  min16u                                 
+00019e2c  min                                    
+00019e54  fp_convert                             
+00019e7a  __TI_zero_init                         
+00019e9e  encode_collected_indices               
+00019ec2  __mspabi_mpyl_f5hw                     
+00019ee6  set_bit                                
+00019f06  unset_bit                              
+00019f26  __mspabi_mpyul_f5hw                    
+00019f42  abs8                                   
+00019f5e  clear_bitmap                           
+00019f7a  lfsr                                   
+00019f96  fp_abs                                 
+00019fb0  heuristic_should_collect               
+00019fca  send_message                           
+00019fe4  __mspabi_mpyi_f5hw                     
+00019ffc  __TI_decompress_none                   
+0001a012  heuristic_policy_init                  
+0001a028  __mspabi_divu                          
+0001a028  __mspabi_remu                          
+0001a03e  send_byte                              
+0001a052  get_num_bytes                          
+0001a064  init_timer                             
+0001a072  init_uart_pins                         
+0001a080  round_to_aes_block                     
+0001a08e  heuristic_reset                        
+0001a098  __mspabi_srai                          
+0001a0a2  __mspabi_slli                          
+0001a0ac  __mspabi_srli                          
+0001a0b6  C$$EXIT                                
+0001a0b6  abort                                  
+0001a0bc  _system_pre_init                       
+0001a0c0  fp_add                                 
+0001a0c4  fp_sub                                 
+0001a0c8  _system_post_cinit                     
 ffffffff  __TI_pprof_out_hndl                    
 ffffffff  __TI_prof_data_size                    
 ffffffff  __TI_prof_data_start                   
 ffffffff  __c_args__                             
 
-[1657 symbols]
+[1652 symbols]

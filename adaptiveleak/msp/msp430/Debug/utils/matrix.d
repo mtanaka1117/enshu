@@ -13,6 +13,7 @@ utils/matrix.obj: /home/tejask/ti/ccs1010/ccs/tools/compiler/ti-cgt-msp430_20.2.
 utils/matrix.obj: /home/tejask/ti/ccs1010/ccs/tools/compiler/ti-cgt-msp430_20.2.1.LTS/include/machine/_stdint.h
 utils/matrix.obj: /home/tejask/ti/ccs1010/ccs/tools/compiler/ti-cgt-msp430_20.2.1.LTS/include/sys/_stdint.h
 utils/matrix.obj: ../utils/fixed_point.h
+utils/matrix.obj: ../utils/constants.h
 
 ../utils/matrix.c: 
 ../utils/matrix.h: 
@@ -27,3 +28,4 @@ utils/matrix.obj: ../utils/fixed_point.h
 /home/tejask/ti/ccs1010/ccs/tools/compiler/ti-cgt-msp430_20.2.1.LTS/include/machine/_stdint.h: 
 /home/tejask/ti/ccs1010/ccs/tools/compiler/ti-cgt-msp430_20.2.1.LTS/include/sys/_stdint.h: 
 ../utils/fixed_point.h: 
+../utils/constants.h: 

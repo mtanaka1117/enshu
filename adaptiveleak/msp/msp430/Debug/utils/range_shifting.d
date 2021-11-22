@@ -14,6 +14,7 @@ utils/range_shifting.obj: /home/tejask/ti/ccs1010/ccs/tools/compiler/ti-cgt-msp4
 utils/range_shifting.obj: /home/tejask/ti/ccs1010/ccs/tools/compiler/ti-cgt-msp430_20.2.1.LTS/include/sys/_stdint.h
 utils/range_shifting.obj: ../utils/fixed_point.h
 utils/range_shifting.obj: ../utils/math.h
+utils/range_shifting.obj: ../utils/constants.h
 
 ../utils/range_shifting.c: 
 ../utils/range_shifting.h: 
@@ -29,3 +30,4 @@ utils/range_shifting.obj: ../utils/math.h
 /home/tejask/ti/ccs1010/ccs/tools/compiler/ti-cgt-msp430_20.2.1.LTS/include/sys/_stdint.h: 
 ../utils/fixed_point.h: 
 ../utils/math.h: 
+../utils/constants.h: 

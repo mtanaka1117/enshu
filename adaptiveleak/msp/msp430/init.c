@@ -34,16 +34,16 @@ void init_gpio(void) {
     P8DIR = 0xFF;
 
     PAOUT = 0x0;
-    PADIR = 0xFF;
+    PADIR = 0xFFFF;
 
     PBOUT = 0x0;
-    PBDIR = 0xFF;
+    PBDIR = 0xFFFF;
 
     PCOUT = 0x0;
-    PCDIR = 0xFF;
+    PCDIR = 0xFFFF;
 
     PDOUT = 0x0;
-    PDDIR = 0xFF;
+    PDDIR = 0xFFFF;
 
     PJOUT = 0x0;
     PJDIR = 0xFFFF;
@@ -64,11 +64,18 @@ void init_uart_system(void) {
      * Initializes the UART system by setting the correct baudrate.
      */
     // Set clock system with DCO of ~1MHz
-    CSCTL0_H = CSKEY_H;  // Unlock clock system control registers
-    CSCTL1 = DCOFSEL_0;  // Set DCO to 1MHz
-    CSCTL2 = SELS__DCOCLK | SELM__DCOCLK;
-    CSCTL3 =  DIVA__1 | DIVS__1 | DIVM__1;  // Set dividers
-    CSCTL0_H = 0;   // Lock the clock system control registers
+//    CSCTL0_H = CSKEY_H;  // Unlock clock system control registers
+//    CSCTL1 = DCOFSEL_0;  // Set DCO to 1MHz
+//    CSCTL2 = SELS__DCOCLK | SELM__DCOCLK;
+//    CSCTL3 =  DIVA__1 | DIVS__1 | DIVM__1;  // Set dividers
+//    CSCTL0_H = 0;   // Lock the clock system control registers
+
+    CSCTL0_H = CSKEY_H;                     // Unlock CS registers
+    CSCTL1 = DCOFSEL_0;                     // Set DCO to 1 MHz
+    CSCTL2 = SELM__DCOCLK | SELS__DCOCLK | SELA__VLOCLK;
+    CSCTL3 = DIVA__1 | DIVS__1 | DIVM__1;   // Set all dividers to 1
+    CSCTL4 = LFXTOFF | HFXTOFF;
+    CSCTL0_H = 0;                           // Lock CS registers
 
     // Configure USCI_A3 for UART
     UCA3CTLW0 = UCSWRST;  // Put eUSCI in reset

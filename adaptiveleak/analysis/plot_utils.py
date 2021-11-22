@@ -10,9 +10,10 @@ PLOT_STYLE = 'seaborn-ticks'
 MARKER = 'o'
 LINE_WIDTH = 3
 MARKER_SIZE = 8
-LEGEND_FONT = 12
-AXIS_FONT = 12
-TITLE_FONT = 14
+ANNOTATE_FONT = 14
+LEGEND_FONT = 16
+AXIS_FONT = 16
+TITLE_FONT = 20
 PLOT_SIZE = (8, 6)
 
 
@@ -49,7 +50,8 @@ DATASET_NAMES = {
 
 
 def to_label(label: str) -> str:
-    return ' '.join((t.capitalize() if t != 'group' else 'AGE') for t in label.split('_') if t.lower() != 'adaptive')
+    tokens = ((t.capitalize() if t != 'group' else 'AGE') for t in label.split('_') if t.lower() != 'adaptive')
+    return ' '.join((t if t != 'Heuristic' else 'Linear' for t in tokens))
 
 
 def dataset_label(dataset: str) -> str:
@@ -59,6 +61,21 @@ def dataset_label(dataset: str) -> str:
 def geometric_mean(x: List[float]) -> float:
     x_prod = np.prod(x)
     return np.power(x_prod, 1.0 / len(x))
+
+
+def get_multiplier(value: float) -> int:
+    if abs(value) > 1:
+        return 0
+
+    mult = 10
+    power = 1
+
+    while (abs(value) < 1):
+        value *= mult
+        mult *= 10
+        power += 1
+
+    return power - 1
 
 
 def extract_results(folder: str, field: str, aggregate_mode: Optional[str], default_value: Any = 0.0) -> Tuple[str, Dict[float, Any]]:

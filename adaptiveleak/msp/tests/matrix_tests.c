@@ -64,6 +64,11 @@ int main(void) {
     test_scale_10_up();
     printf("\tPassed Vector Scaling.\n");
 
+    printf("==== Testing Vector Convert Precision ====\n");
+    test_convert_precision_4();
+    test_convert_precision_6();
+    printf("\tPassed Vector Scaling.\n");
+
     printf("==== Testing Vector Apply ====\n");
     test_apply_tanh();
     test_apply_sigmoid();
@@ -247,6 +252,44 @@ void test_gated_add_scalar_ten(void) {
 
     assert(vector_equal(&expected, &vec1));
 }
+
+/**
+ * VECTOR CHANGE PRECISION TESTS
+ */
+void test_convert_precision_4(void) {
+    uint16_t oldPrecision = 10;
+    uint16_t newPrecision = 6;
+
+    FixedPoint data[4] = { 709,600,-1899,-737 };
+    struct Vector vec = { data, 4 };
+
+    FixedPoint expectedData[4] = { 44, 37, -119, -47 };
+    struct Vector expected = { expectedData, 4 };
+
+    FixedPoint resultData[4];
+    struct Vector result = { resultData, 4 };
+
+    vector_change_precision(&result, &vec, oldPrecision, newPrecision);
+    assert(vector_equal(&expected, &result));
+}
+
+void test_convert_precision_6(void) {
+    uint16_t oldPrecision = 0;
+    uint16_t newPrecision = 6;
+
+    FixedPoint data[6] = { 1,800,-1,0,250,-128 };
+    struct Vector vec = { data, 6 };
+
+    FixedPoint expectedData[6] = { 64, 32767, -64, 0, 16000,-8192 };
+    struct Vector expected = { expectedData, 6 };
+
+    FixedPoint resultData[6];
+    struct Vector result = { resultData, 6 };
+
+    vector_change_precision(&result, &vec, oldPrecision, newPrecision);
+    assert(vector_equal(&expected, &result));
+}
+
 
 /**
  * VECTOR NORM TESTS
