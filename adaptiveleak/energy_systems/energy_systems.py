@@ -293,17 +293,16 @@ class EnergyUnit:
         encrypt_energy = self._encrypt.get_energy(num_bytes=num_bytes,
                                                   use_noise=use_noise)
 
-        comp_energy = collect_energy + should_collect_energy + update_energy + encode_energy + encrypt_energy
+        comp_energy = should_collect_energy + update_energy + encode_energy + encrypt_energy
 
         if self._policy_type in (PolicyType.UNIFORM, PolicyType.RANDOM):
-            return UNIFORM_FACTOR * comp_energy
+            return UNIFORM_FACTOR * comp_energy + collect_energy
 
-        return comp_energy
+        return comp_energy + collect_energy
 
     def get_communication_energy(self, num_bytes: int, use_noise: bool) -> float:
         return self._comm.get_energy(num_bytes=num_bytes,
                                      use_noise=use_noise)
-
 
     def get_active_energy(self, num_bytes: int, use_noise: bool) -> float:
         return self._active.get_energy(num_bytes=num_bytes,
@@ -322,10 +321,7 @@ class EnergyUnit:
         active_energy = self.get_active_energy(num_bytes=num_bytes,
                                                use_noise=use_noise)
 
-
         return comp_energy + comm_energy + active_energy
 
     def __str__(self) -> str:
         return 'Energy Unit -> Collect {0}, Encode: {1}, Encrypt: {2}, Seq Length: {3}, Num Features: {4}, Period: {5}'.format(self._collect_mode, self._encoding_mode, self._encryption_mode, self._seq_length, self._num_features, self._period)
-
-

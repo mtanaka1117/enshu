@@ -61,7 +61,7 @@ def plot(sim_results: Dict[str, Dict[float, float]], dataset_name: str, output_f
 
         min_error = np.argmin(agg_errors)
         print(' & '.join(labels))
-        print(' & '.join((('{0:.4f}'.format(x) if i != min_error else '\\textbf{{{0:.4f}}}'.format(x)) for i, x in enumerate(agg_errors))))
+        print(' & '.join((('{0:.5f}'.format(x) if i != min_error else '\\textbf{{{0:.5f}}}'.format(x)) for i, x in enumerate(agg_errors))))
 
         ax.set_xlabel('Energy Budget (Average mJ / Seq)', fontsize=AXIS_FONT)
         ax.set_ylabel(metric.upper(), fontsize=AXIS_FONT)

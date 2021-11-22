@@ -67,7 +67,7 @@ def get_group_target_bytes(width: int,
 
     Args:
         width: The bit-width of each feature
-        collection_rate: The collection 
+        collection_rate: The collection rate (fraction)
         num_features: The number of features per measurement
         seq_length: The length of a full sequence
         encryption_mode: The type of encryption (block or stream)
@@ -90,7 +90,6 @@ def get_group_target_bytes(width: int,
     # going multiple blocks under the given limit.
     rounded_bytes = standard_num_bytes
     num_padding_frames = NUM_PADDING_FRAMES + int(math.floor(rounded_bytes / PADDING_FRAMES_FACTOR))
-    #num_padding_frames = NUM_PADDING_FRAMES
 
     for _ in range(num_padding_frames):
         rounded_bytes = truncate_to_block(rounded_bytes, block_size=BT_FRAME_SIZE) - 1
@@ -120,8 +119,6 @@ def get_group_target_bytes(width: int,
         estimated_energy = energy_unit.get_energy(num_collected=num_collected,
                                                   num_bytes=rounded_bytes,
                                                   use_noise=False)
-
-        print('Standard Num Bytes: {0}, Target Energy: {1}, Estimated Energy: {2}, Rounded Bytes: {3}'.format(standard_num_bytes, target_energy, estimated_energy, rounded_bytes))
 
     return rounded_bytes
 
@@ -165,7 +162,7 @@ def get_padded_collection_rate(dataset: str,
                                            collect_mode=CollectMode[collect_mode.upper()],
                                            num_features=num_features,
                                            seq_length=seq_length)
-                                        
+
     # Get the directory of the existing logs
     base = os.path.dirname(__file__)
 
@@ -203,7 +200,7 @@ def get_padded_collection_rate(dataset: str,
         if rate < min_rate:
             min_rate = rate
             min_collected = num_elements
-                
+
         if (diff < best_diff) and (target_energy >= estimated_energy):
             best_diff = diff
             best_rate = rate

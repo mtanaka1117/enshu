@@ -64,7 +64,7 @@ python plot_error.py --folder <experiment-name> --dataset <dataset-name> --metri
 ```
 The arguments are described when running `python plot_error.py --help`. The `--folder` should be the date of the experiment as produced by the execution step in the last section. The code will look for the folder `adaptiveleak/saved_models/<dataset>/<folder>` and retrieve the results from this directory.
 
-The script will produce a plot showing the error for each constraint. The code will also print out the arithmetic mean error (across all constraints) for each policy. When the provided `metric` is `mae`, the printed error values should align with the results in Table 3 of the paper.
+The script will produce a plot showing the error for each constraint. The code will also print out the arithmetic mean error (across all constraints) for each policy. When the provided `metric` is `mae`, the printed error values should align with the results in Table 3 of the paper. Note that the plot does not include `padded` policies due to their high error.
 
 #### Mutual Information
 We measure the theoretical information leakage on each task using the mutual information between message sizes and event labels. You can compute these results using the script `adaptiveleak/analysis/leakage_test.py`. This script also executes permutation tests to measure the significance of the observed empirical relationship. The command below describes how to run the script. You must be in the `adaptiveleak/analysis` directory.
@@ -107,6 +107,7 @@ python plot_all_attacks.py --folder <experiment-name> --datasets <list-of-datase
 The result is a bar chart that shows the median, IQR, and maximum attack accuracy values for each provided dataset. Running this command with all 9 provided datasets yields Figure 6 in the paper.
 
 ### Unit Tests
+The folder `adaptiveleak/unit_tests` contains two directories of unit tests. These tests execute small portions of the encoding and sampling process. To run the test suite, navigate to the corresponding directory and run the command `python <file-name>.py`. All the tests should pass.
 
 ## Hardware (TI MSP430)
 
