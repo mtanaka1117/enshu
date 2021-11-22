@@ -148,19 +148,20 @@ def execute_client(inputs: np.ndarray,
                     # Decrypt the response (Data already padded)
                     aes = AES.new(AES128_KEY, AES.MODE_CBC, iv)
 
-                    data = response[LENGTH_SIZE + AES_BLOCK_SIZE:]
+                    data = response[LENGTH_SIZE + AES_BLOCK_SIZE:LENGTH_SIZE + AES_BLOCK_SIZE + length]
+                    #data_length = length - LENGTH_SIZE + AES_BLOCK_SIZE
 
                     # Round up the length field
-                    if length % AES_BLOCK_SIZE != 0:
-                        rounded_length = round_to_block(length, block_size=AES_BLOCK_SIZE)
-                    else:
-                        rounded_length = length
+                    #if data_length % AES_BLOCK_SIZE != 0:
+                    #    rounded_length = round_to_block(length, block_size=AES_BLOCK_SIZE)
+                    #else:
+                    #    rounded_length = length
 
-                    data = data[:rounded_length]
+                    #data = data[:rounded_length]
 
-                    if len(data) == rounded_length:
+                    if (len(data) % AES_BLOCK_SIZE) == 0:
                         response = aes.decrypt(data)
-                        response = response[0:length]
+                        #response = response[0:length]
 
                         # Decode the response
                         if encoding_mode == EncodingMode.STANDARD:
@@ -176,6 +177,14 @@ def execute_client(inputs: np.ndarray,
                                                                                              seq_length=seq_length,
                                                                                              num_features=num_features,
                                                                                              non_fractional=non_fractional)
+                        
+                        
+                            #print(measurements)
+                            #print(collected_idx)
+                            #print(widths)
+                            #print(response.hex())
+                            #print(features)
+                        
                         else:
                             raise ValueError('Unknown encoding type: {0}'.format(encoding_mode))
 

@@ -10,6 +10,7 @@ from typing import List, Tuple
 from adaptiveleak.server import reconstruct_sequence
 from adaptiveleak.policies import BudgetWrappedPolicy, Policy, run_policy
 from adaptiveleak.utils.analysis import normalized_mae, normalized_rmse
+from adaptiveleak.utils.constants import ENCODING
 from adaptiveleak.utils.file_utils import read_pickle_gz, save_pickle_gz
 from adaptiveleak.utils.loading import load_data
 
@@ -19,13 +20,13 @@ if __name__ == '__main__':
     parser.add_argument('--dataset', type=str, required=True)
     parser.add_argument('--policy', type=str, required=True)
     parser.add_argument('--collection-rate', type=float, required=True)
-    parser.add_argument('--encoding', type=str, choices=['standard', 'group', 'group_unshifted'], default='standard')
+    parser.add_argument('--encoding', type=str, choices=ENCODING, default='standard')
     parser.add_argument('--feature', type=int, default=0)
     parser.add_argument('--max-num-samples', type=int)
     args = parser.parse_args()
 
     # Load the data
-    fold = 'mcu'
+    fold = 'test'
     inputs, labels = load_data(dataset_name=args.dataset, fold=fold)
 
     labels = labels.reshape(-1)
@@ -89,12 +90,15 @@ if __name__ == '__main__':
         errors.append(error)
         estimate_list.append(reconstructed)
         collected.append(policy_result.collected_indices)
-        collected_counts[label].append(policy_result.num_collected)
+        collected_counts[label].append(policy_result.num_bytes)
         energy_list.append(policy_result.energy)
         bytes_list.append(policy_result.num_bytes)
 
         if not policy.has_exhausted_budget():
             collected_seq = idx + 1
+
+    print(errors)
+    print([len(x) for x in collected])
 
     num_samples = collected_seq * seq_length
     num_collected = sum(len(c) for c in collected[:collected_seq])
@@ -113,7 +117,7 @@ if __name__ == '__main__':
 
     r2 = r2_score(y_true=true, y_pred=reconstructed, multioutput='variance_weighted')
 
-    print('MAE: {0:.5f}, Norm MAE: {1:.5f}, RMSE: {2:.5f}, Norm RMSE: {3:.5f}, R^2: {4:.5f}'.format(error, norm_error, rmse, norm_rmse, r2))
+    print('MAE: {0:.7f}, Norm MAE: {1:.5f}, RMSE: {2:.5f}, Norm RMSE: {3:.5f}, R^2: {4:.5f}'.format(error, norm_error, rmse, norm_rmse, r2))
     print('Number Collected: {0} / {1} ({2:.4f})'.format(num_collected, num_samples, num_collected / num_samples))
     print('Energy: {0:.5f} mJ (Budget: {1:.5f})'.format(policy.consumed_energy, policy.budget))
     print('Energy Per Seq: {0:.5f} (Budget: {1:.5f})'.format(np.average(energy_list[:collected_seq]), policy.energy_per_seq))
@@ -129,7 +133,7 @@ if __name__ == '__main__':
 
     print('Label Distribution')
     for label, counts in collected_counts.items():
-        print('{0} -> {1:.4f} ({2:.4f})'.format(label, np.average(counts), np.std(counts)))
+        print('{0} -> {1:.2f} ({2:.2f})'.format(label, np.average(counts), np.std(counts)))
 
     with plt.style.context('seaborn-ticks'):
         #fig, (ax1, ax2) = plt.subplots(nrows=2, ncols=1)
