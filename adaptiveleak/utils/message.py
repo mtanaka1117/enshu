@@ -197,10 +197,11 @@ def encode_stable_measurements(measurements: np.ndarray,
         measurements: A [K, D] array of the raw (sub-sampled) measurements to transmit.
             K is the number of measurements and D is the feature size.
         collected_indices: A list of the indices for the K collected measurements
-        seq_length: The length of the full sequence (T)
-        width: The bit width for each feature
+        widths: The bit width for each feature group
+        shifts: The exponent shifts for each feature group
+        group_sizes: The number of features in each group
+        seq_length: The length of the (full) sequence
         non_fractional: The number of non-fractional bits per value
-        target_bytes: The target number of bytes for this message
     Returns:
         A hex string that represents the encoded measurements.
     """

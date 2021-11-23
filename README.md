@@ -15,8 +15,9 @@ This repository contains the implementation of Adaptive Group Encoding (AGE), a 
 12. `policies.py`: Implements all sampling policies and encoding strategies.
 13. `sensor.py`: Represents the simulated sensor.
 14. `server.py`: Contains the simulated server.
-15. `serialize_policy`: Converts a policy to a C header file for deployment onto a microcontroller (MCU).
-16. `simulator.py`: The simulator entry point.
+15. `serialize_dataset.py`: Converts a dataset into a C header file for deployment onto a microcontroller (MCU).
+16. `serialize_policy`: Converts a policy to a C header file for deployment onto a MCU.
+17. `simulator.py`: The simulator entry point.
 
 ## Simulator
 The simulator framework executes sub-sampling policies standard machines by representing sensors and servers as independent processes. This framework is written entirely in Python 3 and runs on pre-collected datasets.
@@ -110,9 +111,26 @@ The result is a bar chart that shows the median, IQR, and maximum attack accurac
 The folder `adaptiveleak/unit_tests` contains two directories of unit tests. These tests execute small portions of the encoding and sampling process. To run the test suite, navigate to the corresponding directory and run the command `python <file-name>.py`. All the tests should pass.
 
 ## Hardware (TI MSP430)
+The hardware experiments supplement the simulator by executing AGE on a microcontroller. This section requires a TI MSP430 FR5994, as well as a HM-10 BLE module and four jumper wires. To load programs onto the MSP430, you will also need [Code Composer Studio (CCS)](https://software-dl.ti.com/ccs/esd/documents/ccs_downloads.html) from Texas Instruments. The provided implementation was tested on CCSv10. The sections below describe how to configure and run experiments on the MCU.
 
-### Setup
+### Serializing Sampling Policies and Datasets
+The folder 'adaptiveleak/msp' contains the MSP430 implementation of all sampling policies and encoding algorithms. This code provides a backbone that features common functionality for all sampling policies. The project uses conditional compilation to customize itself for a given sampling policy and encoding procedure. The script `adaptiveleak/serialize_policy.py` generates a C header file that sets the parameters for a given sampling policy. You can run this script with the following command (must be in the `adaptiveleak` directory).
+```
+python serialize_policy.py --policy <policy-name> --dataset <dataset-name> --collection-rate <target-fraction> --encoding <encoding-name> --is-msp
+```
+As usual, running `python serialize_policy.py --help` will provide descriptions of each variable. The output of this script is a file called `policy_parameters.h`. You should copy this file into the `adaptiveleak/msp/msp430` directory.
+
+The experiments use pre-collected datasets, and the code simulates sensing by reading data from the MSP430's FRAM. The script `adaptiveleak/serialize_dataset.py` converts a portion of a pre-collected dataset into a static C array. The MSP430 application then reads from this static array to perform data sampling. You can execute this script within the `adaptiveleak` directory using the command below.
+```
+python serialize_dataset.py --dataset <dataset-name> --num-seq <num-seq-to-serialize> --offset <seq-offset> --is-msp
+```
+Running `python serialize_dataset.py --help` will show descriptions of each parameter. The experiments in Section 5.7 use `--num-seq 75` and `--offset 0`. The result of this script is the file `data.h`. You should move this file into the folder `adaptiveleak/msp/msp430`.
+
+### Hardware Setup
+Pins for HM-10, remove the jumpers on the MCU for energy measurement
 
 ### Running Experiments
+Device server, results saved to `device/results` folder.
 
 ### Analysis
+Run the script in `analysis/analyze_msp_results.py`. The mutual information is `analysis/msp_mutual_information.py`

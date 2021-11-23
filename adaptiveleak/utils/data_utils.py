@@ -110,6 +110,7 @@ def select_range_shift(measurement: int, old_width: int, old_precision: int, new
         old_precision: The existing precision of each feature
         new_width: The quantized width of each feature (this is how we will express values)
         num_range_bits: The number of bits for the range exponent
+        prev_shift: The previous range shift (to have better tie-breaking)
     Returns:
         The range exponent in [-2^{range_bits - 1}, 2^{range_bits - 1}]
     """

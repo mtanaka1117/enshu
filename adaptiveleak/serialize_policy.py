@@ -206,11 +206,11 @@ def write_policy(policy: Policy, is_msp: bool):
 
 if __name__ == '__main__':
     parser = ArgumentParser()
-    parser.add_argument('--policy', type=str, required=True, choices=POLICIES)
-    parser.add_argument('--dataset', type=str, required=True)
-    parser.add_argument('--collection-rate', type=float, required=True)
-    parser.add_argument('--encoding', type=str, required=True, choices=ENCODING)
-    parser.add_argument('--is-msp', action='store_true')
+    parser.add_argument('--policy', type=str, required=True, choices=POLICIES, help='Name of the sampling policy.')
+    parser.add_argument('--dataset', type=str, required=True, help='Name of the target dataset.')
+    parser.add_argument('--collection-rate', type=float, required=True, help='The target collection rate. This is a fraction of the sequence length.')
+    parser.add_argument('--encoding', type=str, required=True, choices=ENCODING, help='The message encoding type.')
+    parser.add_argument('--is-msp', action='store_true', help='Whether to create a header file for the MSP430.')
     args = parser.parse_args()
 
     # Load the data to get parameters of the task
