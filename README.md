@@ -118,13 +118,25 @@ The folder 'adaptiveleak/msp' contains the MSP430 implementation of all sampling
 ```
 python serialize_policy.py --policy <policy-name> --dataset <dataset-name> --collection-rate <target-fraction> --encoding <encoding-name> --is-msp
 ```
-As usual, running `python serialize_policy.py --help` will provide descriptions of each variable. The output of this script is a file called `policy_parameters.h`. You should copy this file into the `adaptiveleak/msp/msp430` directory.
+As usual, running `python serialize_policy.py --help` will provide descriptions of each variable. The output of this script is a file called `policy_parameters.h`. You should copy this file into the `adaptiveleak/msp430` directory. In the paper, we experiment with collection rates `0.4`, `0.7`, and `1.0`.
 
 The experiments use pre-collected datasets, and the code simulates sensing by reading data from the MSP430's FRAM. The script `adaptiveleak/serialize_dataset.py` converts a portion of a pre-collected dataset into a static C array. The MSP430 application then reads from this static array to perform data sampling. You can execute this script within the `adaptiveleak` directory using the command below.
 ```
 python serialize_dataset.py --dataset <dataset-name> --num-seq <num-seq-to-serialize> --offset <seq-offset> --is-msp
 ```
-Running `python serialize_dataset.py --help` will show descriptions of each parameter. The experiments in Section 5.7 use `--num-seq 75` and `--offset 0`. The result of this script is the file `data.h`. You should move this file into the folder `adaptiveleak/msp/msp430`.
+Running `python serialize_dataset.py --help` will show descriptions of each parameter. The experiments in Section 5.7 use `--num-seq 75` and `--offset 0`. The result of this script is the file `data.h`. You should move this file into the folder `adaptiveleak/msp430`.
+
+#### Aside: Executing Policies C (for debugging)
+The above commands prepare the policies and datasets for the TI MSP430. We also provide a standard C implementation which can be executed on normal devices (e.g. a laptop). This implementation is in the folder `adaptiveleak/c_implementation`. To execute this code, you should follow the above steps but **remove the flag `--is-msp` from each command**. You should then copy both the `policy_parameters.h` and the `data.h` files into the `adaptiveleak/c_implementation` folder. You can then compile and execute the code with the following commands.
+```
+make policy
+./policy
+```
+When the policy is `uniform`, the collection rate is `0.4`, the dataset is `uci_har` and the number of sequences is `75` (offset `0`), the code should print out the following.
+```
+Collection Rate: 1500 / 3750 (0.400000)
+```
+The only real use of the C implementation is for debugging parts of the MSP430 implementation on a fully powered system.
 
 ### Hardware Setup
 Pins for HM-10, remove the jumpers on the MCU for energy measurement

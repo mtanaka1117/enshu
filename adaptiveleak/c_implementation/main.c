@@ -36,8 +36,6 @@ int main(void) {
 
     uint8_t collectedBuffer[numBytes];
     struct BitMap collectedIndices = { collectedBuffer, numBytes };
-
-    uint16_t numEncodedBytes = 0;
     uint8_t outputBuffer[1024];
 
     // Make the policy
@@ -124,9 +122,7 @@ int main(void) {
                 // Record the collection of this element.
                 set_bit(elemIdx, &collectedIndices);
 
-                #ifdef IS_UNIFORM
-                uniform_update(&policy);
-                #elif defined(IS_ADAPTIVE_HEURISTIC)
+                #ifdef IS_ADAPTIVE_HEURISTIC
                 heuristic_update(&policy, featureVectors + elemIdx, prevFeatures);
                 prevFeatures = featureVectors + elemIdx;
                 #elif defined(IS_ADAPTIVE_DEVIATION)
@@ -145,19 +141,10 @@ int main(void) {
 
         // Encode the collected elements.
         #ifdef IS_STANDARD_ENCODED
-        numEncodedBytes = encode_standard(outputBuffer, featureVectors, &collectedIndices, NUM_FEATURES, SEQ_LENGTH);
+        encode_standard(outputBuffer, featureVectors, &collectedIndices, NUM_FEATURES, SEQ_LENGTH);
         #elif defined(IS_GROUP_ENCODED)
-        numEncodedBytes = encode_group(outputBuffer, featureVectors, &collectedIndices, count, NUM_FEATURES, SEQ_LENGTH, TARGET_BYTES, DEFAULT_PRECISION, MAX_COLLECTED, FEATURE_BUFFER, SHIFT_BUFFER, COUNT_BUFFER, 1);
+        encode_group(outputBuffer, featureVectors, &collectedIndices, count, NUM_FEATURES, SEQ_LENGTH, TARGET_BYTES, DEFAULT_PRECISION, MAX_COLLECTED, FEATURE_BUFFER, SHIFT_BUFFER, COUNT_BUFFER, 1);
         #endif
-
-        //if (numEncodedBytes > TARGET_DATA_BYTES) {
-        //    printf("%d %d\n", seqIdx, numEncodedBytes);
-        //}
-
-        //print_message(outputBuffer, numEncodedBytes);
-
-        printf("%d ", count);
-        //printf("\n");
     }
 
     printf("\n");
