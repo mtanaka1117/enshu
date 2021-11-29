@@ -100,7 +100,7 @@ def execute_client(inputs: np.ndarray,
         device_manager.start()
         reset_result = device_manager.send_and_expect_byte(value=RESET_BYTE, expected=RESET_RESPONSE)
 
-        if (reset_result == False):
+        if not reset_result:
             print('Could not reset the device.')
             return
     finally:
@@ -115,14 +115,14 @@ def execute_client(inputs: np.ndarray,
 
         start_response = device_manager.send_and_expect_byte(value=START_BYTE, expected=START_RESPONSE)
 
-        if (start_response == False):
+        if not start_response:
             print('Could not start device.')
             return
 
         device_manager.stop()
 
         print('Sent Start signal.')
-    
+
         for idx, (features, label) in enumerate(zip(inputs, labels)):
             if (max_samples is not None) and (idx >= max_samples):
                 break
@@ -149,19 +149,9 @@ def execute_client(inputs: np.ndarray,
                     aes = AES.new(AES128_KEY, AES.MODE_CBC, iv)
 
                     data = response[LENGTH_SIZE + AES_BLOCK_SIZE:LENGTH_SIZE + AES_BLOCK_SIZE + length]
-                    #data_length = length - LENGTH_SIZE + AES_BLOCK_SIZE
-
-                    # Round up the length field
-                    #if data_length % AES_BLOCK_SIZE != 0:
-                    #    rounded_length = round_to_block(length, block_size=AES_BLOCK_SIZE)
-                    #else:
-                    #    rounded_length = length
-
-                    #data = data[:rounded_length]
 
                     if (len(data) % AES_BLOCK_SIZE) == 0:
                         response = aes.decrypt(data)
-                        #response = response[0:length]
 
                         # Decode the response
                         if encoding_mode == EncodingMode.STANDARD:
@@ -177,14 +167,6 @@ def execute_client(inputs: np.ndarray,
                                                                                              seq_length=seq_length,
                                                                                              num_features=num_features,
                                                                                              non_fractional=non_fractional)
-                        
-                        
-                            #print(measurements)
-                            #print(collected_idx)
-                            #print(widths)
-                            #print(response.hex())
-                            #print(features)
-                        
                         else:
                             raise ValueError('Unknown encoding type: {0}'.format(encoding_mode))
 
@@ -213,7 +195,7 @@ def execute_client(inputs: np.ndarray,
                                                     std=data_std,
                                                     seq_length=seq_length,
                                                     rand=rand)
-            else: # Could not connect -> Random Guessing
+            else:  # Could not connect -> Random Guessing
                 recovered = get_random_sequence(mean=data_mean,
                                                 std=data_std,
                                                 seq_length=seq_length,
@@ -224,8 +206,8 @@ def execute_client(inputs: np.ndarray,
                                       y_pred=recovered)
 
             rmse = mean_squared_error(y_true=features,
-                                     y_pred=recovered,
-                                     squared=False)
+                                      y_pred=recovered,
+                                      squared=False)
 
             # Log the results of this sequence
             maes.append(float(mae))
@@ -294,13 +276,13 @@ def execute_client(inputs: np.ndarray,
 
 if __name__ == '__main__':
     parser = ArgumentParser()
-    parser.add_argument('--dataset', type=str, required=True)
-    parser.add_argument('--policy', type=str, required=True)
-    parser.add_argument('--collection-rate', type=float, required=True)
-    parser.add_argument('--output-folder', type=str, required=True)
-    parser.add_argument('--encoding', type=str, required=True, choices=['standard', 'group'])
-    parser.add_argument('--trial', type=int, required=True)
-    parser.add_argument('--max-samples', type=int)
+    parser.add_argument('--dataset', type=str, required=True, help='The name of the dataset.')
+    parser.add_argument('--policy', type=str, required=True, help='The name of the policy.')
+    parser.add_argument('--collection-rate', type=float, required=True, help='The collection rate fraction in [0, 1].')
+    parser.add_argument('--output-folder', type=str, required=True, help='The folder in which to save the results.')
+    parser.add_argument('--encoding', type=str, required=True, choices=['standard', 'group'], help='The name of the encoding procedure.')
+    parser.add_argument('--trial', type=int, required=True, help='The trial number [usually 0, used for logging only].')
+    parser.add_argument('--max-samples', type=int, help='The maximum number of samples to use.')
     args = parser.parse_args()
 
     make_dir(args.output_folder)

@@ -111,7 +111,7 @@ The result is a bar chart that shows the median, IQR, and maximum attack accurac
 The folder `adaptiveleak/unit_tests` contains two directories of unit tests. These tests execute small portions of the encoding and sampling process. To run the test suite, navigate to the corresponding directory and run the command `python <file-name>.py`. All the tests should pass.
 
 ## Hardware (TI MSP430)
-The hardware experiments supplement the simulator by executing AGE on a microcontroller. This section requires a TI MSP430 FR5994, as well as a HM-10 BLE module and four jumper wires. To load programs onto the MSP430, you will also need [Code Composer Studio (CCS)](https://software-dl.ti.com/ccs/esd/documents/ccs_downloads.html) from Texas Instruments. The provided implementation was tested on CCSv10. The sections below describe how to configure and run experiments on the MCU.
+The hardware experiments supplement the simulator by executing AGE on a microcontroller. This section requires a TI MSP430 FR5994 MCU, as well as a HM-10 Bluetooth Low Energy (BLE) module and four jumper wires. To load programs onto the MSP430, you will also need [Code Composer Studio (CCS)](https://software-dl.ti.com/ccs/esd/documents/ccs_downloads.html) from Texas Instruments. The provided implementation was tested on CCSv10. Finally, to run end-to-end experiments, you will need another computer (e.g. laptop) with BLE capabilities. The sections below describe how to configure and run experiments on the MCU.
 
 ### Serializing Sampling Policies and Datasets
 The folder 'adaptiveleak/msp' contains the MSP430 implementation of all sampling policies and encoding algorithms. This code provides a backbone that features common functionality for all sampling policies. The project uses conditional compilation to customize itself for a given sampling policy and encoding procedure. The script `adaptiveleak/serialize_policy.py` generates a C header file that sets the parameters for a given sampling policy. You can run this script with the following command (must be in the `adaptiveleak` directory).
@@ -126,7 +126,7 @@ python serialize_dataset.py --dataset <dataset-name> --num-seq <num-seq-to-seria
 ```
 Running `python serialize_dataset.py --help` will show descriptions of each parameter. The experiments in Section 5.7 use `--num-seq 75` and `--offset 0`. The result of this script is the file `data.h`. You should move this file into the folder `adaptiveleak/msp430`.
 
-#### Aside: Executing Policies C (for debugging)
+#### Optional: Executing Policies C (for debugging)
 The above commands prepare the policies and datasets for the TI MSP430. We also provide a standard C implementation which can be executed on normal devices (e.g. a laptop). This implementation is in the folder `adaptiveleak/c_implementation`. To execute this code, you should follow the above steps but **remove the flag `--is-msp` from each command**. You should then copy both the `policy_parameters.h` and the `data.h` files into the `adaptiveleak/c_implementation` folder. You can then compile and execute the code with the following commands.
 ```
 make policy
@@ -136,13 +136,40 @@ When the policy is `uniform`, the collection rate is `0.4`, the dataset is `uci_
 ```
 Collection Rate: 1500 / 3750 (0.400000)
 ```
-The only real use of the C implementation is for debugging parts of the MSP430 implementation on a fully powered system.
+The only real use of the C implementation is for debugging aspects of the MSP430 implementation on a fully powered system.
 
-### Hardware Setup
-Pins for HM-10, remove the jumpers on the MCU for energy measurement
+### Hardware and Software Setup
+The hardware components consist of a TI MSP430 FR5994 MCU and a HM-10 BLE module. To connect the BLE module to the MCU, you will need four jumper wires. Connect one end of each wire to each of the four pins on the HM-10 module. The four pins are labeled `RX`, `TX`, `VCC` and `GND` (look on the back of the HM-10). You must then connect these HM-10 pins to the MCU's pins in the following manner.
+1. `RX` -> `P6.0`
+2. `TX` -> `P6.1`
+3. `VCC` -> `3V3`
+4. `GND` -> `GND`
+The application will handle the specifics of interfacing with the BLE module. As a note, to get the same energy readings as present in the paper, you will need to set the advertising interval to as large as possible. The sensor breaks the BLE connection to save energy, and a short advertising interval consumes more energy during the module's sleep mode.
+
+The software component of the MCU is managed through Code Composer Studio (CCS). Inside CCS, create a new project and set the device to a FR5994. Then, copy the contents of `adaptiveleak/msp430` into the CCS project directory. The directory should contain the target policy and dataset from the serialization steps above. You will have to link the `dsplib` directory to get the project to build.
 
 ### Running Experiments
-Device server, results saved to `device/results` folder.
+The MCU program executes both sampling and encoding on the low-power device. The device sends measurements over a Bluetooth link to a separate server. To execute the end-to-end experiments, you must start the sensor program on the MCU and the server program on the server machine. The sub-sections below discuss these aspects.
+
+#### Launching the Sensor
+Code Composer Studio (CCS) has the ability to load and launch programs on the TI MSP430. You may accomplish this by connecting the MSP430 to your computer via USB. You can then load and launch the program using the debug button. Once you start the program, you can kill the debugger. There are two important notes. First, the USB cord also provides the device with power. Unless you have a separate battery pack, you should leave the MCU plugged in during these experiments. Second, program loading requires the RXD, TXD, and SBW jumpers. You should only remove these after launching the application.
+
+#### Launching the Server
+The file `adaptiveleak/device/sensor_client.py` contains the server module. Once you navigate to the 'adaptiveleak/device' directory, you can launch the server with the command below. You will need to edit the Python script and change the variable `MAC_ADDRESS` to the MAC address of your HM-10 device.
+```
+python sensor_client.py --dataset <dataset-name> --policy <policy-name> --collection-rate <collection-rate> --output-folder <folder-to-save> --encoding <encoding-name> --trial <trial-num> --max-samples <max-num-seq>
+```
+The `dataset`, `policy`, and `encoding` parameters should match the sensor configuration. The results from the paper use `75` sequences. Further, for the padded policies, the server uses the `standard` encoding procedure.
+
+When first launching the program, the script will ask for you `sudo` password. This information is needed to interface with `gatttool`.
+
+The server will print that it has successfully connected to the BLE module. The program will them prompt you to press a button will launch the experiment. This halt provides an opportunity to start measuring the device energy consumption. You may do this through the TI EnergyTrace tool within Code Composer Studio. **Before starting the experiment, you should start the EnergyTrace tool.** To avoid excess energy consumption, you should remove the jumper wires on MCU's `RXD`, `TXD`, `SBWT`, `5V`, and `J7`. Note that you will need to place these back on when loading a new program.
+
+Upon completion, the server program saves the error results in the provided output folder. The file name is of the form below.
+```
+<policy-name>_<encoding-name>_<collection-rate>_trial<trial-num>.json.gz
+```
+After the server finishes, halt the EnergyTrace operation and save the result as a CSV in the same folder as the server results. 
 
 ### Analysis
 Run the script in `analysis/analyze_msp_results.py`. The mutual information is `analysis/msp_mutual_information.py`
