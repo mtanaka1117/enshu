@@ -117,7 +117,20 @@ The script `analysis/plot_all_attacks.py` will show the median and maximum attac
 ```
 python plot_all_attacks.py --folder <experiment-name> --datasets <list-of-dataset-names> --output-file [<optional-output-path>]
 ```
-The result is a bar chart that shows the median, IQR, and maximum attack accuracy values for each provided dataset. Running this command with all 9 provided datasets yields Figure 6 in the paper.
+The result is a bar chart that shows the median, IQR, and maximum attack accuracy values for each provided dataset. Running this command with all 9 provided datasets yields Figure 6 in the paper. For example, using the existing results, the following command will reproduce Figure 6.
+```
+python plot_all_attacks.py --folder results --datasets uci_har trajectories eog haptics mnist pavement tiselac strawberry epilepsy
+```
+
+The attack logs include confusion matrices for the adversary's classifier. To view the confusion matrices, use the script `adaptiveleak/analysis/view_confusion_mat.py` via the command below. The script will print out the confusion matrix for each of the 5-fold cross-validation runs.
+```
+python view_confusion_mat.py --log-path <path-to-output-log>
+```
+To reproduce Figure 7 in the paper, use the command with the log path of `adaptive_heuristic_standard` at an `80%` collection rate as shown below.
+```
+python view_confusion_mat.py --log-path ../saved_models/epilepsy/results/adaptive_heuristic_standard/adaptive_heuristic-standard-stream-tiny_80.json.gz 
+```
+We use the second entry in the list of matrices to create Figure 7.
 
 ### Unit Tests
 The folder `adaptiveleak/unit_tests/utils` contains a suite of unit tests. These tests execute small portions of the encoding and sampling process. To run the tests, navigate to the corresponding directory and run the command `python <file-name>.py`. All the tests should pass.
