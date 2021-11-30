@@ -37,10 +37,11 @@ pip3 install --upgrade pip
 pip3 install -e .
 ```
 
-### Downloading Datasets
+### Downloading Datasets, Energy Traces, and Saved Results
+The datasets, energy traces, and existing results are too large to comfortably fit in the Github repository. You can download this information from [this Google Drive folder](https://drive.google.com/drive/folders/1BrXn-Spc3GwbSmZu-xI5mLefBqNQ8vMa?usp=sharing). Upon downloading, extract the ZIP files and move each inside the `adaptiveleak` folder. By the end of this step, you should have three folders: `adaptiveleak/datasets`, `adaptiveleak/saved_models`, `adaptiveleak/traces`.
 
 ### Naming
-There are three naming conventions in the code repository that differ from the paper. First, in the code, the `AGE` encoding system is called `group`. Second, the `Linear` policy in the paper is called the adaptive `heuristic` policy in the code. Finally, the `Activity` dataset is called `uci_har` in the codebase.
+There are three naming conventions in the code repository that differ from the paper. First, in the code, the `AGE` encoding system is called `group`. Second, the `Linear` policy in the paper is called the adaptive `heuristic` policy in the code. Finally, in the codebase, the `Activity` dataset is called `uci_har`, 'Characters` is called `trajectories`, and `Password` is called `haptics`.
 
 ### Running Sampling Policies
 The entry point for the simulator is the script `adaptiveleak/simulator.py`. You must navigate into the `adaptiveleak` directory to run the script. This code has many command line options which are best viewed when running `python simulator.py --help`. You can execute the simulator on a single dataset and policy using the command below. In the next paragraph, we describe a utility that runs all policies on a single dataset.
