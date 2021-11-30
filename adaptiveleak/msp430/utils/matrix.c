@@ -1,6 +1,5 @@
 #include "matrix.h"
 
-
 #ifdef IS_MSP
 #include "DSPLib.h"
 

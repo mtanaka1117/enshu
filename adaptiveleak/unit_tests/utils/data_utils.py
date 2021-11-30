@@ -786,7 +786,7 @@ class TestGroupTargetBytes(unittest.TestCase):
                                               energy_unit=energy_unit,
                                               target_energy=target_energy)
 
-        self.assertEqual(target_bytes, 1698)
+        self.assertEqual(target_bytes, 306)
 
 
 class TestCalculateBytes(unittest.TestCase):

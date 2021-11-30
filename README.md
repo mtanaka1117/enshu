@@ -40,7 +40,7 @@ pip3 install -e .
 ### Downloading Datasets
 
 ### Naming
-There are two naming conventions in the code repository that differ from the paper. First, in the code, the `AGE` encoding system is called `group`. Second, the `Linear` policy in the paper is called the adaptive `heuristic` policy in the code.
+There are three naming conventions in the code repository that differ from the paper. First, in the code, the `AGE` encoding system is called `group`. Second, the `Linear` policy in the paper is called the adaptive `heuristic` policy in the code. Finally, the `Activity` dataset is called `uci_har` in the codebase.
 
 ### Running Sampling Policies
 The entry point for the simulator is the script `adaptiveleak/simulator.py`. You must navigate into the `adaptiveleak` directory to run the script. This code has many command line options which are best viewed when running `python simulator.py --help`. You can execute the simulator on a single dataset and policy using the command below. In the next paragraph, we describe a utility that runs all policies on a single dataset.
@@ -111,14 +111,16 @@ The result is a bar chart that shows the median, IQR, and maximum attack accurac
 The folder `adaptiveleak/unit_tests` contains two directories of unit tests. These tests execute small portions of the encoding and sampling process. To run the test suite, navigate to the corresponding directory and run the command `python <file-name>.py`. All the tests should pass.
 
 ## Hardware (TI MSP430)
-The hardware experiments supplement the simulator by executing AGE on a microcontroller. This section requires a TI MSP430 FR5994 MCU, as well as a HM-10 Bluetooth Low Energy (BLE) module and four jumper wires. To load programs onto the MSP430, you will also need [Code Composer Studio (CCS)](https://software-dl.ti.com/ccs/esd/documents/ccs_downloads.html) from Texas Instruments. The provided implementation was tested on CCSv10. Finally, to run end-to-end experiments, you will need another computer (e.g. laptop) with BLE capabilities. The sections below describe how to configure and run experiments on the MCU.
+The hardware experiments supplement the simulator by executing AGE on a microcontroller. This section requires a TI MSP430 FR5994 MCU, as well as a HM-10 Bluetooth Low Energy (BLE) module and four jumper wires. To load programs onto the MSP430, you will also need [Code Composer Studio (CCS)](https://software-dl.ti.com/ccs/esd/documents/ccs_downloads.html) from Texas Instruments. The provided implementation was tested on CCS v10.1.0. Finally, to run end-to-end experiments, you will need another computer (e.g. laptop) with BLE capabilities. The sections below describe how to configure and run experiments on the MCU.
+
+*If you do not have the relevant hardware, you can skip to the `Analysis` section below and use the included result logs.*
 
 ### Serializing Sampling Policies and Datasets
 The folder 'adaptiveleak/msp' contains the MSP430 implementation of all sampling policies and encoding algorithms. This code provides a backbone that features common functionality for all sampling policies. The project uses conditional compilation to customize itself for a given sampling policy and encoding procedure. The script `adaptiveleak/serialize_policy.py` generates a C header file that sets the parameters for a given sampling policy. You can run this script with the following command (must be in the `adaptiveleak` directory).
 ```
 python serialize_policy.py --policy <policy-name> --dataset <dataset-name> --collection-rate <target-fraction> --encoding <encoding-name> --is-msp
 ```
-As usual, running `python serialize_policy.py --help` will provide descriptions of each variable. The output of this script is a file called `policy_parameters.h`. You should copy this file into the `adaptiveleak/msp430` directory. In the paper, we experiment with collection rates `0.4`, `0.7`, and `1.0`.
+As usual, running `python serialize_policy.py --help` will provide descriptions of each variable. The output of this script is a file called `policy_parameters.h`. You should copy this file into the `adaptiveleak/msp430` directory. In the paper, we experiment with collection rates `0.4`, `0.7`, and `1.0` on both the `uci_har` and the `tiselac` tasks.
 
 The experiments use pre-collected datasets, and the code simulates sensing by reading data from the MSP430's FRAM. The script `adaptiveleak/serialize_dataset.py` converts a portion of a pre-collected dataset into a static C array. The MSP430 application then reads from this static array to perform data sampling. You can execute this script within the `adaptiveleak` directory using the command below.
 ```
@@ -146,7 +148,7 @@ The hardware components consist of a TI MSP430 FR5994 MCU and a HM-10 BLE module
 4. `GND` -> `GND`
 The application will handle the specifics of interfacing with the BLE module. As a note, to get the same energy readings as present in the paper, you will need to set the advertising interval to as large as possible. The sensor breaks the BLE connection to save energy, and a short advertising interval consumes more energy during the module's sleep mode.
 
-The software component of the MCU is managed through Code Composer Studio (CCS). Inside CCS, create a new project and set the device to a FR5994. Then, copy the contents of `adaptiveleak/msp430` into the CCS project directory. The directory should contain the target policy and dataset from the serialization steps above. You will have to link the `dsplib` directory to get the project to build.
+The software component of the MCU is managed through Code Composer Studio (CCS). Inside CCS, create a new empty project and set the device to `FR5994`. Then, copy the contents of `adaptiveleak/msp430` into the CCS project directory. The directory should already contain the target policy and dataset from the serialization steps above. You will have to link the `dsplib` directory to get the project to build. To include the `dsplib`, right click on the project in the project explorer and go to `properties`. Navigate to `CCS Build > MSP430 Compiler > Include Options` and then add a link to `dsplib/include`. The project can take a few seconds to build the first time.
 
 ### Running Experiments
 The MCU program executes both sampling and encoding on the low-power device. The device sends measurements over a Bluetooth link to a separate server. To execute the end-to-end experiments, you must start the sensor program on the MCU and the server program on the server machine. The sub-sections below discuss these aspects.
@@ -157,19 +159,51 @@ Code Composer Studio (CCS) has the ability to load and launch programs on the TI
 #### Launching the Server
 The file `adaptiveleak/device/sensor_client.py` contains the server module. Once you navigate to the 'adaptiveleak/device' directory, you can launch the server with the command below. You will need to edit the Python script and change the variable `MAC_ADDRESS` to the MAC address of your HM-10 device.
 ```
-python sensor_client.py --dataset <dataset-name> --policy <policy-name> --collection-rate <collection-rate> --output-folder <folder-to-save> --encoding <encoding-name> --trial <trial-num> --max-samples <max-num-seq>
+python sensor_client.py --dataset <dataset-name> --policy <policy-name> --collection-rate <collection-rate> --output-folder-name <folder-to-save> --encoding <encoding-name> --trial <trial-num> --max-samples <max-num-seq>
 ```
-The `dataset`, `policy`, and `encoding` parameters should match the sensor configuration. The results from the paper use `75` sequences. Further, for the padded policies, the server uses the `standard` encoding procedure.
+The `dataset`, `policy`, and `encoding` parameters should match the sensor configuration. The results from the paper use `75` sequences. Further, for the padded policies, the server uses the `standard` encoding procedure. Executing `python sensor_client.py --help` will show descriptions of each parameter in more detail. You should save all results from a single dataset in the same directory. Each policy should have its own folder with subdirectories for each collection rate. This design yields a structure of `<base-name>/<policy-name>/<collection-rate>`. You can look at the `adaptiveleak/device/results` folder for an example of this structure.
 
 When first launching the program, the script will ask for you `sudo` password. This information is needed to interface with `gatttool`.
 
-The server will print that it has successfully connected to the BLE module. The program will them prompt you to press a button will launch the experiment. This halt provides an opportunity to start measuring the device energy consumption. You may do this through the TI EnergyTrace tool within Code Composer Studio. **Before starting the experiment, you should start the EnergyTrace tool.** To avoid excess energy consumption, you should remove the jumper wires on MCU's `RXD`, `TXD`, `SBWT`, `5V`, and `J7`. Note that you will need to place these back on when loading a new program.
+The server will print when it has successfully connected to the BLE module. The program will them prompt you to press a button will launch the experiment. This halt provides an opportunity to start measuring the device's energy consumption. You may start this measurement through the TI EnergyTrace tool within Code Composer Studio. **Before starting the experiment, you should start the EnergyTrace tool.** To avoid excess energy consumption, you should remove the jumper wires on MCU's `RXD`, `TXD`, `SBWT`, `5V`, and `J7`. Note that you will need to place these jumpers back on when loading a new program.
 
-Upon completion, the server program saves the error results in the provided output folder. The file name is of the form below.
+Upon completion, the server program saves the error results in the provided output folder within `adaptiveleak/device/results`. The file name is of the form below.
 ```
 <policy-name>_<encoding-name>_<collection-rate>_trial<trial-num>.json.gz
 ```
-After the server finishes, halt the EnergyTrace operation and save the result as a CSV in the same folder as the server results. 
+After the server finishes, halt the EnergyTrace operation and save the resulting log as a CSV in the same folder as the server results.
+
+#### Reproducing Results from the Paper
+The paper contains results of each policy and encoding procedure over the first 75 samples on the `uci_har` and `tiselac` tasks. The policies are `adaptive_deviation`, `adaptive_heuristic`, and `uniform`. We use the `standard`, `padded`, and `group` encoding strategies for both adaptive policies (`group` is the implementation of `AGE`). For the `uniform` policy, we only experiment with `standard` encoding. We run each configuration with the collection rates `0.4`, `0.7`, and `1.0`. To execute each setup, you must first serialize the policy and dataset. Then, copy the resulting files into the CCS project containing the MSP430 implementation. Finally, use the launch the sensor and server to record the policy's behavior.
+
+The process of executing all configurations can be time consuming. To simplify this process, we include results from each setup in the `adaptiveleak/device/results` directory. This folder has the structure `<dataset-name>/<policy-name>/<collection-rate>/<file-name>`.
+
+As a note, we provide an implementation for Skip RNNs on the MCU. In the paper, however, we do not run MCU experiments with Skip RNNs due to the high computational cost of the underlying policy.
 
 ### Analysis
-Run the script in `analysis/analyze_msp_results.py`. The mutual information is `analysis/msp_mutual_information.py`
+The steps below outline the relevant analysis tasks concerning the MCU experiments. The logs from previously-executed experiments are in `adaptiveleak/device/results`. We include results from both the `uci_har` and the `tiselac` datasets.
+
+#### Extract Energy Consumption
+The script `adaptiveleak/device/extract_energy.py` reads an EnergyTrace log and synthesizes the energy consumption results. The script will automatically detect the start of the experiment by thresholding the high energy consumption of the Bluetooth module. You can run this script using the following command.
+```
+python extract_energy.py --folder <folder-with-csvs> --num-seq <num-seq-in-experiment>
+```
+The script will compute the energy expended on each sequence in the experiment. The results will be saved in a file called `energy.json` within the input folder. If there are multiple trials in the provided folder, the results get merged into one output file.
+
+As a note, the provided results already have the energy values extracted. You do not need to run this step on the pre-collected values.
+
+#### Energy Consumption and Sampling Error
+The script `adaptiveleak/analysis/analyze_msp_results.py` computes the sampling error and energy consumption of each policy on the MSP430. You can run this script using the command below (inside the `adaptiveleak/analysis` folder).
+```
+python analyze_msp_results.py --folder <base-folder-name> --dataset <dataset-name>
+```
+The `folder` argument should be the base folder name provided to the server script for this dataset. The analysis script will automatically read the results from all policies included in subdirectories. The script calculates the budget based on on the `uniform` policy's energy consumption. Budget violations cause the offending policy to randomly guess sequence elements. To properly compute the random guessing errors (if needed), you must ensure that you first serialize the dataset with enough sequences to cover all trials (see the serialization step above).
+
+The script will print out the results in a Latex table format for each policy. The columns are `collection rate`, `avg error (std)`, `avg energy / seq (std)`. When running the script on the pre-collected results in `adaptiveleak/device/results/uci_har` and `adaptiveleak/device/results/tiselac`, you should get the same results as in Table 8.
+
+#### Mutual Information
+The program `adaptiveleak/analysis/msp_mutual_information.py` computes the Normalized Mutual Information (NMI) between message size and event label from the MCU results. After navigating into `adaptiveleak/analysis`, you can run this script using the following command.
+```
+python msp_mutual_information.py --folder <base-folder-name> --dataset <dataset-name>
+```
+The arguments should be the same as in the previous step. For each policy, the script will print out the median and maximum mutual information values across all collection rates. The results from the `uci_har` dataset are included in Section `5.7` of the paper.

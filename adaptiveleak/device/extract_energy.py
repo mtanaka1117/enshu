@@ -147,8 +147,8 @@ def plot(energy_readings: OrderedDict, comm_ranges: List[EnergyRange], output_pa
 
 if __name__ == '__main__':
     parser = ArgumentParser()
-    parser.add_argument('--folder', type=str, required=True)
-    parser.add_argument('--num-seq', type=int, required=True)
+    parser.add_argument('--folder', type=str, required=True, help='The folder containing the EnergyTrace CSV files.')
+    parser.add_argument('--num-seq', type=int, required=True, help='The number of sequences in the experiment.')
     args = parser.parse_args()
 
     # Hold energy values

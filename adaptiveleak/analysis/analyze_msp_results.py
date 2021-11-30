@@ -94,10 +94,11 @@ class HardwareEnergyResult:
 
 if __name__ == '__main__':
     parser = ArgumentParser()
-    parser.add_argument('--dataset', type=str, required=True)
+    parser.add_argument('--folder', type=str, required=True, help='Name of the folder in `devices/results` to analyze.')
+    parser.add_argument('--dataset', type=str, required=True, help='Name of the dataset.')
     args = parser.parse_args()
 
-    base = os.path.join('..', 'device', 'results', args.dataset)
+    base = os.path.join('..', 'device', 'results', args.folder)
 
     # Read the data and distribution
     inputs, _ = load_data(dataset_name=args.dataset, fold='mcu')
@@ -120,7 +121,7 @@ if __name__ == '__main__':
                 continue
 
             energy_summary = read_json(energy_path)
-            num_trials = len(energy_summary['seq_energy'])
+            num_trials = len(energy_summary['baseline_power'])
 
             # Get the collection rate
             collection_rate = int(os.path.split(budget_folder)[-1])
@@ -130,6 +131,11 @@ if __name__ == '__main__':
 
             for trial in range(num_trials):
                 error_log_path = os.path.join(budget_folder, '{0}_{1}_trial{2}.json.gz'.format(policy_name, collection_rate, trial))
+
+                if ('padded' in policy_name) and (not os.path.exists(error_log_path)):
+                    policy_file_name = policy_name.replace('padded', 'standard')
+                    error_log_path = os.path.join(budget_folder, '{0}_{1}_trial{2}.json.gz'.format(policy_file_name, collection_rate, trial))
+
                 error_log = read_json_gz(error_log_path)
                 maes = error_log['maes']
 
@@ -146,7 +152,7 @@ if __name__ == '__main__':
     # Get the avg energy values (adjusted for the budget)
     for policy_name, policy_results in results.items():
         print('Policy Name: {0}'.format(policy_name))
-        
+
         for collection_rate, hardware_result in sorted(policy_results.items()):
             if policy_name == 'uniform_standard':
                 error = Summary(avg=hardware_result.get_avg_error(), std=hardware_result.get_std_error())
@@ -162,4 +168,3 @@ if __name__ == '__main__':
             energy = Summary(avg=hardware_result.get_avg_energy_per_seq(), std=hardware_result.get_std_energy_per_seq())
 
             print('{0} & {1:.4f} (\\pm {2:.4f}) & {3:.4f} (\\pm {4:.4f})'.format(collection_rate, error.avg, error.std, energy.avg, energy.std))
-

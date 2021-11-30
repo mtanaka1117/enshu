@@ -50,7 +50,8 @@ def compute_entropy(counts: List[int]) -> float:
 
 if __name__ == '__main__':
     parser = ArgumentParser()
-    parser.add_argument('--dataset', type=str, required=True)
+    parser.add_argument('--folder', type=str, required=True, help='Name of the folder in `device/results` containing the experiment results.')
+    parser.add_argument('--dataset', type=str, required=True, help='Name of the dataset.')
     args = parser.parse_args()
 
     base = os.path.join('..', 'device', 'results', args.dataset)
@@ -72,7 +73,11 @@ if __name__ == '__main__':
                 continue
 
             # Read the error logs
-            error_log_path = os.path.join(budget_folder, '{0}_{1}_trial0.json.gz'.format(policy_name.replace('padded', 'standard'), collection_rate))
+            error_log_path = os.path.join(budget_folder, '{0}_{1}_trial0.json.gz'.format(policy_name, collection_rate))
+
+            if ('padded' in policy_name) and (not os.path.exists(error_log_path)):
+                policy_file_name = policy_name.replace('padded', 'standard')
+                error_log_path = os.path.join(budget_folder, '{0}_{1}_trial0.json.gz'.format(policy_file_name, collection_rate))
 
             error_log = read_json_gz(error_log_path)
             recv_count = error_log['recv_count']
@@ -89,4 +94,4 @@ if __name__ == '__main__':
             nmi = (mut_info) / (label_entropy + bytes_entropy)
             information_scores.append(nmi)
 
-        print('{0}: {1}, {2}'.format(policy_name, np.median(information_scores), np.max(information_scores)))
+        print('{0}: Med -> {1:.6f}, Max -> {2:.6f}'.format(policy_name, np.median(information_scores), np.max(information_scores)))

@@ -9,7 +9,7 @@ from typing import Tuple, List, Dict, Any, Optional
 
 from adaptiveleak.energy_systems import EnergyUnit, convert_rate_to_energy, get_group_target_bytes, get_padded_collection_rate
 from adaptiveleak.utils.constants import BITS_PER_BYTE, MIN_WIDTH, SMALL_NUMBER, SHIFT_BITS, MAX_SHIFT_GROUPS
-from adaptiveleak.utils.constants import MIN_SHIFT_GROUPS, PERIOD, LENGTH_SIZE, BT_FRAME_SIZE, MAX_SHIFT_GROUPS_FACTOR
+from adaptiveleak.utils.constants import MIN_SHIFT_GROUPS, PERIOD, LENGTH_SIZE, BT_FRAME_SIZE
 from adaptiveleak.utils.data_utils import get_group_widths, get_num_groups, calculate_bytes, pad_to_length, sigmoid, truncate_to_block, round_to_block
 from adaptiveleak.utils.data_utils import prune_sequence, calculate_grouped_bytes, set_widths, select_range_shifts_array, num_bits_for_value, get_max_num_groups
 from adaptiveleak.utils.shifting import merge_shift_groups

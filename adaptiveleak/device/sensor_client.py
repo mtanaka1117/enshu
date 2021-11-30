@@ -279,14 +279,15 @@ if __name__ == '__main__':
     parser.add_argument('--dataset', type=str, required=True, help='The name of the dataset.')
     parser.add_argument('--policy', type=str, required=True, help='The name of the policy.')
     parser.add_argument('--collection-rate', type=float, required=True, help='The collection rate fraction in [0, 1].')
-    parser.add_argument('--output-folder', type=str, required=True, help='The folder in which to save the results.')
+    parser.add_argument('--output-folder-name', type=str, required=True, help='The folder name in the `results` directory to save the experiment output.')
     parser.add_argument('--encoding', type=str, required=True, choices=['standard', 'group'], help='The name of the encoding procedure.')
     parser.add_argument('--trial', type=int, required=True, help='The trial number [usually 0, used for logging only].')
     parser.add_argument('--max-samples', type=int, help='The maximum number of samples to use.')
     args = parser.parse_args()
 
-    make_dir(args.output_folder)
-    output_file = os.path.join(args.output_folder, '{0}_{1}_{2}_trial{3}.json.gz'.format(args.policy, args.encoding, int(round(args.collection_rate * 100)), args.trial))
+    make_dir('results')
+    make_dir(os.path.join('results', args.output_folder_name))
+    output_file = os.path.join('results', args.output_folder_name, '{0}_{1}_{2}_trial{3}.json.gz'.format(args.policy, args.encoding, int(round(args.collection_rate * 100)), args.trial))
 
     if os.path.exists(output_file):
         print('The output file {0} exists. Do you want to overwrite it? [Y/N]'.format(output_file))

@@ -1,0 +1,34 @@
+EOG:
+[1] https://timeseriesclassification.com/description.php?Dataset=EOGVerticalSignal
+[2] Fang, Fuming, and Takahiro Shinozaki. "Electrooculography-based continuous eye-writing recognition system for efficient assistive communication systems." PloS one 13.2 (2018): e0192684.
+
+Epilepsy:
+[1] https://timeseriesclassification.com/description.php?Dataset=Epilepsy
+[2] Villar, Jose R., et al. "Generalized models for the classification of abnormal movements in daily life and its applicability to epilepsy convulsion recognition." International journal of neural systems 26.06 (2016): 1650037.
+
+Haptics:
+[1] https://timeseriesclassification.com/description.php?Dataset=Haptics
+
+MNIST:
+[1] LeCun, Yann. "The MNIST database of handwritten digits." http://yann. lecun. com/exdb/mnist/ (1998).
+
+Pavement:
+[1] https://timeseriesclassification.com/description.php?Dataset=AsphaltPavementTypeCoordinates
+[2] Souza, Vinicius MA, et al. "Towards automatic evaluation of asphalt irregularity using smartphone’s sensors." International Symposium on Intelligent Data Analysis. Springer, Cham, 2017.
+
+Strawberry:
+[1] http://csr.quadram.ac.uk/wp-content/uploads/MIRFruitPurees.zip
+[2] “Use of Fourier transform infrared spectroscopy and partial least squares regression for the detection of adulteration of strawberry purees“ Holland JK, Kemsley EK, Wilson RH. (1998). 
+
+Trajectories:
+[1] https://archive.ics.uci.edu/ml/datasets/Character+Trajectories
+[2] B.H. Williams, M.Toussaint, and A.J. Storkey. Extracting motion primitives from natural handwriting data. In ICANN, volume 2, pages 634–643, 2006. 
+
+Tiselac:
+[1] https://timeseriesclassification.com/description.php?Dataset=Tiselac
+[2] https://sites.google.com/site/dinoienco/tiselac-time-series-land-cover-classification-challenge
+
+UCI HAR:
+[1] https://github.com/aiff22/HAR
+[2] https://archive.ics.uci.edu/ml/datasets/Human+Activity+Recognition+Using+Smartphones
+[3] Davide Anguita, Alessandro Ghio, Luca Oneto, Xavier Parra and Jorge L. Reyes-Ortiz. Human Activity Recognition on Smartphones using a Multiclass Hardware-Friendly Support Vector Machine. International Workshop of Ambient Assisted Living (IWAAL 2012). Vitoria-Gasteiz, Spain. Dec 2012

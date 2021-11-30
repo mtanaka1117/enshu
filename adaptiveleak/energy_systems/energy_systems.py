@@ -293,12 +293,12 @@ class EnergyUnit:
         encrypt_energy = self._encrypt.get_energy(num_bytes=num_bytes,
                                                   use_noise=use_noise)
 
-        comp_energy = should_collect_energy + update_energy + encode_energy + encrypt_energy
+        comp_energy = collect_energy + should_collect_energy + update_energy + encode_energy + encrypt_energy
 
         if self._policy_type in (PolicyType.UNIFORM, PolicyType.RANDOM):
-            return UNIFORM_FACTOR * comp_energy + collect_energy
+            return UNIFORM_FACTOR * comp_energy
 
-        return comp_energy + collect_energy
+        return comp_energy
 
     def get_communication_energy(self, num_bytes: int, use_noise: bool) -> float:
         return self._comm.get_energy(num_bytes=num_bytes,
