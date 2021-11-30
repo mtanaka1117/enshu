@@ -7,7 +7,7 @@ This repository contains the implementation of Adaptive Group Encoding (AGE), a 
 4. `energy_systems`: Manages energy traces to track energy consumption in the simulator framework.
 5. `msp`: Contains the TI MSP430FR5994 implementation of all encoding and sampling strategies.
 6. `plots`: Holds all plots for the included experimental results.
-7. `skip_rnn`: Implements a Skip RNN sampling policy.
+7. `skip_rnn`: Implements a Skip RNN sampling policy. See the README inside this directory for information about how to train Skip RNNs.
 8. `traces`: Contains the pre-collected energy traces from a TI MSP430 FR5994.
 9. `unit_tests`: A suite of unit tests for various aspects of the system.
 10. `utils`: Holds a set of utility functions for actions such as encryption and encoding. The README in this folder contains more information on the implemented functionality.
@@ -38,7 +38,14 @@ pip3 install -e .
 ```
 
 ### Downloading Datasets, Energy Traces, and Saved Results
-The datasets, energy traces, and existing results are too large to comfortably fit in the Github repository. You can download this information from [this Google Drive folder](https://drive.google.com/drive/folders/1BrXn-Spc3GwbSmZu-xI5mLefBqNQ8vMa?usp=sharing). Upon downloading, extract the ZIP files and move each inside the `adaptiveleak` folder. By the end of this step, you should have three folders: `adaptiveleak/datasets`, `adaptiveleak/saved_models`, `adaptiveleak/traces`.
+The datasets, energy traces, and existing results are too large to comfortably fit in the Github repository. You can download this information from [this Google Drive folder](https://drive.google.com/drive/folders/1BrXn-Spc3GwbSmZu-xI5mLefBqNQ8vMa?usp=sharing). Upon downloading each resource, extract the ZIP files. The enclosed directories should be placed at the following locations.
+
+1. `datasets.zip` -> `adaptiveleak/datasets`
+2. `saved_models.zip` -> `adaptiveleak/saved_models`
+3. `traces.zip` -> `adaptiveleak/traces`
+4. `msp_results.zip` -> `adaptiveleak/device/results`
+
+**The exact locations are important, as the code looks for directories in these places.** As a note, the `msp_results` are large (`~3GB`) because they contain raw energy traces over time. If you do not have enough disk space, then you can omit downloading the MSP results. This directory contains logs from the MSP430 device and is not required to run either the simulator or the MSP430 implementation.
 
 ### Naming
 There are three naming conventions in the code repository that differ from the paper. First, in the code, the `AGE` encoding system is called `group`. Second, the `Linear` policy in the paper is called the adaptive `heuristic` policy in the code. Finally, in the codebase, the `Activity` dataset is called `uci_har`, 'Characters` is called `trajectories`, and `Password` is called `haptics`.
@@ -48,11 +55,11 @@ The entry point for the simulator is the script `adaptiveleak/simulator.py`. You
 ```
 python simulator.py --dataset <dataset-name> --encoding <encoding-name> --encryption <encryption-type> --collection-rate <budget> --should-print
 ```
-The collection rate is the target fraction of elements in each sequence to capture; the budget is set at the `Uniform` policy's energy consumption at this fraction. You can specify a range of elements by providing three values (space-separated) in the form `<min> <max> <step>`. The results in the paper use `--colelction-rate 0.3 1.0 0.1`. As a note, the encoding algorithm `group` is the full `AGE` system. The dataset name is the name of the folder in `datasets` (e.g. `datasets/<dataset-name>`) containing the data files. The shell script `adaptiveleak/run_simulator.sh` executes all policies on the dataset passed as a command line argument (shown below).
+The collection rate is the target fraction of elements in each sequence to capture; the budget is set at the `Uniform` policy's energy consumption at this fraction. You can specify a range of elements by providing three values (space-separated) in the form `<min> <max> <step>`. The results in the paper use `--collection-rate 0.3 1.0 0.1`. As a note, the encoding algorithm `group` is the full `AGE` system. The dataset name is the name of the folder in `datasets` (e.g. `datasets/<dataset-name>`) containing the data files. The shell script `adaptiveleak/run_simulator.sh` executes all policies on the dataset passed as a command line argument (shown below).
 ```
 ./run_simlator.sh <dataset-name>
 ```
-This command can take a few minutes to run, especially for the larger datasets (`uci_har`, `mnist`, `tiselac`). The `epilepsy` dataset is relatively small and represents a good starting point.
+This command can take a few minutes to run, especially for the larger datasets (`uci_har`, `mnist`, `tiselac`). The `epilepsy` dataset is relatively small and represents a good starting point. **We include the outputs from all datasets in the folder `adaptiveleak/saved_models/<dataset-name>/results. You may use these logs if it is too time consuming to execute all experiments from scratch.**
 
 After execution, the results are automatically stored in the folder `saved_models/<dataset-name>/<date>`. There will be a folder in this directory for the sampling policy and the encoding algorithm. Keep note of the date, as you will use this value to reference these results during the analysis phase (below).
 
@@ -64,9 +71,13 @@ The script `adaptiveleak/analysis/plot_error.py` displays the arithmetic mean re
 ```
 python plot_error.py --folder <experiment-name> --dataset <dataset-name> --metric <metric-name>
 ```
-The arguments are described when running `python plot_error.py --help`. The `--folder` should be the date of the experiment as produced by the execution step in the last section. The code will look for the folder `adaptiveleak/saved_models/<dataset>/<folder>` and retrieve the results from this directory.
+The arguments are described when running `python plot_error.py --help`. The `--folder` should be the date of the experiment as produced by the execution step in the last section. The code will look for the folder `adaptiveleak/saved_models/<dataset>/<folder>` and retrieve the results from this directory. **If you are referencing the existing results, set `--folder` to `results`**.
 
 The script will produce a plot showing the error for each constraint. The code will also print out the arithmetic mean error (across all constraints) for each policy. When the provided `metric` is `mae`, the printed error values should align with the results in Table 3 of the paper. Note that the plot does not include `padded` policies due to their high error.
+
+By default, the script does not include the Skip RNN results, as the Skip RNNs do not operate under the same energy constraints. You can include these error values by including the option `--include-skip-rnn` to the above command. The error results here should align with the MAE values in Table 5.
+
+For brevity, the script also does not include the variants of AGE. To perform this analysis, run the above script with the option `--is-group-comp`. The printed result shows the MAE value for each AGE variant. Averaging the percentage error results from all datasets yields Table 6.
 
 #### Mutual Information
 We measure the theoretical information leakage on each task using the mutual information between message sizes and event labels. You can compute these results using the script `adaptiveleak/analysis/leakage_test.py`. This script also executes permutation tests to measure the significance of the observed empirical relationship. The command below describes how to run the script. You must be in the `adaptiveleak/analysis` directory.
@@ -92,9 +103,9 @@ After policy execution, you can execute a more practical attack using a statisti
 ```
 python train.py --policy <policy-name> --encoding <encoding-name> --dataset <dataset-name> --folder <experiment-name> --window-size <window-size> --num-samples <num-samples>
 ```
-For a longer description of each option, run `python train.py --help`. The `folder` option should be the name of the folder containing the experimental logs in `saved_models/<dataset-name>`. These logs are the results of the previous section. Note that the folder name defaults to the current date as described in the section about running experiments.
+For a longer description of each option, run `python train.py --help`. The `folder` option should be the name of the folder containing the experimental logs in `saved_models/<dataset-name>`. These logs are the results of the previous section. It can take a few minutes to run the attack classifier on each dataset.
 
-The training process uses 5-fold stratified cross evaluation. The results get automatically stored in the evaluation logs for each sampling policy, encoding algorithm, and collection rate. Each entry in the serialized result is a list of 5 elements following the 5-fold evaluation.
+The training process uses 5-fold stratified cross evaluation. The results get automatically stored in the evaluation logs for each sampling policy, encoding algorithm, and collection rate. Each entry in the serialized result is a list of 5 elements following the 5-fold evaluation. **The existing result logs already contain the attack classifier values.**
 
 The script `analysis/plot_attack.py` analyzes the attack classification results. You can execute this script using the command below.
 ```
@@ -109,12 +120,12 @@ python plot_all_attacks.py --folder <experiment-name> --datasets <list-of-datase
 The result is a bar chart that shows the median, IQR, and maximum attack accuracy values for each provided dataset. Running this command with all 9 provided datasets yields Figure 6 in the paper.
 
 ### Unit Tests
-The folder `adaptiveleak/unit_tests` contains two directories of unit tests. These tests execute small portions of the encoding and sampling process. To run the test suite, navigate to the corresponding directory and run the command `python <file-name>.py`. All the tests should pass.
+The folder `adaptiveleak/unit_tests/utils` contains a suite of unit tests. These tests execute small portions of the encoding and sampling process. To run the tests, navigate to the corresponding directory and run the command `python <file-name>.py`. All the tests should pass.
 
 ## Hardware (TI MSP430)
 The hardware experiments supplement the simulator by executing AGE on a microcontroller. This section requires a TI MSP430 FR5994 MCU, as well as a HM-10 Bluetooth Low Energy (BLE) module and four jumper wires. To load programs onto the MSP430, you will also need [Code Composer Studio (CCS)](https://software-dl.ti.com/ccs/esd/documents/ccs_downloads.html) from Texas Instruments. The provided implementation was tested on CCS v10.1.0. Finally, to run end-to-end experiments, you will need another computer (e.g. laptop) with BLE capabilities. The sections below describe how to configure and run experiments on the MCU.
 
-*If you do not have the relevant hardware, you can skip to the `Analysis` section below and use the included result logs.*
+*If you do not have the relevant hardware, you can skip to the `Analysis` section below and use the included result logs downloaded from the Google Drive (see section on Downloading).*
 
 ### Serializing Sampling Policies and Datasets
 The folder 'adaptiveleak/msp' contains the MSP430 implementation of all sampling policies and encoding algorithms. This code provides a backbone that features common functionality for all sampling policies. The project uses conditional compilation to customize itself for a given sampling policy and encoding procedure. The script `adaptiveleak/serialize_policy.py` generates a C header file that sets the parameters for a given sampling policy. You can run this script with the following command (must be in the `adaptiveleak` directory).

@@ -1,39 +1,35 @@
 import h5py
 import os.path
 import numpy as np
-
 from argparse import ArgumentParser
 
 from skip_rnn import SkipRNN
 from test import test_model
 
 
-#UPDATE_WEIGHTS = [2.25, 1.75, 1.5, 1.25, 1.0, 0.75, 0.5, 0.1, 0.0]
-#TARGETS = [0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0]
-
-UPDATE_WEIGHTS = [0.5]
-TARGETS = [0.4]
+UPDATE_WEIGHTS = [2.25, 1.75, 1.5, 1.25, 1.0, 0.75, 0.5, 0.1, 0.0]
+TARGETS = [0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0]
 
 
 SAVE_FOLDER = 'saved_models'
-RNN_UNITS = 4
+RNN_UNITS = 12
 NAME = 'skip-rnn'
 
 
 if __name__ == '__main__':
     parser = ArgumentParser()
-    parser.add_argument('--dataset', type=str, required=True)
+    parser.add_argument('--dataset', type=str, required=True, help='The name of the dataset to train on.')
     parser.add_argument('--should-print', action='store_true')
     args = parser.parse_args()
 
-    train_path = os.path.join('..', '..', 'datasets', args.dataset, 'train', 'data.h5')
+    train_path = os.path.join('..', 'datasets', args.dataset, 'train', 'data.h5')
     with h5py.File(train_path, 'r') as fin:
         train_inputs = fin['inputs'][:]
 
     if len(train_inputs.shape) == 2:
         train_inputs = np.expand_dims(train_inputs, axis=-1)
 
-    val_path = os.path.join('..', '..', 'datasets', args.dataset, 'validation', 'data.h5')
+    val_path = os.path.join('..', 'datasets', args.dataset, 'validation', 'data.h5')
     with h5py.File(val_path, 'r') as fin:
         val_inputs = fin['inputs'][:]
 

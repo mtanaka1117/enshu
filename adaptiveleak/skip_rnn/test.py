@@ -10,7 +10,7 @@ from skip_rnn import SkipRNN
 
 
 def test_model(model_name: str, save_folder: str, dataset_name: str):
-    test_path = os.path.join('..', '..', 'datasets', dataset_name, 'test', 'data.h5')
+    test_path = os.path.join('..', 'datasets', dataset_name, 'test', 'data.h5')
     with h5py.File(test_path, 'r') as fin:
         test_inputs = fin['inputs'][:]
         test_labels = fin['output'][:]
@@ -29,8 +29,8 @@ def test_model(model_name: str, save_folder: str, dataset_name: str):
 
 if __name__ == '__main__':
     parser = ArgumentParser()
-    parser.add_argument('--dataset', type=str, required=True)
-    parser.add_argument('--model-file', type=str, required=True)
+    parser.add_argument('--dataset', type=str, required=True, help='The dataset used to train and evaluate the model.')
+    parser.add_argument('--model-file', type=str, required=True, help='The path to the model pickle file.')
     args = parser.parse_args()
 
     save_folder, model_name = os.path.split(args.model_file)
