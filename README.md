@@ -87,9 +87,9 @@ For brevity, the `plot_error.py` script also does not include the variants of AG
 ```
 python age_comparison.py --folder <experiment-name> --datasets <list-of-datasets>
 ```
-The `folder` argument should be the folder containing the experiment results in each dataset. To use the pre-collected results, set `--folder` to `results`. Running the script with the `--help` option will list further descriptions of each argument.
+The `folder` argument should be the folder containing the experiment results in each dataset. To use the pre-collected results, set `--folder` to `results`. Running the script with the `--help` option provides further descriptions of each argument.
 
-For space reasons, the paper only shows the median percent errors across all datasets and budgets (Table 6). To better verify these results, the tables below shows the average MAE across all budgets on each individual dataset. The error values here should match the results of running the `plot_error.py` script with `--is-group-comp` set and a `metric` of `mae`. 
+For space reasons, the paper only shows the median percent errors across all datasets and budgets (Table 6). To better verify the results for each variant, the tables below show the average MAE across all budgets on each individual dataset. The below error values should match the results of running the `plot_error.py` script with `--is-group-comp` and a `metric` of `mae`. 
 
 | Dataset | Linear Single | Linear Unshifted | Linear Pruned | Linear AGE |
 | ------- | ------------- | ---------------- | ------------- | ---------- |
