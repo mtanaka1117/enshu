@@ -55,13 +55,19 @@ The entry point for the simulator is the script `adaptiveleak/simulator.py`. You
 ```
 python simulator.py --dataset <dataset-name> --encoding <encoding-name> --encryption <encryption-type> --collection-rate <budget> --should-print
 ```
-The collection rate is the target fraction of elements in each sequence to capture; the budget is set at the `Uniform` policy's energy consumption at this fraction. You can specify a range of elements by providing three values (space-separated) in the form `<min> <max> <step>`. The results in the paper use `--collection-rate 0.3 1.0 0.1`. As a note, the encoding algorithm `group` is the full `AGE` system. The dataset name is the name of the folder in `datasets` (e.g. `datasets/<dataset-name>`) containing the data files. The shell script `adaptiveleak/run_simulator.sh` executes all policies on the dataset passed as a command line argument (shown below).
+The collection rate is the target fraction of elements in each sequence to capture; the budget is set at the `Uniform` policy's energy consumption at this fraction. You can specify a range of elements by providing three values (space-separated) in the form `<min> <max> <step>`. The results in the paper use `--collection-rate 0.3 1.0 0.1`. As a note, the encoding algorithm `group` is the full `AGE` system. The dataset name is the name of the folder in `datasets` (e.g. `datasets/<dataset-name>`) containing the data files. The shell script `adaptiveleak/run_simulator.sh` executes all policies on the dataset passed as a command line argument (shown below). This script is limited to `standard`, `AGE`, and `Padded` encoding. See below for instructions on how to easily run variants of `AGE`.
 ```
 ./run_simlator.sh <dataset-name>
 ```
 This command can take a few minutes to run, especially for the larger datasets (`uci_har`, `mnist`, `tiselac`). The `epilepsy` dataset is relatively small and represents a good starting point. **We include the outputs from all datasets in the folder `adaptiveleak/saved_models/<dataset-name>/results. You may use these logs if it is too time consuming to execute all experiments from scratch.**
 
 After execution, the results are automatically stored in the folder `saved_models/<dataset-name>/<date>`. There will be a folder in this directory for the sampling policy and the encoding algorithm. Keep note of the date, as you will use this value to reference these results during the analysis phase (below).
+
+The codebase supports the ability to evaluate variants of `AGE` which use a selection of features from the full policy. These variants are called `pruned`, `single_group` and `group_unshifted`. Section 5.6 in the paper provides a description of each policy. The script `run_simulator_age_comp.sh` provides the ability to easily run all variants on a dataset. You may run this script using the command below.
+```
+./run_simulator_age_comp.sh <dataset-name>
+```
+*You must run this script if you wish to reproduce Table 6 in the paper.*
 
 ### Analyzing Experimental Results
 The `adaptiveleak/analysis` folder contains a few scripts to process the results of each experiment. This section describes how to compute the reconstruction error, as well as the mutual information between message size and event label.
@@ -75,9 +81,40 @@ The arguments are described when running `python plot_error.py --help`. The `--f
 
 The script will produce a plot showing the error for each constraint. The code will also print out the arithmetic mean error (across all constraints) for each policy. When the provided `metric` is `mae`, the printed error values should align with the results in Table 3 of the paper. Note that the plot does not include `padded` policies due to their high error.
 
-By default, the script does not include the Skip RNN results, as the Skip RNNs do not operate under the same energy constraints. You can include these error values by including the option `--include-skip-rnn` to the above command. The error results here should align with the MAE values in Table 5.
+By default, the `plot_err.py` script does not include the Skip RNN results, as the Skip RNNs do not operate under the same energy constraints. You can include these error values by including the option `--include-skip-rnn` to the above command. The error results here should align with the MAE values in Table 5.
 
-For brevity, the script also does not include the variants of AGE. To perform this analysis, run the above script with the option `--is-group-comp`. The printed result shows the MAE value for each AGE variant. Averaging the percentage error results from all datasets yields Table 6.
+For brevity, the `plot_error.py` script also does not include the variants of AGE. To perform this analysis, run the above script with the option `--is-group-comp`. The printed result shows the MAE value for each AGE variant. Taking the median of the symmetric percentage error between each variant and AGE from all datasets yields Table 6. The script `analysis/age_comparison.py` performs this computation, and you may run this script using the command below. *Note that you must run the `AGE` variants (e.g. via `run_simulator_age_comp.sh`) to see results for the variant policies.*
+```
+python age_comparison.py --folder <experiment-name> --datasets <list-of-datasets>
+```
+The `folder` argument should be the folder containing the experiment results in each dataset. To use the pre-collected results, set `--folder` to `results`. Running the script with the `--help` option will list further descriptions of each argument.
+
+For space reasons, the paper only shows the median percent errors across all datasets and budgets (Table 6). To better verify these results, the tables below shows the average MAE across all budgets on each individual dataset. The error values here should match the results of running the `plot_error.py` script with `--is-group-comp` set and a `metric` of `mae`. 
+
+| Dataset | Linear Single | Linear Unshifted | Linear Pruned | Linear AGE |
+| ------- | ------------- | ---------------- | ------------- | ---------- |
+| Activity | 0.00996 | 0.00992 | 0.02553 | **0.00945** |
+| Characters | 0.00467 | 0.00468 | 0.01182 | **0.00463** |
+| EOG | 0.12979 | 0.12876 | 0.15106 | **0.12589** |
+| Epilepsy | 0.09982 | 0.09973 | 0.15321 | **0.09965** |
+| MNIST | 4.96077 | 4.94762 | 5.24250 | **4.93969** |
+| Password | 0.00255 | 0.00252 | 0.00317 | **0.00238** |
+| Pavement | 0.69418 | 0.70065 | 0.97322 | **0.68862** |
+| Strawberry | 0.00507 | 0.00511 | 0.01565 | **0.00501** |
+| Tiselac | 6.24563 | 8.99798 | 4.76298 | **2.67698** |
+
+| Dataset | Deviation Single | Deviation Unshifted | Deviation Pruned | Deviation AGE |
+| ------- | ------------- | ---------------- | ------------- | ---------- |
+| Activity | 0.01090 | 0.01087 | 0.02567 | **0.01041** |
+| Characters | 0.00461 | 0.00462 | 0.01187 | **0.00457** |
+| EOG | 0.13628 | 0.13493 | 0.14469 | **0.13213** |
+| Epilepsy | 0.10080 | 0.10062 | 0.16008 | **0.10050** |
+| MNIST | 4.72692 | 4.70312 | 4.98216 | **4.69580** |
+| Password | 0.00274 | 0.00270 | 0.00326 | **0.00261** |
+| Pavement | 0.68684 | 0.69433 | 1.01491 | **0.67860** |
+| Strawberry | 0.00490 | 0.00494 | 0.01334 | **0.00485** |
+| Tiselac | 6.32186 | 9.02931 | 4.77306 | **2.79338** |
+
 
 #### Mutual Information
 We measure the theoretical information leakage on each task using the mutual information between message sizes and event labels. You can compute these results using the script `adaptiveleak/analysis/leakage_test.py`. This script also executes permutation tests to measure the significance of the observed empirical relationship. The command below describes how to run the script. You must be in the `adaptiveleak/analysis` directory.
@@ -103,7 +140,7 @@ After policy execution, you can execute a more practical attack using a statisti
 ```
 python train.py --policy <policy-name> --encoding <encoding-name> --dataset <dataset-name> --folder <experiment-name> --window-size <window-size> --num-samples <num-samples>
 ```
-For a longer description of each option, run `python train.py --help`. The `folder` option should be the name of the folder containing the experimental logs in `saved_models/<dataset-name>`. These logs are the results of the previous section. It can take a few minutes to run the attack classifier on each dataset.
+For a longer description of each option, run `python train.py --help`. The `folder` option should be the name of the folder containing the experimental logs in `saved_models/<dataset-name>`. These logs are the results of the previous section. The results in the paper use a `window-size` of `10` and a `num-samples` of `10000` (see Section 5.4 in the paper). It can take a few minutes to run the attack classifier on each dataset.
 
 The training process uses 5-fold stratified cross evaluation. The results get automatically stored in the evaluation logs for each sampling policy, encoding algorithm, and collection rate. Each entry in the serialized result is a list of 5 elements following the 5-fold evaluation. **The existing result logs already contain the attack classifier values.**
 
@@ -111,7 +148,7 @@ The script `analysis/plot_attack.py` analyzes the attack classification results.
 ```
 python plot_attack.py --folder <experiment-name> --dataset <dataset-name> --output-file [<optional-output-path>]
 ```
-Executing `python plot_attack.py --help` provides longer descriptions of each argument. The provided `--folder` follows the same convention as the `train.py` script above. To analyze the previous results, use the same `folder`. The `plot_attack.py` script will show the median attack accuracy across all 5 evaluation folds for each energy budget. The script also prints out the average and maximum attack accuracy across all constraints. For the Skip RNN, these values correspond to the Attack results in Table 5 of the paper.
+Executing `python plot_attack.py --help` provides longer descriptions of each argument. The provided `--folder` follows the same convention as the `train.py` script above. To analyze the previous results, use the same `folder`. The `plot_attack.py` script will show the median attack accuracy across all 5 evaluation folds for each energy budget. The script also prints out the median and maximum attack accuracy across all constraints. The maximum values are in parentheses. For the Skip RNN, these values correspond to the Attack results in Table 5 of the paper.
 
 The script `analysis/plot_all_attacks.py` will show the median and maximum attack accuracy values for multiple datasets. You may run this script using the command below.
 ```

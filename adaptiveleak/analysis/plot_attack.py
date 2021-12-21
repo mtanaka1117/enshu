@@ -65,9 +65,9 @@ def plot(sim_results: Dict[str, Dict[float, float]], dataset_name: str, output_f
                     f1_values.append((np.median(all_f1), np.max(all_f1)))
 
         # Print our the results in a table format
-        print(' & '.join(policy_names))
-        print(' & '.join(['{0:.2f} ({1:.2f})'.format(x, m) for x, m in accuracy_values]))
-        print(' & '.join(['{0:.2f} ({1:.2f})'.format(x, m) for x, m in f1_values]))
+        print(' & '.join(['Metric'] + policy_names))
+        print(' & '.join(['Accuracy'] + ['{0:.2f} ({1:.2f})'.format(x, m) for x, m in accuracy_values]))
+        print(' & '.join(['Macro F1'] + ['{0:.2f} ({1:.2f})'.format(x, m) for x, m in f1_values]))
 
         ax1.set_xlabel('Energy Budget (mJ)', fontsize=AXIS_FONT)
         ax1.set_ylabel('Mean Accuracy', fontsize=AXIS_FONT)
