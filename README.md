@@ -1,4 +1,7 @@
 # Adaptive Group Encoding
+[Protecting Adaptive Sampling from Information Leakage on
+Low-Power Sensors](https://dl.acm.org/doi/pdf/10.1145/3503222.3507775)
+の再現実験手順を記す。
 
 ## 再現の手順
 ### 1. 環境構築
@@ -29,12 +32,11 @@ cd adaptiveleak
 ```
 結果は`saved_models/<dataset-name>/<date>`に保存される。`<date>`は次の攻撃シミュレーションにおいて使用する。
 
-
 #### 攻撃シミュレーション
 `adaptiveleak/attack`ディレクトリに移動して行う。
 
 ```
-python train.py --policy <policy-name> --encoding <encoding-name> --dataset <dataset-name> --folder <experiment-name> --window-siz/home/mtanaka/adaptive-group-encoding/adaptiveleak/saved_models/eoge <window-size> --num-samples <num-samples>
+python train.py --policy <policy-name> --encoding <encoding-name> --dataset <dataset-name> --folder <date> --window-siz/home/mtanaka/adaptive-group-encoding/adaptiveleak/saved_models/eoge <window-size> --num-samples <num-samples>
 ```
 
 以下の組み合わせを全て実行する
@@ -79,13 +81,13 @@ Ubuntu(WSL 2)
 `Password`データセット -> `haptic`  
 
 ### `'seaborn-ticks' is not a valid package style` errorへの対処
-`plot_utils.py`の
+`plot_utils.py`の`PLOT_STYLE = seaborn-ticks`をコメントアウトし`PLOT_STYLE = 'seaborn-v0_8'`に書き換える。
 ```
 # PLOT_STYLE = 'seaborn-ticks'
 PLOT_STYLE = 'seaborn-v0_8'
 ```
 
-This repository contains the implementation of Adaptive Group Encoding (AGE), a system for protecting adaptive sampling algorithms from leaking information through communication patterns on low-power devices. This work was accepted into ASPLOS 2022. The repository has the following general structure. Note that most of code supports the simulator framework, and the paths below all lie within the `adaptiveleak` directory.
+<!-- This repository contains the implementation of Adaptive Group Encoding (AGE), a system for protecting adaptive sampling algorithms from leaking information through communication patterns on low-power devices. This work was accepted into ASPLOS 2022. The repository has the following general structure. Note that most of code supports the simulator framework, and the paths below all lie within the `adaptiveleak` directory.
 
 1. `analysis`: Scripts to analysis experiment results.
 2. `attack`: Script to train the attack classifier model.
@@ -354,4 +356,4 @@ The program `adaptiveleak/analysis/msp_mutual_information.py` computes the Norma
 ```
 python msp_mutual_information.py --folder <base-folder-name> --dataset <dataset-name>
 ```
-The arguments should be the same as in the previous step. For each policy, the script will print out the median and maximum mutual information values across all collection rates. The results from the `uci_har` dataset are included in Section `5.7` of the paper.
+The arguments should be the same as in the previous step. For each policy, the script will print out the median and maximum mutual information values across all collection rates. The results from the `uci_har` dataset are included in Section `5.7` of the paper. -->
