@@ -12,7 +12,8 @@ from adaptiveleak.utils.file_utils import read_json_gz, iterate_dir
 
 
 def plot(information_results: DefaultDict[str, Dict[float, float]], dataset: str, output_file: Optional[str]):
-    with plt.style.context('seaborn-ticks'):
+    # with plt.style.context('seaborn-ticks'):
+    with plt.style.context('seaborn-v0_8'):
         fig, ax = plt.subplots(figsize=PLOT_SIZE)
 
         names: List[str] = []

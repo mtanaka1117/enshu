@@ -133,7 +133,7 @@ def plot(dataset_results: Dict[str, Dict[str, AttackResult]], output_file: Optio
         if output_file is None:
             plt.show()
         else:
-            plt.savefig(output_file, bbox_inches='tight', transparent=True)
+            plt.savefig(output_file, bbox_inches='tight', transparent=False)
 
 
 if __name__ == '__main__':

@@ -72,7 +72,7 @@ def plot(sim_results: Dict[str, Dict[float, float]], dataset_name: str, output_f
         if output_file is None:
             plt.show()
         else:
-            plt.savefig(output_file, bbox_inches='tight', transparent=True)
+            plt.savefig(output_file, bbox_inches='tight', transparent=False)
 
 
 if __name__ == '__main__':

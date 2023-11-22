@@ -6,7 +6,8 @@ from typing import List, Tuple, Iterable, Dict, Optional, Any
 from adaptiveleak.utils.file_utils import iterate_dir, read_json_gz
 
 
-PLOT_STYLE = 'seaborn-ticks'
+# PLOT_STYLE = 'seaborn-ticks'
+PLOT_STYLE = 'seaborn-v0_8'
 MARKER = 'o'
 LINE_WIDTH = 3
 MARKER_SIZE = 8

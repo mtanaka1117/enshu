@@ -1,4 +1,90 @@
 # Adaptive Group Encoding
+
+## 再現の手順
+### 1. 環境構築
+仮想環境を用いる。下記のコマンドで仮想環境を作り、仮想環境内に入る。
+```
+python3 -m venv adaptiveleak-env
+. adaptiveleak-env/bin/activate
+```
+下記のコマンドを用いてパッケージをインストールする。このコマンドはrootディレクトリで行う。
+```
+pip3 install --upgrade pip
+pip3 install -e .
+```
+
+### 2. データセットの入手
+[Google Drive](https://drive.google.com/drive/folders/1BrXn-Spc3GwbSmZu-xI5mLefBqNQ8vMa?usp=sharing)からダウンロードする。zipファイルを解凍し、以下のディレクトリにそれぞれ配置する。
+
+1. `datasets.zip` -> `adaptiveleak/datasets`
+2. `saved_models.zip` -> `adaptiveleak/saved_models`
+3. `traces.zip` -> `adaptiveleak/traces`
+<!-- 4. `msp_results.zip` -> `adaptiveleak/device/results` -->
+
+### 3. シミュレーション
+#### サンプリング
+```
+cd adaptiveleak
+./run_simulator.sh <dataset-name>
+```
+結果は`saved_models/<dataset-name>/<date>`に保存される。`<date>`は次の攻撃シミュレーションにおいて使用する。
+
+
+#### 攻撃シミュレーション
+`adaptiveleak/attack`ディレクトリに移動して行う。
+
+```
+python train.py --policy <policy-name> --encoding <encoding-name> --dataset <dataset-name> --folder <experiment-name> --window-siz/home/mtanaka/adaptive-group-encoding/adaptiveleak/saved_models/eoge <window-size> --num-samples <num-samples>
+```
+
+以下の組み合わせを全て実行する
+
+`--policy`：adaptive_deviation, adaptive_heuristic  
+`--encoding`：group, standard, padded  
+`--dataset`：uci_har, trajectories, eog, haptics, mnist, pavement, tiselac, strawberry, epilepsy  
+`--folder`：`<date>`  
+`--window-size`：10  
+`--num-samples`：10000  
+
+
+### 4. シミュレーション結果のプロット
+`adaptiveleak/analysis`ディレクトリに移動して行う。
+注意事項に記載。
+```
+OSError: 'seaborn-ticks' is not a valid package style, path of style file, URL of style file, or library style name (library styles are listed in `style.available`)
+```
+
+論文中のFigure 6を再現するためには、以下を実行する。
+```
+python plot_all_attacks.py --folder <experiment-name> --datasets uci_har trajectories eog haptics mnist pavement tiselac strawberry epilepsy --output-file [<output-path>]
+```
+
+論文中のTable 4を再現するためには、以下を実行する。
+```
+python plot_error.py --folder <experiment-name> --dataset <dataset-name> --metric mae --output-file [<output-path>]
+```
+
+
+## 評価環境
+Ubuntu(WSL 2)
+
+
+## 注意事項
+### 命名規則
+論文と異なる命名規則がある。  
+`AGE` -> `group`  
+`Linear policy` -> `adaptive heuristic policy`  
+`Activity`データセット -> `uci_har`  
+`Characters`データセット -> `trajectories`  
+`Password`データセット -> `haptic`  
+
+### `'seaborn-ticks' is not a valid package style` errorへの対処
+`plot_utils.py`の
+```
+# PLOT_STYLE = 'seaborn-ticks'
+PLOT_STYLE = 'seaborn-v0_8'
+```
+
 This repository contains the implementation of Adaptive Group Encoding (AGE), a system for protecting adaptive sampling algorithms from leaking information through communication patterns on low-power devices. This work was accepted into ASPLOS 2022. The repository has the following general structure. Note that most of code supports the simulator framework, and the paths below all lie within the `adaptiveleak` directory.
 
 1. `analysis`: Scripts to analysis experiment results.
