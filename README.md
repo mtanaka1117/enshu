@@ -59,14 +59,14 @@ python plot_all_attacks.py --folder <experiment-name> --datasets uci_har traject
 ```
 
 上記を実行した際に
-`OSError: 'seaborn-ticks' is not a valid package style, path of style file, URL of style file, or library style name (library styles are listed in `style.available`)`
+`OSError: 'seaborn-ticks' is not a valid package style, path of style file, URL of style file, or library style name (library styles are listed in 'style.available')`
 が出た場合の対応は注意事項に記載。
 
 論文中のTable 4を再現するためには、以下を実行する。
 ```
 python plot_error.py --folder <experiment-name> --dataset <dataset-name> --metric mae --output-file [<output-path>]
 ```
-
+出力された数字
 
 ## 評価環境
 Ubuntu(WSL 2)
