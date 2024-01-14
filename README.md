@@ -5,6 +5,8 @@ Low-Power Sensors](https://dl.acm.org/doi/pdf/10.1145/3503222.3507775)
 
 ## 再現の手順
 ### 1. 環境構築
+[git](https://github.com/tejaskannan/adaptive-group-encoding)からコードをcloneする。
+
 仮想環境を用いる。下記のコマンドで仮想環境を作り、仮想環境内に入る。
 ```
 python3 -m venv adaptiveleak-env
@@ -39,7 +41,7 @@ cd adaptiveleak
 python train.py --policy <policy-name> --encoding <encoding-name> --dataset <dataset-name> --folder <date> --window-siz/home/mtanaka/adaptive-group-encoding/adaptiveleak/saved_models/eoge <window-size> --num-samples <num-samples>
 ```
 
-以下の組み合わせを全て実行する
+論文内の数値を再現するために、以下の組み合わせを全て実行する。
 
 `--policy`：adaptive_deviation, adaptive_heuristic  
 `--encoding`：group, standard, padded  
@@ -51,7 +53,6 @@ python train.py --policy <policy-name> --encoding <encoding-name> --dataset <dat
 
 ### 4. シミュレーション結果のプロット
 `adaptiveleak/analysis`ディレクトリに移動して行う。
-
 
 論文中のFigure 6を再現するためには、以下を実行する。
 ```
@@ -66,7 +67,7 @@ python plot_all_attacks.py --folder <experiment-name> --datasets uci_har traject
 ```
 python plot_error.py --folder <experiment-name> --dataset <dataset-name> --metric mae --output-file [<output-path>]
 ```
-出力された数字
+出力された数字を表にまとめることでTable 4と同じ表を得ることができる。
 
 ## 評価環境
 Ubuntu(WSL 2)
@@ -74,7 +75,8 @@ Ubuntu(WSL 2)
 
 ## 注意事項
 ### 命名規則
-論文と異なる命名規則がある。  
+論文と異なる命名規則がある。
+論文内の用語は、コードにおいて以下のように書き換えられている。
 `AGE` -> `group`  
 `Linear policy` -> `adaptive heuristic policy`  
 `Activity`データセット -> `uci_har`  
