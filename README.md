@@ -2,6 +2,7 @@
 [Protecting Adaptive Sampling from Information Leakage on
 Low-Power Sensors](https://dl.acm.org/doi/pdf/10.1145/3503222.3507775)
 の再現実験手順を記す。
+なお、再現対象は論文内のFigure 6、Table 4の二つである。
 
 ## 再現の手順
 ### 1. 環境構築
