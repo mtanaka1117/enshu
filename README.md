@@ -33,7 +33,8 @@ pip3 install -e .
 cd adaptiveleak
 ./run_simulator.sh <dataset-name>
 ```
-結果は`saved_models/<dataset-name>/<date>`に保存される。`<date>`は次の攻撃シミュレーションにおいて使用する。
+結果は`saved_models/<dataset-name>/<date>`に保存される。
+`<date>`は次の攻撃シミュレーションにおいて使用する。なお、我々の実験データは`saved_models/<dataset-name>/2023-11-15`、筆者らのデータは`saved_models/<dataset-name>/results`に保存されている。
 
 #### 攻撃シミュレーション
 `adaptiveleak/attack`ディレクトリに移動して行う。
@@ -56,7 +57,6 @@ python train.py --policy <policy-name> --encoding <encoding-name> --dataset <dat
 `adaptiveleak/analysis`ディレクトリに移動して行う。
 
 論文中のFigure 6を再現するためには、以下を実行する。
-なお、我々の実験データは`saved_models/<dataset-name>/2023-11-15`、筆者らのデータは`saved_models/<dataset-name>/results`に保存されている。
 ```
 python plot_all_attacks.py --folder <experiment-name> --datasets uci_har trajectories eog haptics mnist pavement tiselac strawberry epilepsy --output-file [<output-path>]
 ```
