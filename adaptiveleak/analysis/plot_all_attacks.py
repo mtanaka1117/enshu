@@ -119,7 +119,7 @@ def plot(dataset_results: Dict[str, Dict[str, AttackResult]], output_file: Optio
 
         ax.set_xticks(xs)
         ax.set_xticklabels(dataset_names, fontsize=AXIS_FONT - 3)
-        ax.set_yticklabels([round(y, 3) for y in ax.get_yticks()], fontsize=AXIS_FONT)
+        # ax.set_yticklabels([round(y, 3) for y in ax.get_yticks()], fontsize=AXIS_FONT)
 
         # Add a line to separate the 'All' category
         ax.axvline((xs[-1] + xs[-2]) / 2, linestyle='--', color='k')

@@ -82,7 +82,7 @@ Ubuntu(WSL 2)
 `Linear policy` -> `adaptive heuristic policy`  
 `Activity`データセット -> `uci_har`  
 `Characters`データセット -> `trajectories`  
-`Password`データセット -> `haptic`  
+`Password`データセット -> `haptics`  
 
 ### `'seaborn-ticks' is not a valid package style` errorへの対処
 `analysis/plot_utils.py`の`PLOT_STYLE = seaborn-ticks`をコメントアウトし`PLOT_STYLE = 'seaborn-v0_8'`に書き換える。
